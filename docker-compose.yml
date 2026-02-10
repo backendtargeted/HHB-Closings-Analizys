@@ -21,7 +21,7 @@ services:
     build: ./frontend
     container_name: contact-attribution-frontend
     ports:
-      - "3000:80"
+      - "3300:80"
     depends_on:
       - backend
     restart: unless-stopped
