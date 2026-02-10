@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: contact-attribution-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - uploads:/app/uploads
+      - exports:/app/exports
+      - reports:/app/reports
+    environment:
+      - ENV=production
+    restart: unless-stopped
+    networks:
+      - contact-attribution-network
+
+  frontend:
+    build: ./frontend
+    container_name: contact-attribution-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - contact-attribution-network
+
+volumes:
+  uploads:
+  exports:
+  reports:
+
+networks:
+  contact-attribution-network:
+    driver: bridge
