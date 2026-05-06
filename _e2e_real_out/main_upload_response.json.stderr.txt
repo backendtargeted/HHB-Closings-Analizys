@@ -1,0 +1,2 @@
+
+cmd:["curl.exe", "-s", "-S", "-o", "D:\\HHB-Closings-Analizys\\_e2e_real_out\\main_upload_response.json", "-w", "%{http_code}", "-X", "POST", "http://127.0.0.1:8000/api/upload", "-F", "excel_file=@D:/HHB-Closings-Analizys/_e2e_real_out/derived/e2e_report_paired_closings.xlsx;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "-F", "csv_file=@D:/HHB-Closings-Analizys/_e2e_real_out/derived/e2e_report_paired_history.csv;type=text/csv"]

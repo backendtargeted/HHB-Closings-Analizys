@@ -8,6 +8,7 @@ export interface SavedAnalysisItem {
   created_at: string;
   matched_count: number;
   total_deals: number;
+  as_of?: string | null;
 }
 
 interface SavedReportsProps {
@@ -81,7 +82,12 @@ const SavedReports = ({ onOpenReport }: SavedReportsProps) => {
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-stone-700">Saved reports</h3>
+      <div>
+        <h3 className="text-sm font-semibold text-navy">Saved reports</h3>
+        <p className="text-xs text-stone-500 mt-0.5 leading-snug">
+          Includes regular runs and past-patch snapshots stored on the server.
+        </p>
+      </div>
       <ul className="space-y-1 max-h-48 overflow-y-auto">
         {analyses.map((a) => (
           <li
@@ -92,6 +98,7 @@ const SavedReports = ({ onOpenReport }: SavedReportsProps) => {
               <p className="text-sm text-stone-700 truncate">{formatDate(a.created_at)}</p>
               <p className="text-xs text-stone-500">
                 {a.matched_count} / {a.total_deals} matched
+                {a.as_of ? ` · as-of ${a.as_of}` : ''}
               </p>
             </div>
             <div className="flex gap-1 shrink-0">

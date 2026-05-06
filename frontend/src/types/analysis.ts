@@ -37,6 +37,8 @@ export interface AnalysisCompleteResponse {
   stats: SummaryStats;
   matched_count: number;
   total_deals: number;
+  /** YYYY-MM-DD when analysis used as-of deal filter */
+  as_of?: string | null;
 }
 
 export interface ProgressUpdate {

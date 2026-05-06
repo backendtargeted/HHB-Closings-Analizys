@@ -5,7 +5,7 @@ Core analysis logic extracted from contact_attribution_gui.py
 import pandas as pd
 import numpy as np
 import re
-from datetime import datetime
+from datetime import datetime, date
 import os
 from typing import Dict, List, Any, Optional
 import json
@@ -49,6 +49,17 @@ def normalize_address(address):
     addr = re.sub(r'\s+', ' ', addr).strip()
     
     return addr
+
+
+def filter_closed_deals_by_as_of(closed_deals: pd.DataFrame, as_of_date: str) -> pd.DataFrame:
+    """
+    Keep deals whose Date Closed is on or before as_of_date (calendar day, UTC-normalized).
+    Rows with invalid/missing Date Closed are dropped when filtering.
+    """
+    cutoff = pd.Timestamp(date.fromisoformat(as_of_date.strip()))
+    closed_dt = pd.to_datetime(closed_deals["Date Closed"], errors="coerce")
+    mask = closed_dt.notna() & (closed_dt.normalize() <= cutoff.normalize())
+    return closed_deals.loc[mask].copy().reset_index(drop=True)
 
 
 def parse_tags(tags_str):
@@ -119,6 +130,24 @@ def parse_tags(tags_str):
                     'type': 'skip_trace',
                     'channel': None,
                     'date': skip_date.isoformat(),
+                    'month': month,
+                    'year': year,
+                    'tag': tag
+                })
+            except ValueError:
+                continue
+
+        # Closing marker (REISift backfill): (CLOSED) 8020 - 03/2025
+        closed_match = re.match(r'\(CLOSED\)\s*8020\s*-\s*(\d{1,2})[-\/](\d{4})', tag)
+        if closed_match:
+            month = int(closed_match.group(1))
+            year = int(closed_match.group(2))
+            try:
+                closing_date = datetime(year, month, 1)
+                contacts.append({
+                    'type': 'closing',
+                    'channel': None,
+                    'date': closing_date.isoformat(),
                     'month': month,
                     'year': year,
                     'tag': tag
@@ -400,7 +429,12 @@ def generate_summary_stats(results_df: pd.DataFrame) -> Dict[str, Any]:
     return stats
 
 
-def perform_analysis(excel_file_path: str, csv_file_path: str, progress_callback=None) -> Dict[str, Any]:
+def perform_analysis(
+    excel_file_path: str,
+    csv_file_path: str,
+    progress_callback=None,
+    as_of_date: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Main analysis function that orchestrates the entire process.
     
@@ -408,6 +442,7 @@ def perform_analysis(excel_file_path: str, csv_file_path: str, progress_callback
         excel_file_path: Path to Excel file with closed deals
         csv_file_path: Path to CSV file with contact history
         progress_callback: Optional callback function for progress updates
+        as_of_date: Optional YYYY-MM-DD; only deals with Date Closed on or before this day are analyzed
     
     Returns:
         Dictionary containing results_df and stats
@@ -417,6 +452,19 @@ def perform_analysis(excel_file_path: str, csv_file_path: str, progress_callback
     
     # Load data
     closed_deals = pd.read_excel(excel_file_path)
+    as_of_clean = (as_of_date or "").strip() or None
+    if as_of_clean:
+        original_n = len(closed_deals)
+        try:
+            closed_deals = filter_closed_deals_by_as_of(closed_deals, as_of_clean)
+        except ValueError as exc:
+            raise ValueError("as_of must be a valid calendar date in YYYY-MM-DD format") from exc
+        if progress_callback:
+            progress_callback(
+                f"As-of {as_of_clean}: using {len(closed_deals)} of {original_n} deals (Date Closed <= as-of)",
+                15,
+            )
+
     csv_data = pd.read_csv(csv_file_path, low_memory=False)
     
     if progress_callback:
@@ -454,5 +502,6 @@ def perform_analysis(excel_file_path: str, csv_file_path: str, progress_callback
         'results': results_dict,
         'stats': stats,
         'matched_count': matched_count,
-        'total_deals': len(closed_deals)
+        'total_deals': len(closed_deals),
+        'as_of': as_of_clean,
     }

@@ -6,8 +6,12 @@ from flask import Flask
 from flask_cors import CORS
 
 from .api.routes import api_bp, load_reports_from_disk
+from .api.patches import patches_bp
 
 app = Flask(__name__)
+
+# Align with Docker/nginx `client_max_body_size` (512m) for multipart uploads
+app.config["MAX_CONTENT_LENGTH"] = 512 * 1024 * 1024
 
 # Load persisted reports from volume into memory
 load_reports_from_disk()
@@ -22,8 +26,9 @@ CORS(
     methods=["GET", "POST", "OPTIONS"],
 )
 
-# Register API blueprint
+# Register API blueprints
 app.register_blueprint(api_bp, url_prefix="/api")
+app.register_blueprint(patches_bp, url_prefix="/api/patches")
 
 
 @app.route("/")

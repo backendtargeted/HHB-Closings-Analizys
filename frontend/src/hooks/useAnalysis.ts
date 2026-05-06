@@ -19,8 +19,15 @@ export const useAnalysis = () => {
   });
 
   const startAnalysisMutation = useMutation({
-    mutationFn: ({ excelPath, csvPath }: { excelPath: string; csvPath: string }) =>
-      startAnalysis(excelPath, csvPath),
+    mutationFn: ({
+      excelPath,
+      csvPath,
+      asOf,
+    }: {
+      excelPath: string;
+      csvPath: string;
+      asOf?: string | null;
+    }) => startAnalysis(excelPath, csvPath, asOf),
     onSuccess: (data) => {
       setCurrentJobId(data.job_id);
     },
@@ -50,7 +57,7 @@ export const useAnalysis = () => {
   }, [analysisStatus]);
 
   const runAnalysis = useCallback(
-    async (excelFile: File, csvFile: File) => {
+    async (excelFile: File, csvFile: File, asOf?: string | null) => {
       try {
         // Upload files
         const uploadResult = await uploadMutation.mutateAsync({
@@ -62,6 +69,7 @@ export const useAnalysis = () => {
         await startAnalysisMutation.mutateAsync({
           excelPath: uploadResult.excel_path,
           csvPath: uploadResult.csv_path,
+          asOf: asOf?.trim() || undefined,
         });
       } catch (error) {
         console.error('Analysis error:', error);

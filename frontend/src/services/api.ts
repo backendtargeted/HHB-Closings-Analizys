@@ -4,8 +4,39 @@ import type {
   AnalysisStatus,
   UploadResponse,
 } from '../types/analysis';
+import type { PatchUploadResponse } from '../types/patches';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
+/** User-facing message when nginx/Flask rejects body size or returns an HTML error page. */
+const UPLOAD_TOO_LARGE_MSG =
+  'Upload too large for the server limit. Try fewer/smaller files or contact admin.';
+
+export function getAxiosErrorMessage(err: unknown, fallback: string): string {
+  if (!axios.isAxiosError(err)) {
+    if (err instanceof Error) return err.message;
+    return fallback;
+  }
+  const status = err.response?.status;
+  const d = err.response?.data;
+  if (d && typeof d === 'object' && 'detail' in d) {
+    return String((d as { detail: string }).detail);
+  }
+  if (typeof d === 'string') {
+    const trimmed = d.trimStart();
+    if (status === 413 || trimmed.startsWith('<')) {
+      return UPLOAD_TOO_LARGE_MSG;
+    }
+    return d;
+  }
+  if (status === 413) {
+    return UPLOAD_TOO_LARGE_MSG;
+  }
+  if (err.message) {
+    return err.message;
+  }
+  return fallback;
+}
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -33,12 +64,18 @@ export const uploadFiles = async (
 
 export const startAnalysis = async (
   excelPath: string,
-  csvPath: string
+  csvPath: string,
+  asOf?: string | null
 ): Promise<{ job_id: string; status: string; message: string }> => {
-  const response = await api.post('/analyze', {
+  const body: Record<string, string> = {
     excel_path: excelPath,
     csv_path: csvPath,
-  });
+  };
+  const trimmed = asOf?.trim();
+  if (trimmed) {
+    body.as_of = trimmed;
+  }
+  const response = await api.post('/analyze', body);
 
   return response.data;
 };
@@ -79,4 +116,27 @@ export const listAnalyses = async () => {
 
 export const deleteAnalysis = async (jobId: string): Promise<void> => {
   await api.delete(`/analysis/${jobId}`);
+};
+
+export const uploadPatches = async (formData: FormData): Promise<PatchUploadResponse> => {
+  const response = await api.post<PatchUploadResponse>('/patches/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
+export const downloadPatchExport = async (
+  jobId: string,
+  file: 'all' | 'property' | 'phone' | 'sf' | 'closings',
+  allowUnmapped: boolean
+): Promise<Blob> => {
+  const response = await api.get(`/patches/${jobId}/export`, {
+    params: { file, allow_unmapped: allowUnmapped ? 'true' : 'false' },
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+export const deletePatchJob = async (jobId: string): Promise<void> => {
+  await api.delete(`/patches/${jobId}`);
 };

@@ -134,6 +134,24 @@ def parse_tags(tags_str):
                 })
             except ValueError:
                 continue
+
+        # Closing marker (REISift backfill): (CLOSED) 8020 - 03/2025
+        closed_match = re.match(r'\(CLOSED\)\s*8020\s*-\s*(\d{1,2})[-\/](\d{4})', tag)
+        if closed_match:
+            month = int(closed_match.group(1))
+            year = int(closed_match.group(2))
+            try:
+                closing_date = datetime(year, month, 1)
+                contacts.append({
+                    'type': 'closing',
+                    'channel': None,
+                    'date': closing_date,
+                    'month': month,
+                    'year': year,
+                    'tag': tag
+                })
+            except ValueError:
+                continue
     
     return contacts
 

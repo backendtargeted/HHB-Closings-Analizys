@@ -57,6 +57,7 @@ class AnalysisCompleteResponse(BaseModel):
     stats: SummaryStats
     matched_count: int
     total_deals: int
+    as_of: Optional[str] = None
 
 
 class ProgressUpdate(BaseModel):

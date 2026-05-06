@@ -2,6 +2,8 @@
 
 A modern web application for analyzing contact history for closed deals, built with React + Vite frontend and Flask backend.
 
+**Operations:** See [RUNBOOK.md](RUNBOOK.md) for the full marketing → REISift → analysis pipeline, backdated closings/CRM playbooks, and optional **as-of** snapshots.
+
 ## Features
 
 - **Interactive File Upload**: Drag-and-drop interface for Excel and CSV files

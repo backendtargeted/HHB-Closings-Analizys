@@ -71,6 +71,12 @@ const AnalysisResults = ({ results, onNewAnalysis }: AnalysisResultsProps) => {
             <p className="text-gray-600 mt-1">
               {results.matched_count} of {results.total_deals} deals matched
             </p>
+            {results.as_of ? (
+              <p className="text-sm text-amber-900 mt-2 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 max-w-xl">
+                <strong>As-of snapshot:</strong> {results.as_of} — only deals with{' '}
+                <strong>Date Closed</strong> on or before this day were included.
+              </p>
+            ) : null}
           </div>
           <div className="flex gap-3">
             <ExportMenu jobId={results.job_id} />

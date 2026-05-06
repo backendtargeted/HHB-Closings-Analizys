@@ -6,8 +6,8 @@ import json
 import math
 import uuid
 import threading
-from datetime import datetime, timezone
-from typing import Dict, List, Any
+from datetime import datetime, timezone, date
+from typing import Dict, List, Any, Optional
 from flask import Blueprint, request, jsonify, send_file
 import pandas as pd
 import os
@@ -51,40 +51,50 @@ def _sanitize_for_json(obj: Any) -> Any:
 
 
 def save_report_to_disk(job_id: str, result: Dict, created_at: str) -> None:
-    """Persist analysis result to reports/{job_id}.json."""
+    """Persist analysis result to reports/{job_id}.json or reports/snapshots/{as_of}/{job_id}.json."""
     _ensure_reports_dir()
-    path = REPORTS_DIR / f"{job_id}.json"
+    as_of = result.get("as_of")
+    if as_of:
+        snap_dir = REPORTS_DIR / "snapshots" / str(as_of)
+        snap_dir.mkdir(parents=True, exist_ok=True)
+        path = snap_dir / f"{job_id}.json"
+    else:
+        path = REPORTS_DIR / f"{job_id}.json"
     payload = {
         "results": result.get("results", []),
         "stats": result.get("stats", {}),
         "matched_count": result.get("matched_count", 0),
         "total_deals": result.get("total_deals", 0),
         "created_at": created_at,
+        "as_of": as_of,
     }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize_for_json(payload), f, indent=2)
 
 
 def load_reports_from_disk() -> None:
-    """Load all persisted reports from REPORTS_DIR into memory."""
+    """Load all persisted reports from REPORTS_DIR (including snapshots/*/) into memory."""
     _ensure_reports_dir()
-    for path in REPORTS_DIR.glob("*.json"):
+    for path in REPORTS_DIR.rglob("*.json"):
         try:
             job_id = path.stem
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             created_at = data.get("created_at", datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat())
+            as_of = data.get("as_of")
             analysis_results[job_id] = {
                 "results": data.get("results", []),
                 "stats": data.get("stats", {}),
                 "matched_count": data.get("matched_count", 0),
                 "total_deals": data.get("total_deals", 0),
+                "as_of": as_of,
             }
             analysis_jobs[job_id] = {
                 "status": "completed",
                 "progress": 100,
                 "message": "Analysis complete",
                 "created_at": created_at,
+                "as_of": as_of,
             }
         except (json.JSONDecodeError, OSError) as e:
             # Skip broken files
@@ -96,7 +106,7 @@ def generate_job_id() -> str:
     return str(uuid.uuid4())
 
 
-def run_analysis_sync(job_id: str, excel_path: str, csv_path: str):
+def run_analysis_sync(job_id: str, excel_path: str, csv_path: str, as_of: Optional[str] = None):
     """Run analysis in a background thread and update job status."""
     try:
         analysis_jobs[job_id]["status"] = "running"
@@ -105,7 +115,7 @@ def run_analysis_sync(job_id: str, excel_path: str, csv_path: str):
             analysis_jobs[job_id]["progress"] = progress
             analysis_jobs[job_id]["message"] = message
 
-        result = perform_analysis(excel_path, csv_path, progress_callback)
+        result = perform_analysis(excel_path, csv_path, progress_callback, as_of_date=as_of)
 
         analysis_results[job_id] = result
         created_at = datetime.now(timezone.utc).isoformat()
@@ -164,9 +174,18 @@ def start_analysis():
     data = request.get_json() or {}
     excel_path = data.get("excel_path")
     csv_path = data.get("csv_path")
+    as_of_raw = data.get("as_of")
 
     if not excel_path or not csv_path:
         return jsonify({"detail": "excel_path and csv_path are required"}), 400
+
+    as_of: Optional[str] = None
+    if as_of_raw is not None and str(as_of_raw).strip() != "":
+        try:
+            date.fromisoformat(str(as_of_raw).strip())
+            as_of = str(as_of_raw).strip()
+        except ValueError:
+            return jsonify({"detail": "as_of must be YYYY-MM-DD"}), 400
 
     job_id = generate_job_id()
     created_at = datetime.now(timezone.utc).isoformat()
@@ -178,11 +197,12 @@ def start_analysis():
         "excel_path": excel_path,
         "csv_path": csv_path,
         "created_at": created_at,
+        "as_of": as_of,
     }
 
     thread = threading.Thread(
         target=run_analysis_sync,
-        args=(job_id, excel_path, csv_path),
+        args=(job_id, excel_path, csv_path, as_of),
         daemon=True,
     )
     thread.start()
@@ -277,6 +297,7 @@ def get_analysis_results(job_id: str):
             stats=stats,
             matched_count=result["matched_count"],
             total_deals=result["total_deals"],
+            as_of=result.get("as_of"),
         ).model_dump()
     )
 
@@ -378,6 +399,7 @@ def compare_analyses():
             "stats": result["stats"],
             "matched_count": result["matched_count"],
             "total_deals": result["total_deals"],
+            "as_of": result.get("as_of"),
         }
 
     if len(comparisons) > 1:
@@ -413,6 +435,7 @@ def list_analyses():
             "created_at": job.get("created_at", ""),
             "matched_count": analysis_results.get(job_id, {}).get("matched_count", 0),
             "total_deals": analysis_results.get(job_id, {}).get("total_deals", 0),
+            "as_of": job.get("as_of") or analysis_results.get(job_id, {}).get("as_of"),
         }
         for job_id, job in analysis_jobs.items()
     ]
@@ -425,8 +448,7 @@ def delete_analysis(job_id: str):
     """
     Delete a saved report (JSON file and in-memory entry).
     """
-    path = REPORTS_DIR / f"{job_id}.json"
-    if path.exists():
+    for path in REPORTS_DIR.rglob(f"{job_id}.json"):
         try:
             path.unlink()
         except OSError:

@@ -1,0 +1,2 @@
+
+cmd:["curl.exe", "-s", "-S", "-o", "D:\\HHB-Closings-Analizys\\_e2e_real_out\\reisift_import_patchexport.zip", "-w", "%{http_code}", "-L", "http://127.0.0.1:8000/api/patches/0adc12a3-406b-4403-bd14-6e8d1194e9a3/export?file=all&allow_unmapped=true"]

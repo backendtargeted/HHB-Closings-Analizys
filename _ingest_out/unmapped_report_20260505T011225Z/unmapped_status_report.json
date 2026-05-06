@@ -1,0 +1,49 @@
+{
+  "generated_utc": "20260505T011225Z",
+  "inputs": {
+    "cold": "D:\\HHB-Closings-Analizys\\Data_ingestion_samples\\Weekly_and_monthly\\Cweb Call Logs.csv",
+    "sms_charles_rows": 173419,
+    "crm": "D:\\HHB-Closings-Analizys\\Data_ingestion_samples\\Weekly_and_monthly\\weekly_podio_updates_2026-05-04.csv"
+  },
+  "cold": {
+    "unmapped_unique": [
+      "prank voicemail",
+      "transfer",
+      "unknown"
+    ],
+    "unmapped_row_counts_by_normalized": {
+      "unknown": 54037,
+      "prank voicemail": 176,
+      "transfer": 1
+    },
+    "sample_raw_log_types_top5_per_normalized": {
+      "prank voicemail": {
+        "Prank Voicemail": 176
+      },
+      "transfer": {
+        "Transfer": 1
+      },
+      "unknown": {
+        "Unknown": 54037
+      }
+    },
+    "total_cold_rows": 275685,
+    "rows_empty_status": 54214
+  },
+  "sms_decision_maker_filename": {
+    "unmapped_unique": [],
+    "unmapped_row_counts_by_normalized": {},
+    "total_sms_rows": 173419,
+    "rows_empty_phone_status": 0
+  },
+  "crm": {
+    "unmapped_unique": [
+      "dead call / dead deal"
+    ],
+    "unmapped_row_counts_by_normalized": {
+      "dead call / dead deal": 844
+    },
+    "total_crm_rows": 2198,
+    "rows_unmapped_status": 844
+  }
+}
