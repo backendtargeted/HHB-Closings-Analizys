@@ -107,7 +107,8 @@ export interface AnalysisStatus {
 }
 
 export interface UploadResponse {
-  excel_path: string;
+  closings_path?: string | null;
+  excel_path?: string | null;
   csv_path: string;
   message: string;
 }

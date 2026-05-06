@@ -11,13 +11,13 @@ marketing_ingestion_mapper.py  →  REISift import CSVs  →  REISift (system of
                                                               ↓
                                                     Contacts export (CSV + Tags)
                                                               ↓
-HHB web app / API: Closed deals Excel + contacts CSV  →  reports + exports
+HHB web app / API: contact-history CSV (source of truth) + optional legacy closings workbook  →  reports + exports
 ```
 
 - **Mapper (standalone GUI):** `Python_Tools/7_Utilities/marketing_ingestion_mapper.py` — same logic as the in-app generator below (keep in sync until consolidated).
 - **Mapper (this repo):** `backend/app/services/marketing_mapper.py` — used by **Past patches** in the web UI: cold-calling CSV, many SMS CSVs, CRM extract, closings `.xlsx` → the four REISift-shaped CSVs.
 - **REISift**: holds property/phone + **Tags** (comma-separated history).
-- **This app**: matches closings Excel to CSV by address/city; parses **Tags** for 8020 contact lines, list purchase, skip trace, **(SF) CRM** tags, and **closing** markers; derives **lead lifecycle** (funnel, paths, first-touch) for the UI and exports (see cheat sheet + `backend/app/services/lifecycle.py`).
+- **This app**: runs CSV-first analysis from **Tags** (and optionally uses legacy closings workbook input); parses 8020 contact lines, list purchase, skip trace, **(SF) CRM** tags, and **closing** markers; derives **lead lifecycle** (funnel, paths, first-touch) for the UI and exports (see cheat sheet + `backend/app/services/lifecycle.py`).
 
 ---
 
@@ -29,7 +29,7 @@ HHB web app / API: Closed deals Excel + contacts CSV  →  reports + exports
    - Optional CRM updates CSV (`leadstatus`, `updated_on` / `leadcreateddate` when available).
 
 2. **Generate REISift import CSVs** — pick one:
-   - **In-app (recommended):** Docker UI `http://localhost:3300` → **Past patches** → upload cold CSV + SMS folder (multi-file) + CRM CSV + closings `.xlsx` → **Run preview** → **Download REISift import bundle** (zip of four CSVs). `.xls` closings are not supported in Docker (use `.xlsx` or the standalone mapper).
+   - **In-app (recommended):** Docker UI `http://localhost:3300` → **Past patches** → upload cold CSV + SMS folder (multi-file) + CRM CSV + closings workbook `.xlsx` → **Run preview** → **Download REISift import bundle** (zip of four CSVs). `.xls` closings are not supported in Docker (use `.xlsx` or the standalone mapper).
    - **Standalone GUI:** `python marketing_ingestion_mapper.py` — preview mapping coverage; fix unmapped statuses or enable “allow unmapped” after review. Export folder receives the same four files when closings path is set.
 
 3. **Import into REISift** (per REISift’s bulk-update docs for each file type). Spot-check a few rows before full run.
@@ -38,10 +38,10 @@ HHB web app / API: Closed deals Excel + contacts CSV  →  reports + exports
    - `Property address`, `Property city`, **`Tags`**
    - Any columns your matching logic expects (see `backend/app/services/analysis.py`).
 
-5. **Run closings analysis**
+5. **Run attribution analysis**
    - **Docker:** UI `http://localhost:3300`, API `http://localhost:8000` (see Gotchas).
    - **Local:** `README.md` — Flask on 8000, Vite on 3000.
-   - Upload **closed deals Excel** + **contacts CSV**. Optional **`as_of`** filter is still supported on **`POST /api/analyze`** (not shown in the current UI).
+   - Upload **contacts CSV**. Closed deals are derived from tags; optional legacy closings workbook upload remains supported for backward compatibility. Optional **`as_of`** filter is still supported on **`POST /api/analyze`** (not shown in the current UI).
 
 6. **Archive**
    - Download Excel/CSV/JSON export from the UI. Excel includes a **Lifecycle Events** sheet (one row per parsed tag event before close, when events exist).
@@ -65,7 +65,7 @@ HHB web app / API: Closed deals Excel + contacts CSV  →  reports + exports
 **Steps**
 
 1. Open the web UI → **Past patches** (Docker: `http://localhost:3300`).
-2. Upload **Cold Calling CSV**, **SMS CSVs** (folder picker or multi-file drop), **CRM updates CSV**, **Closings `.xlsx`**.
+2. Upload **Cold Calling CSV**, **SMS CSVs** (folder picker or multi-file drop), **CRM updates CSV**, **Closings workbook `.xlsx`**.
 3. **Run preview** — review metrics and unmapped statuses; adjust source files or use **Allow unmapped** on export if acceptable.
 4. **Download REISift import bundle** (or individual CSVs). Confirm column shapes against REISift’s bulk-import docs.
 5. Import into REISift; re-export contacts; run **Regular updates** analysis in this app.
@@ -112,7 +112,7 @@ The **Past patches** screen no longer drives “as-of” analysis; use **`POST /
 
 ### Lead lifecycle stages (analysis)
 
-Stages are computed only from tags **strictly before** each deal’s **Date Closed** (except “closed deal” itself uses the Excel close date):
+Stages are computed only from tags **strictly before** each deal’s **Date Closed** (except “closed deal” itself uses the derived close date / optional legacy workbook close date):
 
 | Stage | Signal |
 |-------|--------|
@@ -121,7 +121,7 @@ Stages are computed only from tags **strictly before** each deal’s **Date Clos
 | FIRST_CONTACTED | First `(8020) CC\|SMS\|DM …` |
 | ENGAGED | `(SF) …` with CRM label in the engaged allow-list (`lifecycle.py`) |
 | CONVERTED | `(SF) …` with label treated as converted (e.g. `converted`) |
-| CLOSED | Deal has a close date (always true for Excel rows) — **not** used for “Highest stage” ranking |
+| CLOSED | Deal has a close date (always true for analyzed deals) — **not** used for “Highest stage” ranking |
 
 ---
 
@@ -135,7 +135,7 @@ Stages are computed only from tags **strictly before** each deal’s **Date Clos
 | **OpenAPI `/docs`** | This stack is **Flask**, not FastAPI — **`/docs` is 404**. |
 | **Stale repo docs** | `README-DEV.md` / some deployment notes may mention uvicorn/FastAPI or port 3000 for Docker — trust **docker-compose.yml** + this runbook. |
 | **`useWebSocket.ts`** | Present in frontend but **unused**; progress uses **HTTP polling**. |
-| **Tag date precision** | `(8020)`, list, skip, `(CLOSED)` use **first of month**; `(SF) UPDATED` / `(SF) STATUS` use **calendar day** (`YYYY-MM-DD`). Comparison to `Date Closed` uses the full close timestamp from Excel. |
+| **Tag date precision** | `(8020)`, list, skip, `(CLOSED)` use **first of month**; `(SF) UPDATED` / `(SF) STATUS` use **calendar day** (`YYYY-MM-DD`). Comparison to `Date Closed` uses the full close timestamp for the analyzed deal row. |
 
 ---
 
@@ -143,8 +143,8 @@ Stages are computed only from tags **strictly before** each deal’s **Date Clos
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /api/upload` | Multipart: `excel_file`, `csv_file` |
-| `POST /api/analyze` | JSON: `excel_path`, `csv_path`, optional `as_of` (`YYYY-MM-DD`) |
+| `POST /api/upload` | Multipart: `csv_file`, optional `closings_file` (legacy alias `excel_file` still accepted) |
+| `POST /api/analyze` | JSON: `csv_path`, optional `closings_path` (legacy alias `excel_path` still accepted), optional `as_of` (`YYYY-MM-DD`) |
 | `GET /api/analysis/<job_id>/status` | Poll while running |
 | `GET /api/analysis/<job_id>` | Full results |
 | `GET /api/analysis/<job_id>/export?format=excel\|csv\|json` | Download |

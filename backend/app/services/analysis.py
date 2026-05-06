@@ -11,6 +11,7 @@ from typing import Dict, List, Any, Optional
 import json
 
 from .lifecycle import (
+    CONVERTED_LABELS,
     aggregate_lifecycle_stats,
     build_events,
     compute_first_touch,
@@ -22,6 +23,7 @@ from .lifecycle import (
     get_highest_stage,
     sf_status_trail,
 )
+from .marketing_mapper import normalize_status
 
 
 def normalize_address(address):
@@ -223,9 +225,9 @@ def parse_tags(tags_str):
     return contacts
 
 
-def parse_excel_address(full_address):
+def parse_closings_address(full_address):
     """
-    Parse Excel address format (e.g., "248 E. Shore Rd Lindenhurst") into street and city.
+    Parse closings address format (e.g., "248 E. Shore Rd Lindenhurst") into street and city.
     """
     if pd.isna(full_address):
         return None, None
@@ -289,8 +291,8 @@ def match_deals_to_csv(closed_deals: pd.DataFrame, csv_data: pd.DataFrame) -> Li
     csv_data['normalized_city'] = csv_data['Property city'].apply(normalize_city)
     
     for idx, deal in closed_deals.iterrows():
-        # Parse Excel address into street and city
-        street_addr, city = parse_excel_address(deal['Address'])
+        # Parse closings address into street and city
+        street_addr, city = parse_closings_address(deal['Address'])
         
         if street_addr is None:
             matches.append({
@@ -373,6 +375,98 @@ def match_deals_to_csv(closed_deals: pd.DataFrame, csv_data: pd.DataFrame) -> Li
                 'csv_record': None
             })
     
+    return matches
+
+
+def derive_closed_deals_from_csv(csv_data: pd.DataFrame, as_of_date: Optional[str] = None) -> pd.DataFrame:
+    """
+    Build closed-deal rows directly from contact-history tags.
+    Prefers explicit (CLOSED) markers; falls back to converted SF statuses.
+    """
+    cutoff: Optional[pd.Timestamp] = None
+    if as_of_date:
+        cutoff = pd.Timestamp(date.fromisoformat(as_of_date.strip())).normalize()
+
+    rows: List[Dict[str, Any]] = []
+    for idx, rec in csv_data.iterrows():
+        tags_str = rec.get("Tags", "")
+        parsed = parse_tags(tags_str)
+        close_candidates: List[datetime] = []
+
+        for p in parsed:
+            ptype = str(p.get("type", ""))
+            if ptype == "closing":
+                try:
+                    close_candidates.append(datetime.fromisoformat(str(p.get("date"))))
+                except ValueError:
+                    continue
+            elif ptype in ("sf_updated", "sf_status"):
+                label = normalize_status(str(p.get("label", "")))
+                if label in CONVERTED_LABELS:
+                    try:
+                        close_candidates.append(datetime.fromisoformat(str(p.get("date"))))
+                    except ValueError:
+                        continue
+
+        if not close_candidates:
+            continue
+
+        closed_dt = min(close_candidates)
+        if cutoff is not None and pd.Timestamp(closed_dt).normalize() > cutoff:
+            continue
+
+        addr = str(rec.get("Property address", "")).strip()
+        city = str(rec.get("Property city", "")).strip()
+        if not addr:
+            addr = str(rec.get("Address", "")).strip()
+        address = f"{addr} {city}".strip()
+        if not address:
+            continue
+
+        lead_source = (
+            rec.get("Lead Source")
+            or rec.get("Lead source")
+            or rec.get("LeadSource")
+            or "Contact History Tags"
+        )
+        rows.append(
+            {
+                "Address": address,
+                "Date Closed": closed_dt.date().isoformat(),
+                "Lead Source": str(lead_source),
+                "csv_index": int(idx),
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(columns=["Address", "Date Closed", "Lead Source", "csv_index"])
+    return pd.DataFrame(rows)
+
+
+def match_closed_rows_to_csv(closed_deals: pd.DataFrame, csv_data: pd.DataFrame) -> List[Dict]:
+    """
+    Build match list from close rows that already reference source CSV rows.
+    """
+    matches: List[Dict] = []
+    for idx, deal in closed_deals.iterrows():
+        csv_index = deal.get("csv_index")
+        csv_record = None
+        if csv_index is not None and pd.notna(csv_index):
+            try:
+                csv_record = csv_data.iloc[int(csv_index)].to_dict()
+            except (IndexError, ValueError, TypeError):
+                csv_record = None
+
+        matches.append(
+            {
+                "deal_index": int(idx),
+                "csv_index": int(csv_index) if csv_index is not None and pd.notna(csv_index) else None,
+                "closed_date": str(deal.get("Date Closed", "")),
+                "address": str(deal.get("Address", "")),
+                "lead_source": str(deal.get("Lead Source", "")),
+                "csv_record": csv_record,
+            }
+        )
     return matches
 
 
@@ -500,6 +594,36 @@ def analyze_contacts(matches: List[Dict]) -> pd.DataFrame:
             'Lifecycle Events': lifecycle_events_json,
         })
     
+    if not results:
+        return pd.DataFrame(
+            columns=[
+                "Address",
+                "Date Closed",
+                "Lead Source",
+                "Total Contacts",
+                "CC Count",
+                "SMS Count",
+                "DM Count",
+                "First Contact Date",
+                "Last Contact Date",
+                "Days to Close",
+                "Days Since Last Contact",
+                "Contact Timeline",
+                "Match Found",
+                "Stages Reached",
+                "Highest Stage",
+                "Stage Dates",
+                "Path Sequence",
+                "First Touch Channel",
+                "Days To First Touch",
+                "Days To Engagement",
+                "SF Status Trail",
+                "List Purchased Date",
+                "Skip Traced Date",
+                "Closed Marker Date",
+                "Lifecycle Events",
+            ]
+        )
     return pd.DataFrame(results)
 
 
@@ -537,7 +661,7 @@ def generate_summary_stats(results_df: pd.DataFrame) -> Dict[str, Any]:
 
 
 def perform_analysis(
-    excel_file_path: str,
+    closings_file_path: Optional[str],
     csv_file_path: str,
     progress_callback=None,
     as_of_date: Optional[str] = None,
@@ -546,7 +670,7 @@ def perform_analysis(
     Main analysis function that orchestrates the entire process.
     
     Args:
-        excel_file_path: Path to Excel file with closed deals
+        closings_file_path: Optional path to legacy closings workbook
         csv_file_path: Path to CSV file with contact history
         progress_callback: Optional callback function for progress updates
         as_of_date: Optional YYYY-MM-DD; only deals with Date Closed on or before this day are analyzed
@@ -557,31 +681,45 @@ def perform_analysis(
     if progress_callback:
         progress_callback("Loading data...", 10)
     
-    # Load data
-    closed_deals = pd.read_excel(excel_file_path)
     as_of_clean = (as_of_date or "").strip() or None
-    if as_of_clean:
-        original_n = len(closed_deals)
+    csv_data = pd.read_csv(csv_file_path, low_memory=False)
+
+    if closings_file_path:
+        closed_deals = pd.read_excel(closings_file_path)
+        if as_of_clean:
+            original_n = len(closed_deals)
+            try:
+                closed_deals = filter_closed_deals_by_as_of(closed_deals, as_of_clean)
+            except ValueError as exc:
+                raise ValueError("as_of must be a valid calendar date in YYYY-MM-DD format") from exc
+            if progress_callback:
+                progress_callback(
+                    f"As-of {as_of_clean}: using {len(closed_deals)} of {original_n} deals (Date Closed <= as-of)",
+                    15,
+                )
+    else:
         try:
-            closed_deals = filter_closed_deals_by_as_of(closed_deals, as_of_clean)
+            closed_deals = derive_closed_deals_from_csv(csv_data, as_of_clean)
         except ValueError as exc:
             raise ValueError("as_of must be a valid calendar date in YYYY-MM-DD format") from exc
         if progress_callback:
             progress_callback(
-                f"As-of {as_of_clean}: using {len(closed_deals)} of {original_n} deals (Date Closed <= as-of)",
+                f"Derived {len(closed_deals)} closed deals from contact-history tags",
                 15,
             )
-
-    csv_data = pd.read_csv(csv_file_path, low_memory=False)
     
     if progress_callback:
-        progress_callback(f"Loaded {len(closed_deals)} closed deals and {len(csv_data)} CSV records", 20)
+        source_label = "Closings workbook + CSV" if closings_file_path else "CSV tags only"
+        progress_callback(f"Loaded {len(closed_deals)} closed deals and {len(csv_data)} CSV records ({source_label})", 20)
     
     # Match deals
     if progress_callback:
         progress_callback("Matching deals to CSV records...", 30)
     
-    matches = match_deals_to_csv(closed_deals, csv_data)
+    if closings_file_path:
+        matches = match_deals_to_csv(closed_deals, csv_data)
+    else:
+        matches = match_closed_rows_to_csv(closed_deals, csv_data)
     matched_count = sum(1 for m in matches if m['csv_record'] is not None)
     
     if progress_callback:

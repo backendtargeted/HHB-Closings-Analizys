@@ -46,11 +46,13 @@ const api = axios.create({
 });
 
 export const uploadFiles = async (
-  excelFile: File,
+  closingsFile: File | null,
   csvFile: File
 ): Promise<UploadResponse> => {
   const formData = new FormData();
-  formData.append('excel_file', excelFile);
+  if (closingsFile) {
+    formData.append('closings_file', closingsFile);
+  }
   formData.append('csv_file', csvFile);
 
   const response = await api.post<UploadResponse>('/upload', formData, {
@@ -63,14 +65,16 @@ export const uploadFiles = async (
 };
 
 export const startAnalysis = async (
-  excelPath: string,
+  closingsPath: string | null | undefined,
   csvPath: string,
   asOf?: string | null
 ): Promise<{ job_id: string; status: string; message: string }> => {
   const body: Record<string, string> = {
-    excel_path: excelPath,
     csv_path: csvPath,
   };
+  if (closingsPath) {
+    body.closings_path = closingsPath;
+  }
   const trimmed = asOf?.trim();
   if (trimmed) {
     body.as_of = trimmed;

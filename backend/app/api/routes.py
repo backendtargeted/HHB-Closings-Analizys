@@ -115,7 +115,7 @@ def generate_job_id() -> str:
     return str(uuid.uuid4())
 
 
-def run_analysis_sync(job_id: str, excel_path: str, csv_path: str, as_of: Optional[str] = None):
+def run_analysis_sync(job_id: str, closings_path: Optional[str], csv_path: str, as_of: Optional[str] = None):
     """Run analysis in a background thread and update job status."""
     try:
         analysis_jobs[job_id]["status"] = "running"
@@ -124,7 +124,7 @@ def run_analysis_sync(job_id: str, excel_path: str, csv_path: str, as_of: Option
             analysis_jobs[job_id]["progress"] = progress
             analysis_jobs[job_id]["message"] = message
 
-        result = perform_analysis(excel_path, csv_path, progress_callback, as_of_date=as_of)
+        result = perform_analysis(closings_path, csv_path, progress_callback, as_of_date=as_of)
 
         analysis_results[job_id] = result
         created_at = datetime.now(timezone.utc).isoformat()
@@ -142,32 +142,35 @@ def run_analysis_sync(job_id: str, excel_path: str, csv_path: str, as_of: Option
 @api_bp.route("/upload", methods=["POST"])
 def upload_files():
     """
-    Upload Excel and CSV files for analysis.
+    Upload files for analysis.
+    Core path only requires contact history CSV. Optional closings workbook support is legacy-only.
     """
     try:
-        excel_file = request.files.get("excel_file")
+        closings_file = request.files.get("closings_file") or request.files.get("excel_file")
         csv_file = request.files.get("csv_file")
 
-        if not excel_file or not excel_file.filename:
-            return jsonify({"detail": "Excel file is required"}), 400
         if not csv_file or not csv_file.filename:
-            return jsonify({"detail": "CSV file is required"}), 400
+            return jsonify({"detail": "Contact history CSV file is required"}), 400
 
-        excel_path = save_uploaded_file(excel_file, "excel")
+        closings_path: Optional[str] = None
+        if closings_file and closings_file.filename:
+            closings_path = save_uploaded_file(closings_file, "closings")
         csv_path = save_uploaded_file(csv_file, "csv")
 
-        if not validate_excel_file(excel_path):
-            delete_file(excel_path)
+        if closings_path and not validate_excel_file(closings_path):
+            delete_file(closings_path)
             delete_file(csv_path)
-            return jsonify({"detail": "Invalid Excel file"}), 400
+            return jsonify({"detail": "Invalid closings workbook (optional/deprecated path)"}), 400
 
         if not validate_csv_file(csv_path):
-            delete_file(excel_path)
+            if closings_path:
+                delete_file(closings_path)
             delete_file(csv_path)
-            return jsonify({"detail": "Invalid CSV file"}), 400
+            return jsonify({"detail": "Invalid contact history CSV file"}), 400
 
         return jsonify({
-            "excel_path": excel_path,
+            "closings_path": closings_path,
+            "excel_path": closings_path,  # Backward-compatible legacy key
             "csv_path": csv_path,
             "message": "Files uploaded successfully",
         })
@@ -178,15 +181,16 @@ def upload_files():
 @api_bp.route("/analyze", methods=["POST"])
 def start_analysis():
     """
-    Start an analysis job. Expects JSON body: { "excel_path": "...", "csv_path": "..." }
+    Start an analysis job. Expects JSON body: { "csv_path": "...", "closings_path"?: "..." }.
+    Core analysis only requires csv_path; optional closings_path is legacy-only.
     """
     data = request.get_json() or {}
-    excel_path = data.get("excel_path")
+    closings_path = data.get("closings_path") or data.get("excel_path")
     csv_path = data.get("csv_path")
     as_of_raw = data.get("as_of")
 
-    if not excel_path or not csv_path:
-        return jsonify({"detail": "excel_path and csv_path are required"}), 400
+    if not csv_path:
+        return jsonify({"detail": "csv_path is required (contact history CSV)"}), 400
 
     as_of: Optional[str] = None
     if as_of_raw is not None and str(as_of_raw).strip() != "":
@@ -203,7 +207,7 @@ def start_analysis():
         "status": "pending",
         "progress": 0,
         "message": "Starting analysis...",
-        "excel_path": excel_path,
+        "closings_path": closings_path,
         "csv_path": csv_path,
         "created_at": created_at,
         "as_of": as_of,
@@ -211,7 +215,7 @@ def start_analysis():
 
     thread = threading.Thread(
         target=run_analysis_sync,
-        args=(job_id, excel_path, csv_path, as_of),
+        args=(job_id, closings_path, csv_path, as_of),
         daemon=True,
     )
     thread.start()

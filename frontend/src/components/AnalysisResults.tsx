@@ -9,7 +9,7 @@ import HelpTooltip from './HelpTooltip';
 import LifecycleSection from './LifecycleSection';
 
 const STAT_HELP: Record<string, string> = {
-  Total_Deals: 'Total number of closed deals in the Excel file.',
+  Total_Deals: 'Total number of closed deals analyzed (derived from contact-history tags, or optional legacy closings workbook if provided).',
   Matched_Deals: 'Deals with at least one matching CSV record by address.',
   Unmatched_Deals: 'Deals with no matching CSV record.',
   Match_Rate: 'Share of deals that were matched to contact history.',

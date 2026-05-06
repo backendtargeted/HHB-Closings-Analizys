@@ -8,7 +8,7 @@ from datetime import datetime
 
 
 class AnalysisRequest(BaseModel):
-    excel_file_path: str
+    closings_file_path: Optional[str] = None
     csv_file_path: str
 
 

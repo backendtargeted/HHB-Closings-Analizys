@@ -27,7 +27,7 @@ const PastPatchesGuide = () => {
             <li>Cold calling CSV (Log Type + Phone + Address…)</li>
             <li>SMS folder as many CSVs (status from each filename)</li>
             <li>CRM updates CSV (leadstatus + dates when present)</li>
-            <li>Closings Excel (.xlsx) with Date Closed + Address</li>
+            <li>Closings workbook (.xlsx) with Date Closed + Address</li>
           </ul>
         </div>
         <div className="rounded-lg border border-amber-200/70 bg-white/60 p-3">

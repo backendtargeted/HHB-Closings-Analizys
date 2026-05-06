@@ -16,10 +16,10 @@ const MethodologySection = () => {
       {isOpen && (
         <div className="px-4 pb-4 pt-1 text-stone-600 text-sm space-y-3 border-t border-stone-100">
           <p>
-            <strong className="text-stone-800">Data sources:</strong> The Excel file contains closed deals (Address, Date Closed, Lead Source). The CSV file contains contact history with a <code className="bg-stone-100 px-1 rounded">Tags</code> column used to count contacts.
+            <strong className="text-stone-800">Data sources:</strong> Core analysis runs from the contact-history CSV using the <code className="bg-stone-100 px-1 rounded">Tags</code> column. Closed deals are derived from tags such as <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020 - MM/YYYY</code> and converted-style SF status tags. Optional closings workbook upload is legacy-only.
           </p>
           <p>
-            <strong className="text-stone-800">Matching:</strong> Deals are matched to CSV rows by normalizing addresses (lowercase, standard abbreviations, no punctuation) and optional city. If no exact match is found, we try a partial street match, then street number plus city.
+            <strong className="text-stone-800">Matching:</strong> When a legacy closings workbook is provided, deals are matched to CSV rows by normalizing addresses (lowercase, standard abbreviations, no punctuation) and optional city. If no exact match is found, we try a partial street match, then street number plus city.
           </p>
           <p>
             <strong className="text-stone-800">Contact counts:</strong> The Tags column is parsed for patterns like <code className="bg-stone-100 px-1 rounded">(8020) CC - MM-YYYY</code>, <code className="bg-stone-100 px-1 rounded">(8020) SMS - MM-YYYY</code>, and <code className="bg-stone-100 px-1 rounded">(8020) DM - MM-YYYY</code>. Only contacts with a date <strong>before</strong> each deal&apos;s Date Closed are counted. CC_Count, SMS_Count, and DM_Count are the per-channel totals; Total_Contacts is their sum. Tags like <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020 - MM/YYYY</code> are recognized for REISift backfills but do not add to those channel counts.

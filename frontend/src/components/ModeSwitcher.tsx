@@ -33,8 +33,8 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
             <div>
               <h2 className="text-lg font-bold text-navy tracking-tight">Regular updates</h2>
               <p className="text-stone-600 text-sm mt-2 leading-relaxed">
-                Your recurring run: latest closings Excel plus current REISift export. Same files each
-                cycle—no extra options unless you need them.
+                Your recurring run: current REISift contact-history export. Closed deals are derived from
+                tags in CSV; optional closings workbook upload is legacy-only.
               </p>
             </div>
             <span

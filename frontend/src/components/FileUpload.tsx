@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 
 interface FileUploadProps {
-  onUpload: (excelFile: File, csvFile: File, asOf?: string | null) => Promise<void>;
+  onUpload: (closingsFile: File | null, csvFile: File, asOf?: string | null) => Promise<void>;
   isLoading: boolean;
   progress: number;
   statusMessage: string;
@@ -22,12 +22,12 @@ const FileUpload = ({
   onComplete,
   analysisStatus,
 }: FileUploadProps) => {
-  const [excelFile, setExcelFile] = useState<File | null>(null);
+  const [closingsFile, setClosingsFile] = useState<File | null>(null);
   const [csvFile, setCsvFile] = useState<File | null>(null);
 
-  const onDropExcel = useCallback((acceptedFiles: File[]) => {
+  const onDropClosings = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
-      setExcelFile(acceptedFiles[0]);
+      setClosingsFile(acceptedFiles[0]);
     }
   }, []);
 
@@ -38,11 +38,11 @@ const FileUpload = ({
   }, []);
 
   const {
-    getRootProps: getExcelRootProps,
-    getInputProps: getExcelInputProps,
-    isDragActive: isExcelDragActive,
+    getRootProps: getClosingsRootProps,
+    getInputProps: getClosingsInputProps,
+    isDragActive: isClosingsDragActive,
   } = useDropzone({
-    onDrop: onDropExcel,
+    onDrop: onDropClosings,
     accept: {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
       'application/vnd.ms-excel': ['.xls'],
@@ -63,9 +63,9 @@ const FileUpload = ({
   });
 
   const handleSubmit = async () => {
-    if (excelFile && csvFile) {
+    if (csvFile) {
       try {
-        await onUpload(excelFile, csvFile, null);
+        await onUpload(closingsFile, csvFile, null);
       } catch (err) {
         console.error('Upload error:', err);
       }
@@ -87,37 +87,38 @@ const FileUpload = ({
         <div className="mb-6">
           <h2 className="text-2xl font-bold tracking-tight text-navy">Regular update</h2>
           <p className="text-stone-600 text-sm mt-1.5 leading-relaxed">
-            Upload your current closings workbook and the latest REISift (or equivalent) contacts export.
+            Upload the latest REISift (or equivalent) contact-history export. Closed deals are derived from CSV tags
+            by default; optional closings workbook upload is legacy-only.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div>
             <label className="block text-sm font-semibold text-stone-700 mb-2">
-              Closed deals (Excel)
+              Closings workbook (optional/legacy)
             </label>
             <div
-              {...getExcelRootProps()}
+              {...getClosingsRootProps()}
               className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-                isExcelDragActive
+                isClosingsDragActive
                   ? 'border-navy bg-navy/5'
                   : 'border-stone-200 hover:border-navy/60 bg-stone-50/50'
               }`}
             >
-              <input {...getExcelInputProps()} />
-              {excelFile ? (
+              <input {...getClosingsInputProps()} />
+              {closingsFile ? (
                 <div className="text-green-600">
-                  <p className="font-medium">✓ {excelFile.name}</p>
+                  <p className="font-medium">✓ {closingsFile.name}</p>
                   <p className="text-sm text-gray-500 mt-1">
-                    {(excelFile.size / 1024).toFixed(2)} KB
+                    {(closingsFile.size / 1024).toFixed(2)} KB
                   </p>
                 </div>
               ) : (
                 <div>
                   <p className="text-gray-600">
-                    {isExcelDragActive
-                      ? 'Drop the Excel file here'
-                      : 'Drag & drop Excel file or click to select'}
+                    {isClosingsDragActive
+                      ? 'Drop optional closings workbook here'
+                      : 'Optional: drag & drop closings workbook or click to select'}
                   </p>
                   <p className="text-sm text-gray-500 mt-2">.xlsx, .xls</p>
                 </div>
@@ -185,9 +186,9 @@ const FileUpload = ({
 
         <button
           onClick={handleSubmit}
-          disabled={!excelFile || !csvFile || isLoading}
+          disabled={!csvFile || isLoading}
           className={`w-full py-3.5 px-6 rounded-xl font-semibold text-sm sm:text-base transition-all ${
-            !excelFile || !csvFile || isLoading
+            !csvFile || isLoading
               ? 'bg-stone-200 text-stone-500 cursor-not-allowed'
               : 'bg-navy text-white hover:bg-navy/90 shadow-md hover:shadow-lg'
           }`}

@@ -14,20 +14,20 @@ export const useAnalysis = () => {
   const [statusMessage, setStatusMessage] = useState('');
 
   const uploadMutation = useMutation({
-    mutationFn: ({ excelFile, csvFile }: { excelFile: File; csvFile: File }) =>
-      uploadFiles(excelFile, csvFile),
+    mutationFn: ({ closingsFile, csvFile }: { closingsFile: File | null; csvFile: File }) =>
+      uploadFiles(closingsFile, csvFile),
   });
 
   const startAnalysisMutation = useMutation({
     mutationFn: ({
-      excelPath,
+      closingsPath,
       csvPath,
       asOf,
     }: {
-      excelPath: string;
+      closingsPath?: string | null;
       csvPath: string;
       asOf?: string | null;
-    }) => startAnalysis(excelPath, csvPath, asOf),
+    }) => startAnalysis(closingsPath, csvPath, asOf),
     onSuccess: (data) => {
       setCurrentJobId(data.job_id);
     },
@@ -57,17 +57,17 @@ export const useAnalysis = () => {
   }, [analysisStatus]);
 
   const runAnalysis = useCallback(
-    async (excelFile: File, csvFile: File, asOf?: string | null) => {
+    async (closingsFile: File | null, csvFile: File, asOf?: string | null) => {
       try {
         // Upload files
         const uploadResult = await uploadMutation.mutateAsync({
-          excelFile,
+          closingsFile,
           csvFile,
         });
 
         // Start analysis
         await startAnalysisMutation.mutateAsync({
-          excelPath: uploadResult.excel_path,
+          closingsPath: uploadResult.closings_path ?? uploadResult.excel_path ?? undefined,
           csvPath: uploadResult.csv_path,
           asOf: asOf?.trim() || undefined,
         });
