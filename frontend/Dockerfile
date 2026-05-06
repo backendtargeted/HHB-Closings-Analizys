@@ -25,6 +25,7 @@ RUN npm run build
 # Production stage
 FROM nginx:alpine
 
+# Compose: service name is "backend". Easypanel Swarm: set BACKEND_UPSTREAM=api:8000 (or crm-reports_api:8000).
 ENV BACKEND_UPSTREAM=backend:8000
 
 # Stock image ships *.template here; envsubst breaks real nginx $vars. Remove templates; use static conf + sed.
