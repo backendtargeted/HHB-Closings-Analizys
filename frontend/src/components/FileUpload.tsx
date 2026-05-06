@@ -10,8 +10,8 @@ interface FileUploadProps {
   error: Error | null;
   onComplete: () => void;
   analysisStatus?: string;
-  /** When true, large files upload directly to S3-compatible storage (MinIO); API only presigns and analyzes by object key. */
-  presignedUpload?: boolean;
+  /** When true, files are uploaded in resumable chunks to local storage before analysis starts. */
+  resumableUpload?: boolean;
 }
 
 const FileUpload = ({
@@ -23,7 +23,7 @@ const FileUpload = ({
   error,
   onComplete,
   analysisStatus,
-  presignedUpload = false,
+  resumableUpload = false,
 }: FileUploadProps) => {
   const [closingsFile, setClosingsFile] = useState<File | null>(null);
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -187,9 +187,9 @@ const FileUpload = ({
           </div>
         )}
 
-        {presignedUpload && (
+        {resumableUpload && (
           <p className="text-xs text-stone-500 mb-3 leading-relaxed">
-            Large files upload directly to object storage (MinIO), then analysis runs from the stored copy — not through the web proxy.
+            Large files use resumable chunk uploads to local server storage before analysis starts.
           </p>
         )}
 

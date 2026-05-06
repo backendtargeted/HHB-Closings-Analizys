@@ -19,7 +19,7 @@ function App() {
     statusMessage,
     analysisResults,
     analysisStatus,
-    presignedUpload,
+    resumableUpload,
     isLoading,
     isError,
     error,
@@ -115,7 +115,7 @@ function App() {
                   error={error}
                   onComplete={handleAnalysisComplete}
                   analysisStatus={analysisStatusProp}
-                  presignedUpload={presignedUpload}
+                  resumableUpload={resumableUpload}
                 />
               ) : (
                 <PastPatchesWorkspace />
@@ -142,7 +142,7 @@ function App() {
                 error={error}
                 onComplete={handleAnalysisComplete}
                 analysisStatus={analysisStatusProp}
-                presignedUpload={presignedUpload}
+                resumableUpload={resumableUpload}
               />
             </div>
             <aside className="rounded-2xl border border-stone-200/90 bg-white shadow-sm p-5 h-fit">

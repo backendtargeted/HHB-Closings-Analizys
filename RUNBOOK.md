@@ -78,7 +78,7 @@ CSV-only analysis (`POST /api/analyze` with `csv_path` only) builds closed deals
 
 ## Large uploads and reverse proxies (EasyPanel / Traefik)
 
-Large `POST /api/upload` requests can fail even when the **UI** nginx container allows a big body and long timeouts (`frontend/nginx.conf`: `client_max_body_size`, `client_body_timeout`, `proxy_*_timeout`).
+Large upload flows can fail when the **UI** nginx container or front proxy timeouts are too low (`frontend/nginx.conf`: `client_max_body_size`, `client_body_timeout`, `proxy_*_timeout`).
 
 **Symptoms:** Small test uploads return `200`; large uploads fail around **60 seconds** with `400`/`502` from the UI hostname, while `GET /api/analyses` still works. Backend logs may show **no** request for the failed upload.
 
@@ -86,59 +86,35 @@ Large `POST /api/upload` requests can fail even when the **UI** nginx container 
 
 **Fix (operations):** In EasyPanel (or Traefik static/dynamic config for the `crm-reports-ui` route), raise responding timeouts to at least **600s** to align with UI nginx and backend Gunicorn (`backend/Dockerfile` uses a 600s worker timeout). Exact labels depend on your Traefik version; look for entrypoint or router **read timeout** / **responding timeouts** and increase them for the UI (and API if you upload directly to the API host).
 
-**Optional app-side mitigation:** UI nginx `/api` uses `proxy_request_buffering off` and `proxy_buffering off` (see `frontend/nginx.conf`) to stream multipart bodies with less temp-file buffering; redeploy the **frontend** image after changes.
+**Optional app-side mitigation:** UI nginx `/api` uses `proxy_request_buffering off` and `proxy_buffering off` (see `frontend/nginx.conf`) to reduce temp-file buffering during long-running upload traffic; redeploy the **frontend** image after changes.
 
 **Backend:** Ensure the API image is rebuilt so Gunicorn runs with high `--timeout` (see `backend/Dockerfile`).
 
-**Presigned uploads:** When the API has `S3_*` configured (see **MinIO + presigned uploads** below), the UI uploads large files **directly to MinIO** (browser `PUT`), bypassing the UI→API proxy body path. That is the most reliable approach for very large CSVs.
+**Resumable uploads:** The UI now sends large files in resumable chunks to the API (`/api/upload/resumable/...`) and the backend assembles them under local upload storage before analysis. This avoids single-request timeout failures for very large CSVs.
 
 ---
 
-## MinIO + presigned uploads (S3_* on API service)
+## Resumable local uploads (single-host default)
 
-When all required variables are set, `GET /api/upload/capabilities` returns `{"presigned_upload": true}` and the UI uses **presigned PUT** URLs (`POST /api/upload/presign`) then **`POST /api/analyze`** with `csv_object_key` and optional `closings_object_key` instead of server-local `csv_path`. Implementation: [`backend/app/services/object_storage.py`](backend/app/services/object_storage.py).
+`GET /api/upload/capabilities` now returns `{"resumable_upload": true, "presigned_upload": false, "limits": ...}`. The UI initializes an upload session, sends chunked `PUT`s, then finalizes to get a local `csv_path` / `closings_path` for analysis.
 
 ### Required API environment variables
 
-| Variable | Example | Role |
-|----------|---------|------|
-| `S3_ENDPOINT` | `http://crm-reports_minio:9000` | Server-side downloads: API container → MinIO (**internal** Docker DNS, port **9000**). |
-| `S3_PUBLIC_ENDPOINT` | `https://crm-reports-minio.xkwoom.easypanel.host` | Presigned URLs must target the **browser-reachable** MinIO API host (HTTPS, no trailing slash). Map Easypanel’s public MinIO URL here (same idea as `MINIO_SERVER_URL`). |
-| `S3_BUCKET` | `analysis-uploads` | Bucket must exist (create in MinIO console). |
-| `S3_ACCESS_KEY` | (service account) | Prefer a dedicated user; avoid root credentials in production. |
-| `S3_SECRET_KEY` | (secret) | Matches access key. |
+None for baseline operation (works out-of-the-box with local upload storage).
 
 ### Optional
 
 | Variable | Default | Role |
 |----------|---------|------|
-| `S3_REGION` | `us-east-1` | SigV4 region string (MinIO accepts typical values). |
-| `S3_USE_PATH_STYLE` | `true` | Path-style addressing; keep `true` for standard MinIO. |
-| `S3_PRESIGN_EXPIRES` | `3600` | Presigned PUT lifetime (seconds). |
-| `S3_DELETE_AFTER_ANALYSIS` | unset / `false` | If `true`, delete uploaded objects from the bucket after analysis completes successfully. |
+| `UPLOAD_STORAGE_DIR` | `/app/uploads` | Root directory for uploaded files/sessions/chunks. |
+| `UPLOAD_MAX_CHUNK_MB` | `8` | Max accepted chunk size for resumable uploads. |
+| `UPLOAD_MAX_TOTAL_MB` | `MAX_UPLOAD_MB` | Max total file size for a resumable session. |
+| `UPLOAD_SESSION_TTL_HOURS` | `24` | Expiry window for stale resumable sessions/chunks. |
 
 ### Analyze request shape
 
-- Provide **exactly one** of `csv_path` (multipart upload flow) or `csv_object_key` (presigned flow).
-- Optional closings: **at most one** of `closings_path` or `closings_object_key`.
-
-### Bucket CORS (required for browser PUT)
-
-Without CORS, the browser will block `PUT` to MinIO even with a valid presigned URL. In MinIO console → bucket → **Access Rules** → **CORS**, allow your **UI** origin (e.g. `https://crm-reports-ui.xkwoom.easypanel.host`), methods including **`PUT`**, and headers including **`Content-Type`**.
-
-Example (replace origin with your UI host):
-
-```json
-[
-  {
-    "AllowedOrigins": ["https://crm-reports-ui.xkwoom.easypanel.host"],
-    "AllowedMethods": ["GET", "PUT", "HEAD"],
-    "AllowedHeaders": ["*"],
-    "ExposeHeaders": ["ETag"],
-    "MaxAgeSeconds": 3600
-  }
-]
-```
+- `csv_path` is required.
+- Optional closings path: `closings_path` (legacy alias `excel_path` remains accepted).
 
 ---
 
@@ -235,10 +211,13 @@ Stages are computed only from tags **strictly before** each deal’s **Date Clos
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/upload/capabilities` | `{ "presigned_upload": true\|false }` — when `true`, UI uses direct-to-MinIO presigned uploads |
-| `POST /api/upload/presign` | JSON `{ "kind": "csv" \| "closings", "filename": "..." }` → `{ object_key, upload: { url, method, headers }, expires_in }` (requires `S3_*` on API) |
-| `POST /api/upload` | Multipart: `csv_file`, optional `closings_file` (legacy alias `excel_file` still accepted) |
-| `POST /api/analyze` | JSON: exactly one of `csv_path` **or** `csv_object_key`; optional `closings_path` **or** `closings_object_key` (legacy alias `excel_path` still accepted); optional `as_of` (`YYYY-MM-DD`) |
+| `GET /api/upload/capabilities` | Returns upload features/limits (`resumable_upload`, `presigned_upload`, size limits) |
+| `POST /api/upload/resumable/init` | JSON `{ kind, filename, total_size, chunk_size }` → upload session metadata (`upload_id`, chunk config) |
+| `PUT /api/upload/resumable/<upload_id>/chunk/<chunk_index>` | Binary chunk upload (idempotent overwrite of a chunk index) |
+| `GET /api/upload/resumable/<upload_id>/status` | Session progress (`uploaded_chunks`, `total_chunks`, `status`) |
+| `POST /api/upload/resumable/<upload_id>/complete` | Assemble chunks and return `csv_path` or `closings_path` |
+| `DELETE /api/upload/resumable/<upload_id>` | Cancel and cleanup a resumable upload session |
+| `POST /api/analyze` | JSON: required `csv_path`; optional `closings_path` (legacy alias `excel_path` still accepted); optional `as_of` (`YYYY-MM-DD`) |
 | `GET /api/analysis/<job_id>/status` | Poll while running |
 | `GET /api/analysis/<job_id>` | Full results |
 | `GET /api/analysis/<job_id>/export?format=excel\|csv\|json` | Download |
@@ -256,5 +235,7 @@ Stages are computed only from tags **strictly before** each deal’s **Date Clos
 |----------|------|
 | `REPORTS_DIR` | Persisted JSON (default `/app/reports` in Docker) |
 | `VITE_API_URL` | Frontend API base at build time (dev default `http://localhost:8000/api`) |
-| `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` | Enable presigned MinIO uploads + `csv_object_key` analyze path (see **MinIO + presigned uploads**) |
-| `S3_REGION`, `S3_USE_PATH_STYLE`, `S3_PRESIGN_EXPIRES`, `S3_DELETE_AFTER_ANALYSIS` | Optional MinIO / presign tuning |
+| `UPLOAD_STORAGE_DIR` | Root directory for resumable upload files/chunks/manifests |
+| `UPLOAD_MAX_CHUNK_MB` | Per-chunk limit for resumable uploads |
+| `UPLOAD_MAX_TOTAL_MB` | Per-file limit for resumable upload sessions |
+| `UPLOAD_SESSION_TTL_HOURS` | Time-to-live for stale resumable upload sessions |

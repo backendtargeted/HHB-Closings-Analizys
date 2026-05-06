@@ -106,32 +106,52 @@ export interface AnalysisStatus {
   message: string;
 }
 
-export interface UploadResponse {
-  closings_path?: string | null;
-  excel_path?: string | null;
-  csv_path: string;
-  message: string;
-}
-
 export interface UploadCapabilitiesResponse {
   presigned_upload: boolean;
-}
-
-export interface PresignUploadResponse {
-  object_key: string;
-  upload: {
-    url: string;
-    method: string;
-    headers: Record<string, string>;
+  resumable_upload?: boolean;
+  limits?: {
+    max_chunk_bytes: number;
+    max_total_bytes: number;
+    session_ttl_hours: number;
   };
-  expires_in: number;
 }
 
-/** Body for POST /api/analyze — provide exactly one csv source and at most one closings source. */
+export interface ResumableUploadInitResponse {
+  upload_id: string;
+  kind: 'csv' | 'closings';
+  filename: string;
+  total_size: number;
+  chunk_size: number;
+  total_chunks: number;
+  uploaded_chunks: number[];
+}
+
+export interface ResumableUploadStatusResponse {
+  upload_id: string;
+  kind: 'csv' | 'closings';
+  filename: string;
+  total_size: number;
+  chunk_size: number;
+  total_chunks: number;
+  uploaded_chunks: number[];
+  status: 'pending' | 'uploading' | 'completed';
+  final_path?: string | null;
+}
+
+export interface ResumableUploadCompleteResponse {
+  upload_id: string;
+  kind: 'csv' | 'closings';
+  status: 'completed';
+  path: string;
+  message: string;
+  csv_path?: string;
+  closings_path?: string;
+  excel_path?: string;
+}
+
+/** Body for POST /api/analyze — csv_path required and optional closings_path. */
 export interface StartAnalysisParams {
-  csvPath?: string;
-  csvObjectKey?: string;
+  csvPath: string;
   closingsPath?: string | null;
-  closingsObjectKey?: string | null;
   asOf?: string | null;
 }

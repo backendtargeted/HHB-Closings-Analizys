@@ -2,9 +2,10 @@ import axios from 'axios';
 import type {
   AnalysisCompleteResponse,
   AnalysisStatus,
-  UploadResponse,
   UploadCapabilitiesResponse,
-  PresignUploadResponse,
+  ResumableUploadInitResponse,
+  ResumableUploadStatusResponse,
+  ResumableUploadCompleteResponse,
   StartAnalysisParams,
 } from '../types/analysis';
 import type { PatchUploadResponse } from '../types/patches';
@@ -53,48 +54,42 @@ export const getUploadCapabilities = async (): Promise<UploadCapabilitiesRespons
   return response.data;
 };
 
-export const presignUpload = async (
+export const initResumableUpload = async (
   kind: 'csv' | 'closings',
-  filename: string
-): Promise<PresignUploadResponse> => {
-  const response = await api.post<PresignUploadResponse>('/upload/presign', {
+  filename: string,
+  totalSize: number,
+  chunkSize: number
+): Promise<ResumableUploadInitResponse> => {
+  const response = await api.post<ResumableUploadInitResponse>('/upload/resumable/init', {
     kind,
     filename,
+    total_size: totalSize,
+    chunk_size: chunkSize,
   });
   return response.data;
 };
 
-export async function putFileToPresignedUrl(
-  file: File,
-  upload: PresignUploadResponse['upload']
+export const getResumableUploadStatus = async (
+  uploadId: string
+): Promise<ResumableUploadStatusResponse> => {
+  const response = await api.get<ResumableUploadStatusResponse>(`/upload/resumable/${uploadId}/status`);
+  return response.data;
+};
+
+export async function uploadResumableChunk(
+  uploadId: string,
+  chunkIndex: number,
+  chunkBlob: Blob
 ): Promise<void> {
-  const res = await fetch(upload.url, {
-    method: upload.method,
-    headers: upload.headers,
-    body: file,
+  await api.put(`/upload/resumable/${uploadId}/chunk/${chunkIndex}`, chunkBlob, {
+    headers: { 'Content-Type': 'application/octet-stream' },
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Storage upload failed (${res.status}): ${text.slice(0, 240)}`);
-  }
 }
 
-export const uploadFiles = async (
-  closingsFile: File | null,
-  csvFile: File
-): Promise<UploadResponse> => {
-  const formData = new FormData();
-  if (closingsFile) {
-    formData.append('closings_file', closingsFile);
-  }
-  formData.append('csv_file', csvFile);
-
-  const response = await api.post<UploadResponse>('/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
-
+export const completeResumableUpload = async (
+  uploadId: string
+): Promise<ResumableUploadCompleteResponse> => {
+  const response = await api.post<ResumableUploadCompleteResponse>(`/upload/resumable/${uploadId}/complete`);
   return response.data;
 };
 
@@ -102,17 +97,9 @@ export const startAnalysis = async (
   params: StartAnalysisParams
 ): Promise<{ job_id: string; status: string; message: string }> => {
   const body: Record<string, string> = {};
-  if (params.csvPath) {
-    body.csv_path = params.csvPath;
-  }
-  if (params.csvObjectKey) {
-    body.csv_object_key = params.csvObjectKey;
-  }
+  body.csv_path = params.csvPath;
   if (params.closingsPath) {
     body.closings_path = params.closingsPath;
-  }
-  if (params.closingsObjectKey) {
-    body.closings_object_key = params.closingsObjectKey;
   }
   const trimmed = params.asOf?.trim();
   if (trimmed) {

@@ -14,8 +14,8 @@ import os
 from pathlib import Path
 
 from ..services.analysis import perform_analysis
-from ..services import object_storage
-from ..utils.file_handler import save_uploaded_file, delete_file, validate_excel_file, validate_csv_file, EXPORT_DIR
+from ..services import resumable_uploads
+from ..utils.file_handler import EXPORT_DIR
 from .models import (
     AnalysisResponse,
     AnalysisCompleteResponse,
@@ -121,34 +121,18 @@ def run_analysis_sync(
     closings_path: Optional[str],
     csv_path: Optional[str],
     as_of: Optional[str] = None,
-    closings_object_key: Optional[str] = None,
-    csv_object_key: Optional[str] = None,
 ):
     """Run analysis in a background thread and update job status."""
-    temp_paths: List[str] = []
-    keys_to_maybe_delete: List[str] = []
-    closings_local = closings_path
-    csv_local = csv_path
     try:
         analysis_jobs[job_id]["status"] = "running"
-
-        if csv_object_key:
-            csv_local = object_storage.download_object_to_tempfile(csv_object_key)
-            temp_paths.append(csv_local)
-            keys_to_maybe_delete.append(csv_object_key)
-        if closings_object_key:
-            closings_local = object_storage.download_object_to_tempfile(closings_object_key)
-            temp_paths.append(closings_local)
-            keys_to_maybe_delete.append(closings_object_key)
-
-        if not csv_local:
-            raise ValueError("Internal error: missing CSV path after object download")
+        if not csv_path:
+            raise ValueError("Internal error: missing CSV path")
 
         def progress_callback(message: str, progress: int):
             analysis_jobs[job_id]["progress"] = progress
             analysis_jobs[job_id]["message"] = message
 
-        result = perform_analysis(closings_local, csv_local, progress_callback, as_of_date=as_of)
+        result = perform_analysis(closings_path, csv_path, progress_callback, as_of_date=as_of)
 
         analysis_results[job_id] = result
         created_at = datetime.now(timezone.utc).isoformat()
@@ -158,125 +142,145 @@ def run_analysis_sync(
         analysis_jobs[job_id]["created_at"] = created_at
         save_report_to_disk(job_id, result, created_at)
 
-        if object_storage.delete_after_analysis_enabled():
-            for key in keys_to_maybe_delete:
-                try:
-                    object_storage.delete_object(key)
-                except Exception:
-                    pass
-
     except Exception as e:
         analysis_jobs[job_id]["status"] = "failed"
         analysis_jobs[job_id]["message"] = str(e)
-    finally:
-        for p in temp_paths:
-            delete_file(p)
-
-
-@api_bp.route("/upload", methods=["POST"])
-def upload_files():
-    """
-    Upload files for analysis.
-    Core path only requires contact history CSV. Optional closings workbook support is legacy-only.
-    """
-    try:
-        closings_file = request.files.get("closings_file") or request.files.get("excel_file")
-        csv_file = request.files.get("csv_file")
-
-        if not csv_file or not csv_file.filename:
-            return jsonify({"detail": "Contact history CSV file is required"}), 400
-
-        closings_path: Optional[str] = None
-        if closings_file and closings_file.filename:
-            closings_path = save_uploaded_file(closings_file, "closings")
-        csv_path = save_uploaded_file(csv_file, "csv")
-
-        if closings_path and not validate_excel_file(closings_path):
-            delete_file(closings_path)
-            delete_file(csv_path)
-            return jsonify({"detail": "Invalid closings workbook (optional/deprecated path)"}), 400
-
-        if not validate_csv_file(csv_path):
-            if closings_path:
-                delete_file(closings_path)
-            delete_file(csv_path)
-            return jsonify({"detail": "Invalid contact history CSV file"}), 400
-
-        return jsonify({
-            "closings_path": closings_path,
-            "excel_path": closings_path,  # Backward-compatible legacy key
-            "csv_path": csv_path,
-            "message": "Files uploaded successfully",
-        })
-    except Exception as e:
-        return jsonify({"detail": str(e)}), 500
 
 
 @api_bp.route("/upload/capabilities", methods=["GET"])
 def upload_capabilities():
-    """Whether presigned direct-to-storage uploads are available."""
-    return jsonify({"presigned_upload": object_storage.is_object_storage_configured()})
-
-
-@api_bp.route("/upload/presign", methods=["POST"])
-def upload_presign():
-    """
-    Mint a presigned PUT URL for browser upload to S3-compatible storage (MinIO).
-    JSON body: { "kind": "csv" | "closings", "filename": "..." }
-    """
-    if not object_storage.is_object_storage_configured():
-        return jsonify(
-            {"detail": "Object storage is not configured. Set S3_ENDPOINT, S3_PUBLIC_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY."}
-        ), 503
-    data = request.get_json() or {}
-    kind = data.get("kind")
-    filename = str(data.get("filename") or "")
-    if kind not in ("csv", "closings"):
-        return jsonify({"detail": "kind must be csv or closings"}), 400
-    try:
-        object_key = object_storage.build_object_key(str(kind), filename)
-    except ValueError as exc:
-        return jsonify({"detail": str(exc)}), 400
-    content_type = object_storage.content_type_for_upload(str(kind), filename)
-    try:
-        url, headers, expires_in = object_storage.generate_presigned_put(object_key, content_type)
-    except Exception as exc:
-        return jsonify({"detail": f"Could not create upload URL: {exc}"}), 500
+    """Return upload features and hard limits."""
     return jsonify(
         {
-            "object_key": object_key,
-            "upload": {"url": url, "method": "PUT", "headers": headers},
-            "expires_in": expires_in,
+            "presigned_upload": False,
+            "resumable_upload": True,
+            "limits": resumable_uploads.get_limits(),
         }
     )
+
+
+@api_bp.route("/upload/resumable/init", methods=["POST"])
+def upload_resumable_init():
+    """Create a resumable upload session."""
+    data = request.get_json() or {}
+    kind = str(data.get("kind") or "")
+    filename = str(data.get("filename") or "")
+    total_size = data.get("total_size")
+    chunk_size = data.get("chunk_size")
+    try:
+        manifest = resumable_uploads.create_upload(
+            kind=kind,
+            filename=filename,
+            total_size=int(total_size),
+            chunk_size=int(chunk_size),
+        )
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify(
+        {
+            "upload_id": manifest["upload_id"],
+            "kind": manifest["kind"],
+            "filename": manifest["filename"],
+            "total_size": manifest["total_size"],
+            "chunk_size": manifest["chunk_size"],
+            "total_chunks": manifest["total_chunks"],
+            "uploaded_chunks": manifest["uploaded_chunks"],
+        }
+    )
+
+
+@api_bp.route("/upload/resumable/<upload_id>/chunk/<int:chunk_index>", methods=["PUT"])
+def upload_resumable_chunk(upload_id: str, chunk_index: int):
+    """Upload or replace a single chunk."""
+    chunk_data = request.get_data(cache=False, as_text=False)
+    try:
+        manifest = resumable_uploads.upload_chunk(upload_id=upload_id, chunk_index=chunk_index, chunk_data=chunk_data)
+    except FileNotFoundError:
+        return jsonify({"detail": "Upload session not found"}), 404
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify(
+        {
+            "upload_id": manifest["upload_id"],
+            "uploaded_chunks": manifest["uploaded_chunks"],
+            "uploaded_count": len(manifest["uploaded_chunks"]),
+            "total_chunks": manifest["total_chunks"],
+            "status": manifest["status"],
+        }
+    )
+
+
+@api_bp.route("/upload/resumable/<upload_id>/status", methods=["GET"])
+def upload_resumable_status(upload_id: str):
+    """Return resumable upload status."""
+    try:
+        manifest = resumable_uploads.get_upload_status(upload_id)
+    except FileNotFoundError:
+        return jsonify({"detail": "Upload session not found"}), 404
+    return jsonify(
+        {
+            "upload_id": manifest["upload_id"],
+            "kind": manifest["kind"],
+            "filename": manifest["filename"],
+            "total_size": manifest["total_size"],
+            "chunk_size": manifest["chunk_size"],
+            "total_chunks": manifest["total_chunks"],
+            "uploaded_chunks": manifest["uploaded_chunks"],
+            "status": manifest["status"],
+            "final_path": manifest.get("final_path"),
+        }
+    )
+
+
+@api_bp.route("/upload/resumable/<upload_id>/complete", methods=["POST"])
+def upload_resumable_complete(upload_id: str):
+    """Assemble chunks into a final file path."""
+    try:
+        manifest = resumable_uploads.finalize_upload(upload_id)
+    except FileNotFoundError:
+        return jsonify({"detail": "Upload session not found"}), 404
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    final_path = manifest.get("final_path")
+    if not final_path:
+        return jsonify({"detail": "Upload completed without final path"}), 500
+    payload: Dict[str, Any] = {
+        "upload_id": manifest["upload_id"],
+        "kind": manifest["kind"],
+        "path": final_path,
+        "status": manifest["status"],
+        "message": "Upload assembled successfully",
+    }
+    if manifest["kind"] == "csv":
+        payload["csv_path"] = final_path
+    else:
+        payload["closings_path"] = final_path
+        payload["excel_path"] = final_path
+    return jsonify(payload)
+
+
+@api_bp.route("/upload/resumable/<upload_id>", methods=["DELETE"])
+def upload_resumable_cancel(upload_id: str):
+    """Cancel an upload session and remove partial chunks."""
+    resumable_uploads.cancel_upload(upload_id)
+    return jsonify({"detail": "Upload session deleted", "upload_id": upload_id})
 
 
 @api_bp.route("/analyze", methods=["POST"])
 def start_analysis():
     """
     Start an analysis job.
-    JSON: provide exactly one of csv_path or csv_object_key; optional closings_path or closings_object_key (not both); optional as_of.
+    JSON: csv_path required, optional closings_path, optional as_of.
     """
     data = request.get_json() or {}
     closings_path = data.get("closings_path") or data.get("excel_path")
     csv_path = data.get("csv_path")
-    csv_object_key = data.get("csv_object_key")
-    closings_object_key = data.get("closings_object_key")
     as_of_raw = data.get("as_of")
 
     has_csv_path = bool(csv_path and str(csv_path).strip())
-    has_csv_key = bool(csv_object_key and str(csv_object_key).strip())
-    if has_csv_path == has_csv_key:
-        return jsonify(
-            {"detail": "Provide exactly one of csv_path (multipart upload) or csv_object_key (presigned upload)"}
-        ), 400
-
+    if not has_csv_path:
+        return jsonify({"detail": "csv_path is required"}), 400
     has_closings_path = bool(closings_path and str(closings_path).strip())
-    has_closings_key = bool(closings_object_key and str(closings_object_key).strip())
-    if has_closings_path and has_closings_key:
-        return jsonify(
-            {"detail": "Provide at most one of closings_path and closings_object_key"}
-        ), 400
 
     as_of: Optional[str] = None
     if as_of_raw is not None and str(as_of_raw).strip() != "":
@@ -289,10 +293,8 @@ def start_analysis():
     job_id = generate_job_id()
     created_at = datetime.now(timezone.utc).isoformat()
 
-    csv_path_clean = str(csv_path).strip() if has_csv_path else None
+    csv_path_clean = str(csv_path).strip()
     closings_path_clean = str(closings_path).strip() if has_closings_path else None
-    csv_key_clean = str(csv_object_key).strip() if has_csv_key else None
-    closings_key_clean = str(closings_object_key).strip() if has_closings_key else None
 
     analysis_jobs[job_id] = {
         "status": "pending",
@@ -300,15 +302,13 @@ def start_analysis():
         "message": "Starting analysis...",
         "closings_path": closings_path_clean,
         "csv_path": csv_path_clean,
-        "closings_object_key": closings_key_clean,
-        "csv_object_key": csv_key_clean,
         "created_at": created_at,
         "as_of": as_of,
     }
 
     thread = threading.Thread(
         target=run_analysis_sync,
-        args=(job_id, closings_path_clean, csv_path_clean, as_of, closings_key_clean, csv_key_clean),
+        args=(job_id, closings_path_clean, csv_path_clean, as_of),
         daemon=True,
     )
     thread.start()

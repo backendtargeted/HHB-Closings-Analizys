@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
-  uploadFiles,
   startAnalysis,
   getAnalysisStatus,
   getAnalysisResults,
   getUploadCapabilities,
-  presignUpload,
-  putFileToPresignedUrl,
+  initResumableUpload,
+  getResumableUploadStatus,
+  uploadResumableChunk,
+  completeResumableUpload,
 } from '../services/api';
 import type { AnalysisCompleteResponse, AnalysisStatus } from '../types/analysis';
 
@@ -15,7 +16,7 @@ export const useAnalysis = () => {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
-  const [s3UploadPending, setS3UploadPending] = useState(false);
+  const [resumableUploadPending, setResumableUploadPending] = useState(false);
 
   const { data: uploadCaps, refetch: refetchUploadCaps } = useQuery({
     queryKey: ['upload-capabilities'],
@@ -23,17 +24,10 @@ export const useAnalysis = () => {
     staleTime: 60_000,
   });
 
-  const uploadMutation = useMutation({
-    mutationFn: ({ closingsFile, csvFile }: { closingsFile: File | null; csvFile: File }) =>
-      uploadFiles(closingsFile, csvFile),
-  });
-
   const startAnalysisMutation = useMutation({
     mutationFn: (params: {
       closingsPath?: string | null;
-      csvPath?: string;
-      csvObjectKey?: string;
-      closingsObjectKey?: string | null;
+      csvPath: string;
       asOf?: string | null;
     }) => startAnalysis(params),
     onSuccess: (data) => {
@@ -66,46 +60,82 @@ export const useAnalysis = () => {
 
   const runAnalysis = useCallback(
     async (closingsFile: File | null, csvFile: File, asOf?: string | null) => {
+      const uploadOneFileResumable = async (kind: 'csv' | 'closings', file: File): Promise<string> => {
+        const { data: capsData } = await refetchUploadCaps();
+        const maxChunkBytes = capsData?.limits?.max_chunk_bytes ?? 8 * 1024 * 1024;
+        const chunkSize = Math.min(maxChunkBytes, 8 * 1024 * 1024);
+        const init = await initResumableUpload(kind, file.name, file.size, chunkSize);
+        setStatusMessage(`Uploading ${file.name}...`);
+
+        const status = await getResumableUploadStatus(init.upload_id);
+        const uploaded = new Set<number>(status.uploaded_chunks ?? []);
+        const retryLimit = 3;
+
+        for (let idx = 0; idx < init.total_chunks; idx += 1) {
+          if (uploaded.has(idx)) {
+            continue;
+          }
+          const start = idx * init.chunk_size;
+          const end = Math.min(start + init.chunk_size, file.size);
+          const chunk = file.slice(start, end);
+
+          let attempts = 0;
+          while (attempts < retryLimit) {
+            try {
+              await uploadResumableChunk(init.upload_id, idx, chunk);
+              uploaded.add(idx);
+              const pct = Math.round((uploaded.size / init.total_chunks) * 100);
+              setProgress(pct);
+              break;
+            } catch (err) {
+              attempts += 1;
+              if (attempts >= retryLimit) {
+                throw err;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 400 * attempts));
+            }
+          }
+        }
+
+        const finalized = await completeResumableUpload(init.upload_id);
+        if (kind === 'csv') {
+          if (!finalized.csv_path) throw new Error('CSV upload did not return csv_path');
+          return finalized.csv_path;
+        }
+        const closingsPath = finalized.closings_path ?? finalized.excel_path;
+        if (!closingsPath) throw new Error('Closings upload did not return closings_path');
+        return closingsPath;
+      };
+
       try {
         const { data: caps } = await refetchUploadCaps();
-        const usePresigned = caps?.presigned_upload === true;
+        if (caps?.resumable_upload !== true) {
+          throw new Error('Resumable uploads are not available. Check /api/upload/capabilities.');
+        }
 
-        if (usePresigned) {
-          setS3UploadPending(true);
-          try {
-            const csvPresign = await presignUpload('csv', csvFile.name);
-            await putFileToPresignedUrl(csvFile, csvPresign.upload);
-            let closingsObjectKey: string | undefined;
-            if (closingsFile) {
-              const cPresign = await presignUpload('closings', closingsFile.name);
-              await putFileToPresignedUrl(closingsFile, cPresign.upload);
-              closingsObjectKey = cPresign.object_key;
-            }
-            await startAnalysisMutation.mutateAsync({
-              csvObjectKey: csvPresign.object_key,
-              closingsObjectKey: closingsObjectKey ?? undefined,
-              asOf: asOf?.trim() || undefined,
-            });
-          } finally {
-            setS3UploadPending(false);
+        setResumableUploadPending(true);
+        try {
+          setProgress(0);
+          const csvPath = await uploadOneFileResumable('csv', csvFile);
+          let closingsPath: string | undefined;
+          if (closingsFile) {
+            closingsPath = await uploadOneFileResumable('closings', closingsFile);
           }
-        } else {
-          const uploadResult = await uploadMutation.mutateAsync({
-            closingsFile,
-            csvFile,
-          });
+          setStatusMessage('Starting analysis...');
           await startAnalysisMutation.mutateAsync({
-            closingsPath: uploadResult.closings_path ?? uploadResult.excel_path ?? undefined,
-            csvPath: uploadResult.csv_path,
+            csvPath,
+            closingsPath: closingsPath ?? undefined,
             asOf: asOf?.trim() || undefined,
           });
+        } finally {
+          setResumableUploadPending(false);
         }
       } catch (error) {
         console.error('Analysis error:', error);
         throw error;
       }
     },
-    [refetchUploadCaps, uploadMutation, startAnalysisMutation]
+    [refetchUploadCaps, startAnalysisMutation]
   );
 
   return {
@@ -115,14 +145,13 @@ export const useAnalysis = () => {
     statusMessage,
     analysisStatus,
     analysisResults,
-    presignedUpload: uploadCaps?.presigned_upload === true,
+    resumableUpload: uploadCaps?.resumable_upload === true,
     isLoading:
-      s3UploadPending ||
-      uploadMutation.isPending ||
+      resumableUploadPending ||
       startAnalysisMutation.isPending ||
       analysisStatus?.status === 'running' ||
       analysisStatus?.status === 'pending',
-    isError: uploadMutation.isError || startAnalysisMutation.isError,
-    error: uploadMutation.error || startAnalysisMutation.error,
+    isError: startAnalysisMutation.isError,
+    error: startAnalysisMutation.error,
   };
 };
