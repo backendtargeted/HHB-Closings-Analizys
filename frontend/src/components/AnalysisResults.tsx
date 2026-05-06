@@ -109,28 +109,20 @@ const AnalysisResults = ({ results, onNewAnalysis }: AnalysisResultsProps) => {
   }
 
   const handleShare = async () => {
-    const reportUrl = new URL(window.location.href);
-    reportUrl.searchParams.set('report', results.job_id);
-    const shareUrl = reportUrl.toString();
-    const title = `HHB Analysis Report (${results.job_id.slice(0, 8)})`;
-    const text = `${results.matched_count} of ${results.total_deals} deals matched`;
+    const reportUrl = `${window.location.origin}${window.location.pathname}?report=${encodeURIComponent(results.job_id)}`;
 
     setShareStatus(null);
     try {
-      if (navigator.share) {
-        await navigator.share({ title, text, url: shareUrl });
-        setShareStatus('Report link shared.');
-        return;
-      }
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareUrl);
-        setShareStatus('Report link copied to clipboard.');
+        await navigator.clipboard.writeText(reportUrl);
+        setShareStatus('Report link copied.');
         return;
       }
-      window.prompt('Copy this report link:', shareUrl);
+      window.prompt('Copy this report link:', reportUrl);
       setShareStatus('Copy the report link from the prompt.');
     } catch {
-      setShareStatus('Could not share report link.');
+      window.prompt('Copy this report link:', reportUrl);
+      setShareStatus('Copy the report link from the prompt.');
     }
   };
 
@@ -157,7 +149,7 @@ const AnalysisResults = ({ results, onNewAnalysis }: AnalysisResultsProps) => {
               onClick={handleShare}
               className="px-4 py-2 bg-white text-navy border border-stone-300 rounded-lg hover:bg-stone-100 transition-colors"
             >
-              Share
+              Copy Link
             </button>
             <button
               onClick={onNewAnalysis}

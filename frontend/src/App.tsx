@@ -11,6 +11,16 @@ import { useAnalysis } from './hooks/useAnalysis';
 import type { AnalysisCompleteResponse } from './types/analysis';
 
 function App() {
+  const setReportQueryParam = (jobId: string | null) => {
+    const url = new URL(window.location.href);
+    if (jobId) {
+      url.searchParams.set('report', jobId);
+    } else {
+      url.searchParams.delete('report');
+    }
+    window.history.replaceState({}, '', url.toString());
+  };
+
   const [workspace, setWorkspace] = useState<WorkspaceMode>('regular');
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [loadedSavedReport, setLoadedSavedReport] = useState<AnalysisCompleteResponse | null>(null);
@@ -33,17 +43,22 @@ function App() {
   const handleAnalysisComplete = () => {
     setAnalysisComplete(true);
     setLoadedSavedReport(null);
+    if (analysisResults?.job_id) {
+      setReportQueryParam(analysisResults.job_id);
+    }
   };
 
   const handleNewAnalysis = () => {
     setAnalysisComplete(false);
     setLoadedSavedReport(null);
     setWorkspace('regular');
+    setReportQueryParam(null);
   };
 
   const handleOpenSavedReport = (data: AnalysisCompleteResponse) => {
     setLoadedSavedReport(data);
     setAnalysisComplete(true);
+    setReportQueryParam(data.job_id);
   };
 
   // Auto-show results when analysis completes
@@ -51,6 +66,7 @@ function App() {
     if (analysisResults?.status === 'completed') {
       setAnalysisComplete(true);
       setLoadedSavedReport(null);
+      setReportQueryParam(analysisResults.job_id);
     }
   }, [analysisResults]);
 
