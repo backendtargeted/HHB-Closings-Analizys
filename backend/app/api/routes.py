@@ -6,6 +6,8 @@ import json
 import math
 import uuid
 import threading
+import logging
+import tempfile
 from datetime import datetime, timezone, date
 from typing import Dict, List, Any, Optional
 from flask import Blueprint, request, jsonify, send_file
@@ -26,6 +28,7 @@ from .models import (
 )
 
 api_bp = Blueprint("api", __name__)
+logger = logging.getLogger(__name__)
 
 
 @api_bp.route("/health", methods=["GET", "HEAD"])
@@ -36,8 +39,41 @@ def api_health():
     return jsonify({"status": "healthy"})
 
 
-# Reports directory (persisted via Docker volume)
-REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", "/app/reports"))
+def _candidate_reports_dirs() -> List[Path]:
+    raw = os.environ.get("REPORTS_DIR", "").strip()
+    candidates: List[Path] = []
+    if raw:
+        candidates.append(Path(raw))
+    candidates.extend(
+        [
+            Path("/app/reports"),
+            Path.cwd() / "reports",
+            Path(tempfile.gettempdir()) / "hhb-reports",
+        ]
+    )
+    return candidates
+
+
+def _resolve_reports_dir() -> Path:
+    for candidate in _candidate_reports_dirs():
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / ".write_probe"
+            with open(probe, "w", encoding="utf-8") as f:
+                f.write("ok")
+            probe.unlink(missing_ok=True)
+            logger.info("Using reports directory: %s", candidate)
+            return candidate
+        except OSError as exc:
+            logger.warning("Reports directory unavailable (%s): %s", candidate, exc)
+
+    fallback = Path(tempfile.mkdtemp(prefix="hhb-reports-"))
+    logger.error("All configured reports directories failed; using emergency temp path: %s", fallback)
+    return fallback
+
+
+# Reports directory (persisted when configured and writable).
+REPORTS_DIR = _resolve_reports_dir()
 
 # In-memory storage for analysis jobs; populated from disk at startup
 analysis_jobs: Dict[str, Dict] = {}
@@ -62,29 +98,36 @@ def _sanitize_for_json(obj: Any) -> Any:
 
 def save_report_to_disk(job_id: str, result: Dict, created_at: str) -> None:
     """Persist analysis result to reports/{job_id}.json or reports/snapshots/{as_of}/{job_id}.json."""
-    _ensure_reports_dir()
-    as_of = result.get("as_of")
-    if as_of:
-        snap_dir = REPORTS_DIR / "snapshots" / str(as_of)
-        snap_dir.mkdir(parents=True, exist_ok=True)
-        path = snap_dir / f"{job_id}.json"
-    else:
-        path = REPORTS_DIR / f"{job_id}.json"
-    payload = {
-        "results": result.get("results", []),
-        "stats": result.get("stats", {}),
-        "matched_count": result.get("matched_count", 0),
-        "total_deals": result.get("total_deals", 0),
-        "created_at": created_at,
-        "as_of": as_of,
-    }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(_sanitize_for_json(payload), f, indent=2)
+    try:
+        _ensure_reports_dir()
+        as_of = result.get("as_of")
+        if as_of:
+            snap_dir = REPORTS_DIR / "snapshots" / str(as_of)
+            snap_dir.mkdir(parents=True, exist_ok=True)
+            path = snap_dir / f"{job_id}.json"
+        else:
+            path = REPORTS_DIR / f"{job_id}.json"
+        payload = {
+            "results": result.get("results", []),
+            "stats": result.get("stats", {}),
+            "matched_count": result.get("matched_count", 0),
+            "total_deals": result.get("total_deals", 0),
+            "created_at": created_at,
+            "as_of": as_of,
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(_sanitize_for_json(payload), f, indent=2)
+    except OSError as exc:
+        logger.exception("Failed to persist report %s to %s: %s", job_id, REPORTS_DIR, exc)
 
 
 def load_reports_from_disk() -> None:
     """Load all persisted reports from REPORTS_DIR (including snapshots/*/) into memory."""
-    _ensure_reports_dir()
+    try:
+        _ensure_reports_dir()
+    except OSError as exc:
+        logger.exception("Failed to initialize reports directory %s: %s", REPORTS_DIR, exc)
+        return
     for path in REPORTS_DIR.rglob("*.json"):
         try:
             job_id = path.stem
@@ -107,7 +150,7 @@ def load_reports_from_disk() -> None:
                 "as_of": as_of,
             }
         except (json.JSONDecodeError, OSError) as e:
-            # Skip broken files
+            logger.warning("Skipping unreadable report file %s: %s", path, e)
             continue
 
 
@@ -625,8 +668,8 @@ def delete_analysis(job_id: str):
     for path in REPORTS_DIR.rglob(f"{job_id}.json"):
         try:
             path.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("Failed to delete persisted report %s at %s: %s", job_id, path, exc)
     analysis_jobs.pop(job_id, None)
     analysis_results.pop(job_id, None)
     return jsonify({"detail": "Deleted", "job_id": job_id})

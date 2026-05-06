@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { AnalysisCompleteResponse } from '../types/analysis';
 import ContactDistribution from './Charts/ContactDistribution';
 import ChannelBreakdown from './Charts/ChannelBreakdown';
@@ -65,6 +65,7 @@ interface AnalysisResultsProps {
 }
 
 const AnalysisResults = ({ results, onNewAnalysis }: AnalysisResultsProps) => {
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     leadSource: [] as string[],
     minContacts: 0,
@@ -107,6 +108,32 @@ const AnalysisResults = ({ results, onNewAnalysis }: AnalysisResultsProps) => {
     return <div>No results available</div>;
   }
 
+  const handleShare = async () => {
+    const reportUrl = new URL(window.location.href);
+    reportUrl.searchParams.set('report', results.job_id);
+    const shareUrl = reportUrl.toString();
+    const title = `HHB Analysis Report (${results.job_id.slice(0, 8)})`;
+    const text = `${results.matched_count} of ${results.total_deals} deals matched`;
+
+    setShareStatus(null);
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text, url: shareUrl });
+        setShareStatus('Report link shared.');
+        return;
+      }
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        setShareStatus('Report link copied to clipboard.');
+        return;
+      }
+      window.prompt('Copy this report link:', shareUrl);
+      setShareStatus('Copy the report link from the prompt.');
+    } catch {
+      setShareStatus('Could not share report link.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -127,6 +154,12 @@ const AnalysisResults = ({ results, onNewAnalysis }: AnalysisResultsProps) => {
           <div className="flex gap-3">
             <ExportMenu jobId={results.job_id} />
             <button
+              onClick={handleShare}
+              className="px-4 py-2 bg-white text-navy border border-stone-300 rounded-lg hover:bg-stone-100 transition-colors"
+            >
+              Share
+            </button>
+            <button
               onClick={onNewAnalysis}
               className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
             >
@@ -134,6 +167,7 @@ const AnalysisResults = ({ results, onNewAnalysis }: AnalysisResultsProps) => {
             </button>
           </div>
         </div>
+        {shareStatus ? <p className="text-xs text-stone-500 mt-3">{shareStatus}</p> : null}
       </div>
 
       {/* Summary Stats */}

@@ -6,6 +6,7 @@ import ModeSwitcher, { type WorkspaceMode } from './components/ModeSwitcher';
 import PastPatchesGuide from './components/PastPatchesGuide';
 import PastPatchesWorkspace from './components/PastPatchesWorkspace';
 import SavedReports from './components/SavedReports';
+import { getAnalysisResults } from './services/api';
 import { useAnalysis } from './hooks/useAnalysis';
 import type { AnalysisCompleteResponse } from './types/analysis';
 
@@ -52,6 +53,29 @@ function App() {
       setLoadedSavedReport(null);
     }
   }, [analysisResults]);
+
+  useEffect(() => {
+    const reportId = new URLSearchParams(window.location.search).get('report');
+    if (!reportId) return;
+
+    let isCancelled = false;
+    const loadSharedReport = async () => {
+      try {
+        const data = await getAnalysisResults(reportId);
+        if (!isCancelled) {
+          setLoadedSavedReport(data);
+          setAnalysisComplete(true);
+        }
+      } catch {
+        // Invalid/missing report IDs are ignored so the regular landing flow still works.
+      }
+    };
+    loadSharedReport();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-surface">

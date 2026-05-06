@@ -36,7 +36,8 @@ const ExportMenu = ({ jobId }: ExportMenuProps) => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `analysis_${jobId}.${format === 'json' ? 'json' : format}`;
+      const extension = format === 'excel' ? 'xlsx' : format;
+      a.download = `analysis_${jobId}.${extension}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
