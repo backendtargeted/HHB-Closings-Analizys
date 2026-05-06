@@ -26,6 +26,15 @@ from .models import (
 
 api_bp = Blueprint("api", __name__)
 
+
+@api_bp.route("/health", methods=["GET", "HEAD"])
+def api_health():
+    """Same-origin health under /api (useful when debugging proxy routing)."""
+    if request.method == "HEAD":
+        return "", 200
+    return jsonify({"status": "healthy"})
+
+
 # Reports directory (persisted via Docker volume)
 REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", "/app/reports"))
 

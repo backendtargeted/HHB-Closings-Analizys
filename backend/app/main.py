@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from flask import Flask, abort, send_from_directory
+from flask import Flask, abort, request, send_from_directory
 from flask_cors import CORS
 
 from .api.routes import api_bp, load_reports_from_disk
@@ -48,23 +48,37 @@ app.config["MAX_CONTENT_LENGTH"] = 512 * 1024 * 1024
 load_reports_from_disk()
 app.config["JSON_SORT_KEYS"] = False
 
-# CORS configuration
-CORS(
-    app,
-    origins=["http://localhost:3000", "http://localhost:5173"],
-    supports_credentials=True,
-    allow_headers=["*"],
-    methods=["GET", "POST", "OPTIONS"],
-)
+# CORS: localhost defaults for dev; set CORS_ORIGINS for split Easypanel (comma-separated) or * for any origin.
+_cors_raw = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").strip()
+if _cors_raw == "*":
+    CORS(
+        app,
+        origins="*",
+        allow_headers=["*"],
+        methods=["GET", "POST", "OPTIONS"],
+    )
+else:
+    _cors_list = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+    if not _cors_list:
+        _cors_list = ["http://localhost:3000", "http://localhost:5173"]
+    CORS(
+        app,
+        origins=_cors_list,
+        supports_credentials=True,
+        allow_headers=["*"],
+        methods=["GET", "POST", "OPTIONS"],
+    )
 
 # Register API blueprints
 app.register_blueprint(api_bp, url_prefix="/api")
 app.register_blueprint(patches_bp, url_prefix="/api/patches")
 
 
-@app.route("/health")
+@app.route("/health", methods=["GET", "HEAD"])
 def health_check():
-    """Health check endpoint."""
+    """Health check endpoint (HEAD for reverse proxies / load balancers)."""
+    if request.method == "HEAD":
+        return "", 200
     return {"status": "healthy"}
 
 

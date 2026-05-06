@@ -23,6 +23,8 @@ services:
       args:
         # Same-origin API via nginx /api → backend (fixes "Network Error" in Docker when :8000 is wrong)
         VITE_API_URL: /api
+    environment:
+      - BACKEND_UPSTREAM=backend:8000
     container_name: contact-attribution-frontend
     ports:
       - "3300:80"
