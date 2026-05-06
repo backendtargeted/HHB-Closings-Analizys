@@ -27,11 +27,16 @@ FROM nginx:alpine
 
 ENV BACKEND_UPSTREAM=backend:8000
 
+# Stock image ships *.template here; envsubst breaks real nginx $vars. Remove templates; use static conf + sed.
+RUN rm -f /etc/nginx/templates/*.template
+
 # Copy built files from build stage
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Templated config: envsubst writes /etc/nginx/conf.d/default.conf on container start
-COPY default.conf.template /etc/nginx/templates/default.conf.template
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker-entrypoint.d/05-replace-backend-upstream.sh /docker-entrypoint.d/05-replace-backend-upstream.sh
+RUN sed -i 's/\r$//' /docker-entrypoint.d/05-replace-backend-upstream.sh \
+    && chmod +x /docker-entrypoint.d/05-replace-backend-upstream.sh
 
 # Copy logo
 COPY public/HHB-Logo-600x143.webp /usr/share/nginx/html/HHB-Logo-600x143.webp
