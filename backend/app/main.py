@@ -41,8 +41,13 @@ def _try_serve_spa(path_within_dist: str):
 
 app = Flask(__name__)
 
-# Align with Docker/nginx `client_max_body_size` (512m) for multipart uploads
-app.config["MAX_CONTENT_LENGTH"] = 512 * 1024 * 1024
+# Configurable multipart upload cap (MiB). Keep this aligned with frontend/nginx.
+_max_upload_mb_raw = os.environ.get("MAX_UPLOAD_MB", "2048").strip()
+try:
+    _max_upload_mb = max(1, int(_max_upload_mb_raw))
+except ValueError:
+    _max_upload_mb = 2048
+app.config["MAX_CONTENT_LENGTH"] = _max_upload_mb * 1024 * 1024
 
 # Load persisted reports from volume into memory
 load_reports_from_disk()

@@ -11,6 +11,7 @@ services:
       - reports:/app/reports
     environment:
       - ENV=production
+      - MAX_UPLOAD_MB=2048
     restart: unless-stopped
     networks:
       - contact-attribution-network
