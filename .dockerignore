@@ -1,0 +1,8 @@
+.git
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+_e2e_real_out
+_ingest_out
+*.md
