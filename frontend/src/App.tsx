@@ -18,13 +18,15 @@ function App() {
     progress,
     statusMessage,
     analysisResults,
+    analysisStatus,
+    presignedUpload,
     isLoading,
     isError,
     error,
   } = useAnalysis();
 
   const resultsWithStatus = analysisResults as AnalysisCompleteResponse | undefined;
-  const analysisStatusProp = resultsWithStatus?.status;
+  const analysisStatusProp = analysisStatus?.status ?? resultsWithStatus?.status;
   const displayResults = analysisResults ?? loadedSavedReport ?? null;
 
   const handleAnalysisComplete = () => {
@@ -113,6 +115,7 @@ function App() {
                   error={error}
                   onComplete={handleAnalysisComplete}
                   analysisStatus={analysisStatusProp}
+                  presignedUpload={presignedUpload}
                 />
               ) : (
                 <PastPatchesWorkspace />
@@ -139,6 +142,7 @@ function App() {
                 error={error}
                 onComplete={handleAnalysisComplete}
                 analysisStatus={analysisStatusProp}
+                presignedUpload={presignedUpload}
               />
             </div>
             <aside className="rounded-2xl border border-stone-200/90 bg-white shadow-sm p-5 h-fit">

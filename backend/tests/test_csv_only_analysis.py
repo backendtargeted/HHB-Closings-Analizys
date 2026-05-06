@@ -56,11 +56,11 @@ class TestCsvOnlyAnalysis(unittest.TestCase):
         self.assertIn("csv_path", data)
         delete_file(data["csv_path"])
 
-    def test_analyze_requires_csv_path_only(self):
+    def test_analyze_requires_exactly_one_csv_source(self):
         client = app.test_client()
         response = client.post("/api/analyze", json={})
         self.assertEqual(response.status_code, 400)
-        self.assertIn("csv_path is required", response.get_json()["detail"])
+        self.assertIn("exactly one", response.get_json()["detail"].lower())
 
 
 if __name__ == "__main__":

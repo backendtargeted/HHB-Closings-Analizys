@@ -10,6 +10,8 @@ interface FileUploadProps {
   error: Error | null;
   onComplete: () => void;
   analysisStatus?: string;
+  /** When true, large files upload directly to S3-compatible storage (MinIO); API only presigns and analyzes by object key. */
+  presignedUpload?: boolean;
 }
 
 const FileUpload = ({
@@ -21,6 +23,7 @@ const FileUpload = ({
   error,
   onComplete,
   analysisStatus,
+  presignedUpload = false,
 }: FileUploadProps) => {
   const [closingsFile, setClosingsFile] = useState<File | null>(null);
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -182,6 +185,12 @@ const FileUpload = ({
               {error?.message || 'An error occurred during analysis'}
             </p>
           </div>
+        )}
+
+        {presignedUpload && (
+          <p className="text-xs text-stone-500 mb-3 leading-relaxed">
+            Large files upload directly to object storage (MinIO), then analysis runs from the stored copy — not through the web proxy.
+          </p>
         )}
 
         <button

@@ -90,6 +90,56 @@ Large `POST /api/upload` requests can fail even when the **UI** nginx container 
 
 **Backend:** Ensure the API image is rebuilt so Gunicorn runs with high `--timeout` (see `backend/Dockerfile`).
 
+**Presigned uploads:** When the API has `S3_*` configured (see **MinIO + presigned uploads** below), the UI uploads large files **directly to MinIO** (browser `PUT`), bypassing the UI→API proxy body path. That is the most reliable approach for very large CSVs.
+
+---
+
+## MinIO + presigned uploads (S3_* on API service)
+
+When all required variables are set, `GET /api/upload/capabilities` returns `{"presigned_upload": true}` and the UI uses **presigned PUT** URLs (`POST /api/upload/presign`) then **`POST /api/analyze`** with `csv_object_key` and optional `closings_object_key` instead of server-local `csv_path`. Implementation: [`backend/app/services/object_storage.py`](backend/app/services/object_storage.py).
+
+### Required API environment variables
+
+| Variable | Example | Role |
+|----------|---------|------|
+| `S3_ENDPOINT` | `http://crm-reports_minio:9000` | Server-side downloads: API container → MinIO (**internal** Docker DNS, port **9000**). |
+| `S3_PUBLIC_ENDPOINT` | `https://crm-reports-minio.xkwoom.easypanel.host` | Presigned URLs must target the **browser-reachable** MinIO API host (HTTPS, no trailing slash). Map Easypanel’s public MinIO URL here (same idea as `MINIO_SERVER_URL`). |
+| `S3_BUCKET` | `analysis-uploads` | Bucket must exist (create in MinIO console). |
+| `S3_ACCESS_KEY` | (service account) | Prefer a dedicated user; avoid root credentials in production. |
+| `S3_SECRET_KEY` | (secret) | Matches access key. |
+
+### Optional
+
+| Variable | Default | Role |
+|----------|---------|------|
+| `S3_REGION` | `us-east-1` | SigV4 region string (MinIO accepts typical values). |
+| `S3_USE_PATH_STYLE` | `true` | Path-style addressing; keep `true` for standard MinIO. |
+| `S3_PRESIGN_EXPIRES` | `3600` | Presigned PUT lifetime (seconds). |
+| `S3_DELETE_AFTER_ANALYSIS` | unset / `false` | If `true`, delete uploaded objects from the bucket after analysis completes successfully. |
+
+### Analyze request shape
+
+- Provide **exactly one** of `csv_path` (multipart upload flow) or `csv_object_key` (presigned flow).
+- Optional closings: **at most one** of `closings_path` or `closings_object_key`.
+
+### Bucket CORS (required for browser PUT)
+
+Without CORS, the browser will block `PUT` to MinIO even with a valid presigned URL. In MinIO console → bucket → **Access Rules** → **CORS**, allow your **UI** origin (e.g. `https://crm-reports-ui.xkwoom.easypanel.host`), methods including **`PUT`**, and headers including **`Content-Type`**.
+
+Example (replace origin with your UI host):
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://crm-reports-ui.xkwoom.easypanel.host"],
+    "AllowedMethods": ["GET", "PUT", "HEAD"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
 ---
 
 ## Backdated playbook A — Past patches: full mapper → REISift CSV bundle
@@ -185,8 +235,10 @@ Stages are computed only from tags **strictly before** each deal’s **Date Clos
 
 | Endpoint | Purpose |
 |----------|---------|
+| `GET /api/upload/capabilities` | `{ "presigned_upload": true\|false }` — when `true`, UI uses direct-to-MinIO presigned uploads |
+| `POST /api/upload/presign` | JSON `{ "kind": "csv" \| "closings", "filename": "..." }` → `{ object_key, upload: { url, method, headers }, expires_in }` (requires `S3_*` on API) |
 | `POST /api/upload` | Multipart: `csv_file`, optional `closings_file` (legacy alias `excel_file` still accepted) |
-| `POST /api/analyze` | JSON: `csv_path`, optional `closings_path` (legacy alias `excel_path` still accepted), optional `as_of` (`YYYY-MM-DD`) |
+| `POST /api/analyze` | JSON: exactly one of `csv_path` **or** `csv_object_key`; optional `closings_path` **or** `closings_object_key` (legacy alias `excel_path` still accepted); optional `as_of` (`YYYY-MM-DD`) |
 | `GET /api/analysis/<job_id>/status` | Poll while running |
 | `GET /api/analysis/<job_id>` | Full results |
 | `GET /api/analysis/<job_id>/export?format=excel\|csv\|json` | Download |
@@ -204,3 +256,5 @@ Stages are computed only from tags **strictly before** each deal’s **Date Clos
 |----------|------|
 | `REPORTS_DIR` | Persisted JSON (default `/app/reports` in Docker) |
 | `VITE_API_URL` | Frontend API base at build time (dev default `http://localhost:8000/api`) |
+| `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` | Enable presigned MinIO uploads + `csv_object_key` analyze path (see **MinIO + presigned uploads**) |
+| `S3_REGION`, `S3_USE_PATH_STYLE`, `S3_PRESIGN_EXPIRES`, `S3_DELETE_AFTER_ANALYSIS` | Optional MinIO / presign tuning |

@@ -3,6 +3,9 @@ import type {
   AnalysisCompleteResponse,
   AnalysisStatus,
   UploadResponse,
+  UploadCapabilitiesResponse,
+  PresignUploadResponse,
+  StartAnalysisParams,
 } from '../types/analysis';
 import type { PatchUploadResponse } from '../types/patches';
 
@@ -45,6 +48,37 @@ const api = axios.create({
   },
 });
 
+export const getUploadCapabilities = async (): Promise<UploadCapabilitiesResponse> => {
+  const response = await api.get<UploadCapabilitiesResponse>('/upload/capabilities');
+  return response.data;
+};
+
+export const presignUpload = async (
+  kind: 'csv' | 'closings',
+  filename: string
+): Promise<PresignUploadResponse> => {
+  const response = await api.post<PresignUploadResponse>('/upload/presign', {
+    kind,
+    filename,
+  });
+  return response.data;
+};
+
+export async function putFileToPresignedUrl(
+  file: File,
+  upload: PresignUploadResponse['upload']
+): Promise<void> {
+  const res = await fetch(upload.url, {
+    method: upload.method,
+    headers: upload.headers,
+    body: file,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Storage upload failed (${res.status}): ${text.slice(0, 240)}`);
+  }
+}
+
 export const uploadFiles = async (
   closingsFile: File | null,
   csvFile: File
@@ -65,17 +99,22 @@ export const uploadFiles = async (
 };
 
 export const startAnalysis = async (
-  closingsPath: string | null | undefined,
-  csvPath: string,
-  asOf?: string | null
+  params: StartAnalysisParams
 ): Promise<{ job_id: string; status: string; message: string }> => {
-  const body: Record<string, string> = {
-    csv_path: csvPath,
-  };
-  if (closingsPath) {
-    body.closings_path = closingsPath;
+  const body: Record<string, string> = {};
+  if (params.csvPath) {
+    body.csv_path = params.csvPath;
   }
-  const trimmed = asOf?.trim();
+  if (params.csvObjectKey) {
+    body.csv_object_key = params.csvObjectKey;
+  }
+  if (params.closingsPath) {
+    body.closings_path = params.closingsPath;
+  }
+  if (params.closingsObjectKey) {
+    body.closings_object_key = params.closingsObjectKey;
+  }
+  const trimmed = params.asOf?.trim();
   if (trimmed) {
     body.as_of = trimmed;
   }

@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 from ..services.analysis import perform_analysis
+from ..services import object_storage
 from ..utils.file_handler import save_uploaded_file, delete_file, validate_excel_file, validate_csv_file, EXPORT_DIR
 from .models import (
     AnalysisResponse,
@@ -115,16 +116,39 @@ def generate_job_id() -> str:
     return str(uuid.uuid4())
 
 
-def run_analysis_sync(job_id: str, closings_path: Optional[str], csv_path: str, as_of: Optional[str] = None):
+def run_analysis_sync(
+    job_id: str,
+    closings_path: Optional[str],
+    csv_path: Optional[str],
+    as_of: Optional[str] = None,
+    closings_object_key: Optional[str] = None,
+    csv_object_key: Optional[str] = None,
+):
     """Run analysis in a background thread and update job status."""
+    temp_paths: List[str] = []
+    keys_to_maybe_delete: List[str] = []
+    closings_local = closings_path
+    csv_local = csv_path
     try:
         analysis_jobs[job_id]["status"] = "running"
+
+        if csv_object_key:
+            csv_local = object_storage.download_object_to_tempfile(csv_object_key)
+            temp_paths.append(csv_local)
+            keys_to_maybe_delete.append(csv_object_key)
+        if closings_object_key:
+            closings_local = object_storage.download_object_to_tempfile(closings_object_key)
+            temp_paths.append(closings_local)
+            keys_to_maybe_delete.append(closings_object_key)
+
+        if not csv_local:
+            raise ValueError("Internal error: missing CSV path after object download")
 
         def progress_callback(message: str, progress: int):
             analysis_jobs[job_id]["progress"] = progress
             analysis_jobs[job_id]["message"] = message
 
-        result = perform_analysis(closings_path, csv_path, progress_callback, as_of_date=as_of)
+        result = perform_analysis(closings_local, csv_local, progress_callback, as_of_date=as_of)
 
         analysis_results[job_id] = result
         created_at = datetime.now(timezone.utc).isoformat()
@@ -134,9 +158,19 @@ def run_analysis_sync(job_id: str, closings_path: Optional[str], csv_path: str, 
         analysis_jobs[job_id]["created_at"] = created_at
         save_report_to_disk(job_id, result, created_at)
 
+        if object_storage.delete_after_analysis_enabled():
+            for key in keys_to_maybe_delete:
+                try:
+                    object_storage.delete_object(key)
+                except Exception:
+                    pass
+
     except Exception as e:
         analysis_jobs[job_id]["status"] = "failed"
         analysis_jobs[job_id]["message"] = str(e)
+    finally:
+        for p in temp_paths:
+            delete_file(p)
 
 
 @api_bp.route("/upload", methods=["POST"])
@@ -178,19 +212,71 @@ def upload_files():
         return jsonify({"detail": str(e)}), 500
 
 
+@api_bp.route("/upload/capabilities", methods=["GET"])
+def upload_capabilities():
+    """Whether presigned direct-to-storage uploads are available."""
+    return jsonify({"presigned_upload": object_storage.is_object_storage_configured()})
+
+
+@api_bp.route("/upload/presign", methods=["POST"])
+def upload_presign():
+    """
+    Mint a presigned PUT URL for browser upload to S3-compatible storage (MinIO).
+    JSON body: { "kind": "csv" | "closings", "filename": "..." }
+    """
+    if not object_storage.is_object_storage_configured():
+        return jsonify(
+            {"detail": "Object storage is not configured. Set S3_ENDPOINT, S3_PUBLIC_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY."}
+        ), 503
+    data = request.get_json() or {}
+    kind = data.get("kind")
+    filename = str(data.get("filename") or "")
+    if kind not in ("csv", "closings"):
+        return jsonify({"detail": "kind must be csv or closings"}), 400
+    try:
+        object_key = object_storage.build_object_key(str(kind), filename)
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    content_type = object_storage.content_type_for_upload(str(kind), filename)
+    try:
+        url, headers, expires_in = object_storage.generate_presigned_put(object_key, content_type)
+    except Exception as exc:
+        return jsonify({"detail": f"Could not create upload URL: {exc}"}), 500
+    return jsonify(
+        {
+            "object_key": object_key,
+            "upload": {"url": url, "method": "PUT", "headers": headers},
+            "expires_in": expires_in,
+        }
+    )
+
+
 @api_bp.route("/analyze", methods=["POST"])
 def start_analysis():
     """
-    Start an analysis job. Expects JSON body: { "csv_path": "...", "closings_path"?: "..." }.
-    Core analysis only requires csv_path; optional closings_path is legacy-only.
+    Start an analysis job.
+    JSON: provide exactly one of csv_path or csv_object_key; optional closings_path or closings_object_key (not both); optional as_of.
     """
     data = request.get_json() or {}
     closings_path = data.get("closings_path") or data.get("excel_path")
     csv_path = data.get("csv_path")
+    csv_object_key = data.get("csv_object_key")
+    closings_object_key = data.get("closings_object_key")
     as_of_raw = data.get("as_of")
 
-    if not csv_path:
-        return jsonify({"detail": "csv_path is required (contact history CSV)"}), 400
+    has_csv_path = bool(csv_path and str(csv_path).strip())
+    has_csv_key = bool(csv_object_key and str(csv_object_key).strip())
+    if has_csv_path == has_csv_key:
+        return jsonify(
+            {"detail": "Provide exactly one of csv_path (multipart upload) or csv_object_key (presigned upload)"}
+        ), 400
+
+    has_closings_path = bool(closings_path and str(closings_path).strip())
+    has_closings_key = bool(closings_object_key and str(closings_object_key).strip())
+    if has_closings_path and has_closings_key:
+        return jsonify(
+            {"detail": "Provide at most one of closings_path and closings_object_key"}
+        ), 400
 
     as_of: Optional[str] = None
     if as_of_raw is not None and str(as_of_raw).strip() != "":
@@ -203,19 +289,26 @@ def start_analysis():
     job_id = generate_job_id()
     created_at = datetime.now(timezone.utc).isoformat()
 
+    csv_path_clean = str(csv_path).strip() if has_csv_path else None
+    closings_path_clean = str(closings_path).strip() if has_closings_path else None
+    csv_key_clean = str(csv_object_key).strip() if has_csv_key else None
+    closings_key_clean = str(closings_object_key).strip() if has_closings_key else None
+
     analysis_jobs[job_id] = {
         "status": "pending",
         "progress": 0,
         "message": "Starting analysis...",
-        "closings_path": closings_path,
-        "csv_path": csv_path,
+        "closings_path": closings_path_clean,
+        "csv_path": csv_path_clean,
+        "closings_object_key": closings_key_clean,
+        "csv_object_key": csv_key_clean,
         "created_at": created_at,
         "as_of": as_of,
     }
 
     thread = threading.Thread(
         target=run_analysis_sync,
-        args=(job_id, closings_path, csv_path, as_of),
+        args=(job_id, closings_path_clean, csv_path_clean, as_of, closings_key_clean, csv_key_clean),
         daemon=True,
     )
     thread.start()

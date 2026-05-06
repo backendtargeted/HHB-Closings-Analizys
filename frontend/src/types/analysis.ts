@@ -112,3 +112,26 @@ export interface UploadResponse {
   csv_path: string;
   message: string;
 }
+
+export interface UploadCapabilitiesResponse {
+  presigned_upload: boolean;
+}
+
+export interface PresignUploadResponse {
+  object_key: string;
+  upload: {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+  };
+  expires_in: number;
+}
+
+/** Body for POST /api/analyze — provide exactly one csv source and at most one closings source. */
+export interface StartAnalysisParams {
+  csvPath?: string;
+  csvObjectKey?: string;
+  closingsPath?: string | null;
+  closingsObjectKey?: string | null;
+  asOf?: string | null;
+}

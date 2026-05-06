@@ -5,6 +5,9 @@ import {
   startAnalysis,
   getAnalysisStatus,
   getAnalysisResults,
+  getUploadCapabilities,
+  presignUpload,
+  putFileToPresignedUrl,
 } from '../services/api';
 import type { AnalysisCompleteResponse, AnalysisStatus } from '../types/analysis';
 
@@ -12,6 +15,13 @@ export const useAnalysis = () => {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
+  const [s3UploadPending, setS3UploadPending] = useState(false);
+
+  const { data: uploadCaps, refetch: refetchUploadCaps } = useQuery({
+    queryKey: ['upload-capabilities'],
+    queryFn: getUploadCapabilities,
+    staleTime: 60_000,
+  });
 
   const uploadMutation = useMutation({
     mutationFn: ({ closingsFile, csvFile }: { closingsFile: File | null; csvFile: File }) =>
@@ -19,15 +29,13 @@ export const useAnalysis = () => {
   });
 
   const startAnalysisMutation = useMutation({
-    mutationFn: ({
-      closingsPath,
-      csvPath,
-      asOf,
-    }: {
+    mutationFn: (params: {
       closingsPath?: string | null;
-      csvPath: string;
+      csvPath?: string;
+      csvObjectKey?: string;
+      closingsObjectKey?: string | null;
       asOf?: string | null;
-    }) => startAnalysis(closingsPath, csvPath, asOf),
+    }) => startAnalysis(params),
     onSuccess: (data) => {
       setCurrentJobId(data.job_id);
     },
@@ -59,24 +67,45 @@ export const useAnalysis = () => {
   const runAnalysis = useCallback(
     async (closingsFile: File | null, csvFile: File, asOf?: string | null) => {
       try {
-        // Upload files
-        const uploadResult = await uploadMutation.mutateAsync({
-          closingsFile,
-          csvFile,
-        });
+        const { data: caps } = await refetchUploadCaps();
+        const usePresigned = caps?.presigned_upload === true;
 
-        // Start analysis
-        await startAnalysisMutation.mutateAsync({
-          closingsPath: uploadResult.closings_path ?? uploadResult.excel_path ?? undefined,
-          csvPath: uploadResult.csv_path,
-          asOf: asOf?.trim() || undefined,
-        });
+        if (usePresigned) {
+          setS3UploadPending(true);
+          try {
+            const csvPresign = await presignUpload('csv', csvFile.name);
+            await putFileToPresignedUrl(csvFile, csvPresign.upload);
+            let closingsObjectKey: string | undefined;
+            if (closingsFile) {
+              const cPresign = await presignUpload('closings', closingsFile.name);
+              await putFileToPresignedUrl(closingsFile, cPresign.upload);
+              closingsObjectKey = cPresign.object_key;
+            }
+            await startAnalysisMutation.mutateAsync({
+              csvObjectKey: csvPresign.object_key,
+              closingsObjectKey: closingsObjectKey ?? undefined,
+              asOf: asOf?.trim() || undefined,
+            });
+          } finally {
+            setS3UploadPending(false);
+          }
+        } else {
+          const uploadResult = await uploadMutation.mutateAsync({
+            closingsFile,
+            csvFile,
+          });
+          await startAnalysisMutation.mutateAsync({
+            closingsPath: uploadResult.closings_path ?? uploadResult.excel_path ?? undefined,
+            csvPath: uploadResult.csv_path,
+            asOf: asOf?.trim() || undefined,
+          });
+        }
       } catch (error) {
         console.error('Analysis error:', error);
         throw error;
       }
     },
-    [uploadMutation, startAnalysisMutation]
+    [refetchUploadCaps, uploadMutation, startAnalysisMutation]
   );
 
   return {
@@ -86,7 +115,9 @@ export const useAnalysis = () => {
     statusMessage,
     analysisStatus,
     analysisResults,
+    presignedUpload: uploadCaps?.presigned_upload === true,
     isLoading:
+      s3UploadPending ||
       uploadMutation.isPending ||
       startAnalysisMutation.isPending ||
       analysisStatus?.status === 'running' ||
