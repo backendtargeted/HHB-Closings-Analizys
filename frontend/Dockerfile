@@ -3,7 +3,10 @@ FROM node:18-alpine as build
 WORKDIR /app
 
 # Same-origin `/api` via nginx, or full API URL for split Easypanel (browser → API directly).
-# Runtime: BACKEND_UPSTREAM=host:port for nginx proxy (default backend:8000 for compose).
+# Runtime: BACKEND_UPSTREAM=host:port for nginx /api → Gunicorn.
+#   docker compose: default backend:8000 matches service name "backend".
+#   Easypanel Swarm: set in the UI service env to your API service DNS + 8000, e.g.
+#     api:8000  or  crm-reports_api:8000  (see "docker service ls" / same-stack DNS).
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=$VITE_API_URL
 

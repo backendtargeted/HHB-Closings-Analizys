@@ -1,6 +1,7 @@
 # Processed by nginx Docker entrypoint (envsubst). Escape nginx vars as $$var.
-# BACKEND_UPSTREAM: host:port for /api proxy (compose default: backend:8000).
-# Split Easypanel: set to your API service host:port reachable from this container.
+# BACKEND_UPSTREAM: host:port for /api → Gunicorn. Default backend:8000 matches docker-compose.
+# Easypanel (Swarm): must match API task DNS from the UI container — often api:8000 or
+# crm-reports_api:8000 (stack_service). Test: docker exec -it <ui> wget -qO- http://api:8000/health
 
 server {
     listen 80;
