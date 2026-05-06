@@ -109,7 +109,11 @@ def content_type_for_upload(kind: str, filename: str) -> str:
 
 
 def generate_presigned_put(object_key: str, content_type: str) -> Tuple[str, Dict[str, str], int]:
-    """Return (url, headers_for_client, expires_in)."""
+    """Return (url, headers_for_client, expires_in).
+
+    Do not sign Content-Type in the URL signature. Reverse proxies/browsers can
+    mutate or omit this header, causing SignatureDoesNotMatch on MinIO.
+    """
     client = _client(_endpoint_public())
     expires = _presign_expires()
     url = client.generate_presigned_url(
@@ -117,12 +121,11 @@ def generate_presigned_put(object_key: str, content_type: str) -> Tuple[str, Dic
         Params={
             "Bucket": _bucket(),
             "Key": object_key,
-            "ContentType": content_type,
         },
         ExpiresIn=expires,
         HttpMethod="PUT",
     )
-    headers = {"Content-Type": content_type}
+    headers: Dict[str, str] = {}
     return url, headers, expires
 
 
