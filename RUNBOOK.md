@@ -51,6 +51,47 @@ HHB web app / API: contact-history CSV (source of truth) + optional legacy closi
 
 ---
 
+## Minimum Contact History CSV for analysis
+
+CSV-only analysis (`POST /api/analyze` with `csv_path` only) builds closed deals from **tags** on each row (`derive_closed_deals_from_csv` in `backend/app/services/analysis.py`), then matches by row index. Upload validation only checks that the file parses as CSV (`validate_csv_file`); it does **not** validate column names until analysis runs.
+
+### Columns (strict minimum to produce deals)
+
+| Column | Required? | Notes |
+|--------|------------|--------|
+| **`Tags`** | Yes | All contact, `(SF)`, list/skip, and `(CLOSED) 8020 - …` signals are read from this comma-separated field. |
+| **Address** | Yes (per deal row) | Built as `Property address` + space + `Property city`. If `Property address` is empty, the code falls back to **`Address`** only. Without a non-empty combined address after that logic, the row cannot become a derived closed deal. |
+| **`Lead Source`** / `Lead source` / `LeadSource` | No | Defaults to `"Contact History Tags"` when missing. |
+| **`Property city`** | No | Improves the displayed address when `Property address` is set. |
+
+**Legacy path:** If you upload an optional closings workbook, matching uses **`Property address`** and **`Property city`** on the CSV (`match_deals_to_csv`). Keep those columns if you use workbook matching.
+
+### Rows (trimming safely)
+
+- **One row = one tag blob:** All history for a property must stay on the **same** row’s `Tags` field. Do not split tags across removed rows.
+- **Safe size reduction:** Drop rows where `Tags` is empty.
+- **Aggressive filter (only if one export row holds the full history per closed deal):** Keep rows that contain a recognized close signal, e.g. `(CLOSED) 8020 - MM/YYYY` (or `M/YYYY`), and/or `(SF) UPDATED` / `(SF) STATUS` with a label that normalizes into converted labels in `backend/app/services/lifecycle.py`. If you remove the only row that carries a deal’s tags, that deal disappears from results.
+
+**Practical minimum export:** Headers at least `Tags`, `Property address`, `Property city` (or rely on `Address` when street is empty), optionally `Lead Source`; then apply the row filters above.
+
+---
+
+## Large uploads and reverse proxies (EasyPanel / Traefik)
+
+Large `POST /api/upload` requests can fail even when the **UI** nginx container allows a big body and long timeouts (`frontend/nginx.conf`: `client_max_body_size`, `client_body_timeout`, `proxy_*_timeout`).
+
+**Symptoms:** Small test uploads return `200`; large uploads fail around **60 seconds** with `400`/`502` from the UI hostname, while `GET /api/analyses` still works. Backend logs may show **no** request for the failed upload.
+
+**Cause:** A **front** proxy (commonly **Traefik** on the EasyPanel host) often defaults to a **~60s** responding/read timeout for the client → edge hop. The UI container’s nginx cannot override that.
+
+**Fix (operations):** In EasyPanel (or Traefik static/dynamic config for the `crm-reports-ui` route), raise responding timeouts to at least **600s** to align with UI nginx and backend Gunicorn (`backend/Dockerfile` uses a 600s worker timeout). Exact labels depend on your Traefik version; look for entrypoint or router **read timeout** / **responding timeouts** and increase them for the UI (and API if you upload directly to the API host).
+
+**Optional app-side mitigation:** UI nginx `/api` uses `proxy_request_buffering off` and `proxy_buffering off` (see `frontend/nginx.conf`) to stream multipart bodies with less temp-file buffering; redeploy the **frontend** image after changes.
+
+**Backend:** Ensure the API image is rebuilt so Gunicorn runs with high `--timeout` (see `backend/Dockerfile`).
+
+---
+
 ## Backdated playbook A — Past patches: full mapper → REISift CSV bundle
 
 **When:** You need a one-time ingest of cold calling + SMS + CRM + closings into REISift-shaped files (same outputs as the standalone marketing mapper).
@@ -136,6 +177,7 @@ Stages are computed only from tags **strictly before** each deal’s **Date Clos
 | **Stale repo docs** | `README-DEV.md` / some deployment notes may mention uvicorn/FastAPI or port 3000 for Docker — trust **docker-compose.yml** + this runbook. |
 | **`useWebSocket.ts`** | Present in frontend but **unused**; progress uses **HTTP polling**. |
 | **Tag date precision** | `(8020)`, list, skip, `(CLOSED)` use **first of month**; `(SF) UPDATED` / `(SF) STATUS` use **calendar day** (`YYYY-MM-DD`). Comparison to `Date Closed` uses the full close timestamp for the analyzed deal row. |
+| **Large CSV upload via UI / EasyPanel** | UI nginx timeouts and body size are in `frontend/nginx.conf`. If large uploads still die near **60s**, raise Traefik/EasyPanel ingress timeouts — see **Large uploads and reverse proxies (EasyPanel / Traefik)**. |
 
 ---
 
