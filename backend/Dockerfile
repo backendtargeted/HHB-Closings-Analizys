@@ -21,4 +21,5 @@ RUN mkdir -p uploads exports
 EXPOSE 8000
 
 # Run with Gunicorn
-CMD ["gunicorn", "-b", "0.0.0.0:8000", "-w", "1", "app.main:app"]
+# Large multipart uploads can take longer than the default 30s timeout.
+CMD ["gunicorn", "-b", "0.0.0.0:8000", "-w", "1", "--timeout", "600", "--graceful-timeout", "120", "app.main:app"]
