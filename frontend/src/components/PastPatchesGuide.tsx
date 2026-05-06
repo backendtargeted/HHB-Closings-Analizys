@@ -41,6 +41,12 @@ const PastPatchesGuide = () => {
         </div>
       </div>
       <p className="text-xs text-amber-900/70 mt-4 border-t border-amber-200/60 pt-3">
+        <strong>Analysis link:</strong> the <code className="font-mono">salesforce_status_tags.csv</code> file produces{' '}
+        <code className="font-mono">(SF) UPDATED …</code> / <code className="font-mono">(SF) STATUS …</code> rows in REISift.
+        After bulk import and re-export, <strong>Regular updates</strong> uses those tags in the{' '}
+        <strong>Lead lifecycle</strong> funnel and path views (along with list/skip/8020 markers).
+      </p>
+      <p className="text-xs text-amber-900/70">
         Operator checklist and import order: <code className="font-mono">RUNBOOK.md</code> in the repo.
       </p>
     </section>

@@ -17,7 +17,7 @@ HHB web app / API: Closed deals Excel + contacts CSV  →  reports + exports
 - **Mapper (standalone GUI):** `Python_Tools/7_Utilities/marketing_ingestion_mapper.py` — same logic as the in-app generator below (keep in sync until consolidated).
 - **Mapper (this repo):** `backend/app/services/marketing_mapper.py` — used by **Past patches** in the web UI: cold-calling CSV, many SMS CSVs, CRM extract, closings `.xlsx` → the four REISift-shaped CSVs.
 - **REISift**: holds property/phone + **Tags** (comma-separated history).
-- **This app**: matches closings Excel to CSV by address/city; parses **Tags** for 8020 contact lines, list purchase, skip trace, and **closing** markers (see cheat sheet).
+- **This app**: matches closings Excel to CSV by address/city; parses **Tags** for 8020 contact lines, list purchase, skip trace, **(SF) CRM** tags, and **closing** markers; derives **lead lifecycle** (funnel, paths, first-touch) for the UI and exports (see cheat sheet + `backend/app/services/lifecycle.py`).
 
 ---
 
@@ -44,8 +44,10 @@ HHB web app / API: Closed deals Excel + contacts CSV  →  reports + exports
    - Upload **closed deals Excel** + **contacts CSV**. Optional **`as_of`** filter is still supported on **`POST /api/analyze`** (not shown in the current UI).
 
 6. **Archive**
-   - Download Excel/CSV/JSON export from the UI.
+   - Download Excel/CSV/JSON export from the UI. Excel includes a **Lifecycle Events** sheet (one row per parsed tag event before close, when events exist).
    - Optionally compare two job IDs via `/api/compare`.
+
+**Saved reports:** JSON snapshots written before lifecycle fields were added will **not** include funnel/path columns; re-run analysis to populate them.
 
 ---
 
@@ -103,9 +105,23 @@ The **Past patches** screen no longer drives “as-of” analysis; use **`POST /
 | `List Purchased 8020 MM/YYYY` | Parsed; not counted in CC/SMS/DM pre-close totals |
 | `Skip Traced … MM/YYYY` | Parsed; optional “Versium”; not counted in CC/SMS/DM totals |
 | `(CLOSED) 8020 - MM/YYYY` | Closing-month marker; not counted as CC/SMS/DM |
-| `(SF) UPDATED - …` / other free text | **Not** parsed by this app’s `parse_tags` — still stored in REISift for humans / exports |
+| `(SF) UPDATED - {status} - YYYY-MM-DD` | Parsed for **lifecycle** (day precision); status label matched to engaged/converted heuristics |
+| `(SF) STATUS - {status} - YYYY-MM-DD` | Same (typically lead-created row from mapper) |
 
-**Separator:** `MM/YYYY` or `MM-YYYY` for 8020 and CLOSED lines.
+**Separator:** `MM/YYYY` or `MM-YYYY` for 8020 and CLOSED lines; `(SF)` lines use **`YYYY-MM-DD`** at the end of the tag.
+
+### Lead lifecycle stages (analysis)
+
+Stages are computed only from tags **strictly before** each deal’s **Date Closed** (except “closed deal” itself uses the Excel close date):
+
+| Stage | Signal |
+|-------|--------|
+| ACQUIRED | `List Purchased 8020 …` |
+| RESEARCHED | `Skip Traced …` |
+| FIRST_CONTACTED | First `(8020) CC\|SMS\|DM …` |
+| ENGAGED | `(SF) …` with CRM label in the engaged allow-list (`lifecycle.py`) |
+| CONVERTED | `(SF) …` with label treated as converted (e.g. `converted`) |
+| CLOSED | Deal has a close date (always true for Excel rows) — **not** used for “Highest stage” ranking |
 
 ---
 
@@ -119,7 +135,7 @@ The **Past patches** screen no longer drives “as-of” analysis; use **`POST /
 | **OpenAPI `/docs`** | This stack is **Flask**, not FastAPI — **`/docs` is 404**. |
 | **Stale repo docs** | `README-DEV.md` / some deployment notes may mention uvicorn/FastAPI or port 3000 for Docker — trust **docker-compose.yml** + this runbook. |
 | **`useWebSocket.ts`** | Present in frontend but **unused**; progress uses **HTTP polling**. |
-| **Tag day precision** | All parsed tag dates normalize to **first of month**; comparison to `Date Closed` uses full close timestamp from Excel. |
+| **Tag date precision** | `(8020)`, list, skip, `(CLOSED)` use **first of month**; `(SF) UPDATED` / `(SF) STATUS` use **calendar day** (`YYYY-MM-DD`). Comparison to `Date Closed` uses the full close timestamp from Excel. |
 
 ---
 

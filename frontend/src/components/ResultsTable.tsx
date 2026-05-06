@@ -1,5 +1,15 @@
 import { useState, useMemo } from 'react';
-import type { AnalysisResult } from '../types/analysis';
+import type { AnalysisResult, LifecycleEvent } from '../types/analysis';
+
+function formatLifecycleTooltip(events?: LifecycleEvent[] | null): string {
+  if (!events?.length) return '';
+  return events.map((e) => `${e.type}${e.label ? ` ${e.label}` : ''} (${e.date})`).join(' · ');
+}
+
+function truncatePath(s: string | null | undefined, max = 48): string {
+  if (!s) return '—';
+  return s.length <= max ? s : `${s.slice(0, max)}…`;
+}
 
 interface ResultsTableProps {
   results: AnalysisResult[];
@@ -66,6 +76,7 @@ const ResultsTable = ({ results }: ResultsTableProps) => {
                 'Address',
                 'Date_Closed',
                 'Lead_Source',
+                'Path_Sequence',
                 'Total_Contacts',
                 'CC_Count',
                 'SMS_Count',
@@ -99,6 +110,14 @@ const ResultsTable = ({ results }: ResultsTableProps) => {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {result.Lead_Source}
+                </td>
+                <td
+                  className="px-6 py-4 text-sm text-gray-700 max-w-xs align-top"
+                  title={formatLifecycleTooltip(result.Lifecycle_Events ?? undefined)}
+                >
+                  <span className="font-mono text-xs break-all max-w-[14rem] inline-block">
+                    {truncatePath(result.Path_Sequence ?? undefined)}
+                  </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-navy">
                   {result.Total_Contacts}

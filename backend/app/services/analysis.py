@@ -10,6 +10,19 @@ import os
 from typing import Dict, List, Any, Optional
 import json
 
+from .lifecycle import (
+    aggregate_lifecycle_stats,
+    build_events,
+    compute_first_touch,
+    compute_ordered_path,
+    compute_stage_funnel,
+    events_before_close,
+    events_to_jsonable,
+    first_dates_for_markers,
+    get_highest_stage,
+    sf_status_trail,
+)
+
 
 def normalize_address(address):
     """
@@ -93,6 +106,8 @@ def parse_tags(tags_str):
                 contacts.append({
                     'type': 'contact',
                     'channel': channel,
+                    'label': channel,
+                    'precision': 'month',
                     'date': contact_date.isoformat(),
                     'month': month,
                     'year': year,
@@ -111,6 +126,8 @@ def parse_tags(tags_str):
                 contacts.append({
                     'type': 'list_purchase',
                     'channel': None,
+                    'label': '',
+                    'precision': 'month',
                     'date': list_date.isoformat(),
                     'month': month,
                     'year': year,
@@ -129,6 +146,8 @@ def parse_tags(tags_str):
                 contacts.append({
                     'type': 'skip_trace',
                     'channel': None,
+                    'label': '',
+                    'precision': 'month',
                     'date': skip_date.isoformat(),
                     'month': month,
                     'year': year,
@@ -147,6 +166,8 @@ def parse_tags(tags_str):
                 contacts.append({
                     'type': 'closing',
                     'channel': None,
+                    'label': '',
+                    'precision': 'month',
                     'date': closing_date.isoformat(),
                     'month': month,
                     'year': year,
@@ -154,6 +175,50 @@ def parse_tags(tags_str):
                 })
             except ValueError:
                 continue
+
+        # Salesforce-style tags from mapper: (SF) UPDATED - <status> - YYYY-MM-DD
+        if re.match(r'^\(SF\)\s*UPDATED\s*-', tag, re.I):
+            m = re.search(r'\s-\s*(\d{4}-\d{2}-\d{2})\s*$', tag)
+            if m:
+                date_str = m.group(1)
+                head = tag[: m.start()].strip()
+                label = re.sub(r'^\(SF\)\s*UPDATED\s*-\s*', '', head, flags=re.I).strip()
+                try:
+                    dt = datetime.strptime(date_str, "%Y-%m-%d")
+                    contacts.append({
+                        'type': 'sf_updated',
+                        'channel': None,
+                        'label': label,
+                        'precision': 'day',
+                        'date': dt.isoformat(),
+                        'month': dt.month,
+                        'year': dt.year,
+                        'tag': tag,
+                    })
+                except ValueError:
+                    pass
+
+        # (SF) STATUS - <status> - YYYY-MM-DD
+        if re.match(r'^\(SF\)\s*STATUS\s*-', tag, re.I):
+            m = re.search(r'\s-\s*(\d{4}-\d{2}-\d{2})\s*$', tag)
+            if m:
+                date_str = m.group(1)
+                head = tag[: m.start()].strip()
+                label = re.sub(r'^\(SF\)\s*STATUS\s*-\s*', '', head, flags=re.I).strip()
+                try:
+                    dt = datetime.strptime(date_str, "%Y-%m-%d")
+                    contacts.append({
+                        'type': 'sf_status',
+                        'channel': None,
+                        'label': label,
+                        'precision': 'day',
+                        'date': dt.isoformat(),
+                        'month': dt.month,
+                        'year': dt.year,
+                        'tag': tag,
+                    })
+                except ValueError:
+                    pass
     
     return contacts
 
@@ -333,7 +398,19 @@ def analyze_contacts(matches: List[Dict]) -> pd.DataFrame:
                 'Days to Close': None,
                 'Days Since Last Contact': None,
                 'Contact Timeline': '',
-                'Match Found': False
+                'Match Found': False,
+                'Stages Reached': None,
+                'Highest Stage': None,
+                'Stage Dates': None,
+                'Path Sequence': '',
+                'First Touch Channel': None,
+                'Days To First Touch': None,
+                'Days To Engagement': None,
+                'SF Status Trail': None,
+                'List Purchased Date': None,
+                'Skip Traced Date': None,
+                'Closed Marker Date': None,
+                'Lifecycle Events': None,
             })
             continue
         
@@ -381,7 +458,20 @@ def analyze_contacts(matches: List[Dict]) -> pd.DataFrame:
             days_to_close = None
             days_since_last = None
             contact_timeline = 'No contacts before closing'
-        
+
+        events = build_events(contacts)
+        stages = compute_stage_funnel(events, closed_date)
+
+        stage_dates = {k: (v.get("date") if isinstance(v, dict) else None) for k, v in stages.items()}
+        path_seq = compute_ordered_path(events, closed_date)
+        ft = compute_first_touch(events, closed_date)
+        trail = sf_status_trail(events, closed_date)
+        lp_d, sk_d, cl_d = first_dates_for_markers(events, closed_date)
+        ev_bc = events_before_close(events, closed_date)
+        lifecycle_events_json = json.dumps(events_to_jsonable(ev_bc))
+
+        highest_stage = get_highest_stage(stages)
+
         results.append({
             'Address': match['address'],
             'Date Closed': closed_date.isoformat() if isinstance(closed_date, pd.Timestamp) else str(closed_date),
@@ -395,7 +485,19 @@ def analyze_contacts(matches: List[Dict]) -> pd.DataFrame:
             'Days to Close': int(days_to_close) if days_to_close is not None else None,
             'Days Since Last Contact': int(days_since_last) if days_since_last is not None else None,
             'Contact Timeline': contact_timeline,
-            'Match Found': True
+            'Match Found': True,
+            'Stages Reached': stages,
+            'Highest Stage': highest_stage,
+            'Stage Dates': json.dumps(stage_dates),
+            'Path Sequence': path_seq,
+            'First Touch Channel': ft.get('channel'),
+            'Days To First Touch': ft.get('days_list_to_first_touch'),
+            'Days To Engagement': ft.get('days_to_engagement'),
+            'SF Status Trail': json.dumps(trail),
+            'List Purchased Date': lp_d,
+            'Skip Traced Date': sk_d,
+            'Closed Marker Date': cl_d,
+            'Lifecycle Events': lifecycle_events_json,
         })
     
     return pd.DataFrame(results)
@@ -425,7 +527,12 @@ def generate_summary_stats(results_df: pd.DataFrame) -> Dict[str, Any]:
         'Average Days to Close': float(matched_results['Days to Close'].mean()) if matched_results['Days to Close'].notna().any() else None,
         'Median Days to Close': float(matched_results['Days to Close'].median()) if matched_results['Days to Close'].notna().any() else None,
     }
-    
+
+    records = results_df.replace({np.nan: None}).to_dict("records")
+    lifecycle_agg = aggregate_lifecycle_stats(records)
+    if lifecycle_agg:
+        stats.update(lifecycle_agg)
+
     return stats
 
 

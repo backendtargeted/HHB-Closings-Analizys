@@ -9,6 +9,8 @@ interface FilterPanelProps {
     maxContacts: number;
     matchFound: boolean | null;
     search: string;
+    highestStages: string[];
+    firstTouchChannels: string[];
   };
   onFiltersChange: (filters: FilterPanelProps['filters']) => void;
 }
@@ -21,6 +23,20 @@ const FilterPanel = ({ results, filters, onFiltersChange }: FilterPanelProps) =>
 
   const maxContacts = useMemo(() => {
     return Math.max(...results.map((r) => r.Total_Contacts), 0);
+  }, [results]);
+
+  const uniqueHighestStages = useMemo(() => {
+    const s = new Set(
+      results.map((r) => r.Highest_Stage).filter((v): v is string => Boolean(v && String(v).trim()))
+    );
+    return Array.from(s).sort();
+  }, [results]);
+
+  const uniqueFirstTouch = useMemo(() => {
+    const s = new Set(
+      results.map((r) => (r.First_Touch_Channel == null ? 'None' : r.First_Touch_Channel))
+    );
+    return Array.from(s).sort();
   }, [results]);
 
   return (
@@ -115,6 +131,66 @@ const FilterPanel = ({ results, filters, onFiltersChange }: FilterPanelProps) =>
           <span className="text-xs text-gray-500">Leave max empty for no limit</span>
         </div>
       </div>
+
+      {/* Highest lifecycle stage */}
+      {uniqueHighestStages.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Highest stage reached
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {uniqueHighestStages.map((stage) => (
+              <button
+                key={stage}
+                type="button"
+                onClick={() => {
+                  const next = filters.highestStages.includes(stage)
+                    ? filters.highestStages.filter((x) => x !== stage)
+                    : [...filters.highestStages, stage];
+                  onFiltersChange({ ...filters, highestStages: next });
+                }}
+                className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                  filters.highestStages.includes(stage)
+                    ? 'bg-navy text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {stage}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* First touch channel */}
+      {uniqueFirstTouch.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            First touch channel
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {uniqueFirstTouch.map((ch) => (
+              <button
+                key={ch}
+                type="button"
+                onClick={() => {
+                  const next = filters.firstTouchChannels.includes(ch)
+                    ? filters.firstTouchChannels.filter((x) => x !== ch)
+                    : [...filters.firstTouchChannels, ch];
+                  onFiltersChange({ ...filters, firstTouchChannels: next });
+                }}
+                className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                  filters.firstTouchChannels.includes(ch)
+                    ? 'bg-navy text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {ch}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Match Status */}
       <div>

@@ -25,7 +25,18 @@ const MethodologySection = () => {
             <strong className="text-stone-800">Contact counts:</strong> The Tags column is parsed for patterns like <code className="bg-stone-100 px-1 rounded">(8020) CC - MM-YYYY</code>, <code className="bg-stone-100 px-1 rounded">(8020) SMS - MM-YYYY</code>, and <code className="bg-stone-100 px-1 rounded">(8020) DM - MM-YYYY</code>. Only contacts with a date <strong>before</strong> each deal&apos;s Date Closed are counted. CC_Count, SMS_Count, and DM_Count are the per-channel totals; Total_Contacts is their sum. Tags like <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020 - MM/YYYY</code> are recognized for REISift backfills but do not add to those channel counts.
           </p>
           <p>
-            <strong className="text-stone-800">Summary stats:</strong> Match rate is the share of deals with at least one matching CSV record. Averages and medians are over Total_Contacts for matched deals. Channel totals (Total CC/SMS/DM Contacts) are the sum of those counts across all matched deals. Average/Median Days to Close use the time from first contact to Date Closed when available.
+            <strong className="text-stone-800">Other tag families:</strong>{' '}
+            <code className="bg-stone-100 px-1 rounded">List Purchased 8020 MM/YYYY</code>,{' '}
+            <code className="bg-stone-100 px-1 rounded">Skip Traced … MM/YYYY</code>,{' '}
+            <code className="bg-stone-100 px-1 rounded">(SF) UPDATED - status - YYYY-MM-DD</code>, and{' '}
+            <code className="bg-stone-100 px-1 rounded">(SF) STATUS - status - YYYY-MM-DD</code> are parsed for the{' '}
+            <strong>lead lifecycle</strong> section (funnel, top paths, first-touch channel). They do not increase CC/SMS/DM counts. After importing CRM tags via Past patches, re-export contacts so these appear in the Tags column.
+          </p>
+          <p>
+            <strong className="text-stone-800">Lifecycle stages:</strong> Acquired → Researched → First contacted → Engaged (SF labels in an allow-list) → Converted (e.g. converted). &quot;Highest stage&quot; ignores the trivial always-on closed row; see <code className="bg-stone-100 px-1 rounded">backend/app/services/lifecycle.py</code> for label sets.
+          </p>
+          <p>
+            <strong className="text-stone-800">Summary stats:</strong> Match rate is the share of deals with at least one matching CSV record. Averages and medians are over Total_Contacts for matched deals. Channel totals (Total CC/SMS/DM Contacts) are the sum of those counts across all matched deals. Average/Median Days to Close use the time from first contact to Date Closed when available. Older saved reports may omit lifecycle stats until you run a new analysis.
           </p>
         </div>
       )}

@@ -247,9 +247,37 @@ def _optional_float(val):
         return None
 
 
+def _json_maybe(val):
+    if val is None:
+        return None
+    if isinstance(val, (dict, list)):
+        return val
+    if isinstance(val, str) and not str(val).strip():
+        return None
+    try:
+        return json.loads(val)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _normalize_stages(stages):
+    """Coerce nested stage dicts for Pydantic (e.g. numpy bool from DataFrame)."""
+    if stages is None or not isinstance(stages, dict):
+        return None
+    out = {}
+    for k, v in stages.items():
+        if isinstance(v, dict):
+            out[k] = {"reached": bool(v.get("reached")), "date": v.get("date")}
+    return out or None
+
+
 def _transform_result(r: dict) -> dict:
     """Transform result dict to match API model field names."""
-    return {
+    stages = _normalize_stages(r.get("Stages Reached"))
+    lev = _json_maybe(r.get("Lifecycle Events"))
+    if lev == []:
+        lev = None
+    out = {
         "Address": r.get("Address", ""),
         "Date_Closed": r.get("Date Closed", ""),
         "Lead_Source": r.get("Lead Source", ""),
@@ -263,7 +291,20 @@ def _transform_result(r: dict) -> dict:
         "Days_Since_Last_Contact": _optional_int(r.get("Days Since Last Contact")),
         "Contact_Timeline": r.get("Contact Timeline", ""),
         "Match_Found": r.get("Match Found", False),
+        "Stages_Reached": stages,
+        "Highest_Stage": r.get("Highest Stage"),
+        "Stage_Dates": _json_maybe(r.get("Stage Dates")),
+        "Path_Sequence": r.get("Path Sequence"),
+        "First_Touch_Channel": r.get("First Touch Channel"),
+        "Days_To_First_Touch": _optional_int(r.get("Days To First Touch")),
+        "Days_To_Engagement": _optional_int(r.get("Days To Engagement")),
+        "SF_Status_Trail": _json_maybe(r.get("SF Status Trail")),
+        "List_Purchased_Date": r.get("List Purchased Date"),
+        "Skip_Traced_Date": r.get("Skip Traced Date"),
+        "Closed_Marker_Date": r.get("Closed Marker Date"),
+        "Lifecycle_Events": lev,
     }
+    return out
 
 
 def _transform_stats(s: dict) -> dict:
@@ -282,6 +323,19 @@ def _transform_stats(s: dict) -> dict:
         "Total_DM_Contacts": s.get("Total DM Contacts", 0),
         "Average_Days_to_Close": _optional_float(s.get("Average Days to Close")),
         "Median_Days_to_Close": _optional_float(s.get("Median Days to Close")),
+        "Funnel_Acquired_Count": _optional_int(s.get("Funnel Acquired Count")),
+        "Funnel_Researched_Count": _optional_int(s.get("Funnel Researched Count")),
+        "Funnel_First_Contacted_Count": _optional_int(s.get("Funnel First Contacted Count")),
+        "Funnel_Engaged_Count": _optional_int(s.get("Funnel Engaged Count")),
+        "Funnel_Converted_Count": _optional_int(s.get("Funnel Converted Count")),
+        "Funnel_Acquired_Rate_Pct": _optional_float(s.get("Funnel Acquired Rate Pct")),
+        "Funnel_Researched_Rate_Pct": _optional_float(s.get("Funnel Researched Rate Pct")),
+        "Funnel_First_Contact_Rate_Pct": _optional_float(s.get("Funnel First Contact Rate Pct")),
+        "Funnel_Engaged_Rate_Pct": _optional_float(s.get("Funnel Engaged Rate Pct")),
+        "Funnel_Converted_Rate_Pct": _optional_float(s.get("Funnel Converted Rate Pct")),
+        "Engaged_To_Converted_Rate_Pct": _optional_float(s.get("Engaged To Converted Rate Pct")),
+        "Top_Paths_Json": s.get("Top Paths Json"),
+        "First_Touch_Breakdown_Json": s.get("First Touch Breakdown Json"),
     }
 
 
@@ -363,6 +417,20 @@ def export_results(job_id: str):
             results_df.to_excel(writer, sheet_name="Detailed Results", index=False)
             stats_data = [{"Metric": k, "Value": v} for k, v in result["stats"].items()]
             pd.DataFrame(stats_data).to_excel(writer, sheet_name="Summary Statistics", index=False)
+            long_rows: List[Dict[str, Any]] = []
+            for _, row in results_df.iterrows():
+                addr = row.get("Address")
+                raw_ev = row.get("Lifecycle Events")
+                events = _json_maybe(raw_ev) if raw_ev is not None else None
+                if isinstance(events, list):
+                    for i, ev in enumerate(events):
+                        if isinstance(ev, dict):
+                            row_out = dict(ev)
+                            row_out["Address"] = addr
+                            row_out["Order"] = i + 1
+                            long_rows.append(row_out)
+            if long_rows:
+                pd.DataFrame(long_rows).to_excel(writer, sheet_name="Lifecycle Events", index=False)
         return send_file(
             output_path,
             as_attachment=True,
