@@ -1,0 +1,365 @@
+phone,address,city,state,zip,tag
+,40 Buttercup Lane,Levittown,New York,11756.0,(CLOSED) 8020 - 12/2025
+,237 Beaver Drive,Mastic Beach,New York,11951.0,(CLOSED) 8020 - 11/2025
+,18 Oakdale Place,Massapequa Park,New York,11762.0,(CLOSED) 8020 - 12/2025
+,101 Home Street,North Bellmore,New York,11710.0,(CLOSED) 8020 - 10/2025
+,119 Grant Boulevard,North Bellmore,New York,11710.0,(CLOSED) 8020 - 12/2025
+,163 Crest Avenue,Elmont,New York,11003.0,(CLOSED) 8020 - 12/2025
+,14 Carlton Avenue,Mastic,New York,11950.0,(CLOSED) 8020 - 12/2025
+,161 Grand Avenue,Freeport,New York,11520.0,(CLOSED) 8020 - 10/2025
+,39 Handsome Avenue,Sayville,New York,11782.0,(CLOSED) 8020 - 12/2025
+,1367 Pine Acres Boulevard,Bay Shore,New York,11706.0,(CLOSED) 8020 - 12/2025
+,633 7th Street,West Babylon,New York,11704.0,(CLOSED) 8020 - 12/2025
+,340 Half Mile Road,Central Islip,New York,11722.0,(CLOSED) 8020 - 12/2025
+,14 Garfield Place,Lindenhurst,New York,11757.0,(CLOSED) 8020 - 12/2025
+,1233 Front Street,Uniondale,New York,11553.0,(CLOSED) 8020 - 11/2025
+,55 Moore Avenue,Oceanside,New York,11572.0,(CLOSED) 8020 - 12/2025
+,372 Main Street,Setauket- East Setauket,New York,11733.0,(CLOSED) 8020 - 11/2025
+,1 Martin Court,Coram,New York,11727.0,(CLOSED) 8020 - 10/2025
+,7 Kristin Court,Bay Shore,New York,11706.0,(CLOSED) 8020 - 11/2025
+,368 Main Street,Setauket- East Setauket,New York,11733.0,(CLOSED) 8020 - 11/2025
+,32 Everett Street,Lynbrook,New York,11563.0,(CLOSED) 8020 - 11/2025
+,27 Silo Lane,Levittown,New York,11756.0,(CLOSED) 8020 - 11/2025
+,886 Bellmore Avenue,North Bellmore,New York,11710.0,(CLOSED) 8020 - 12/2025
+,59 Manchester Road,Huntington,New York,11743.0,(CLOSED) 8020 - 11/2025
+,44 16th Street,Wading River,New York,11792.0,(CLOSED) 8020 - 12/2025
+,73 Maple Avenue,Shirley,New York,11967.0,(CLOSED) 8020 - 10/2025
+,73 Elaine Drive,Oceanside,New York,11572.0,(CLOSED) 8020 - 12/2025
+,15 Corchaug Trail,Ridge,New York,11961.0,(CLOSED) 8020 - 11/2025
+,18 Cove Drive,Sound Beach,New York,11789.0,(CLOSED) 8020 - 11/2025
+,160 Stony Hollow Road,Greenlawn,New York,11740.0,(CLOSED) 8020 - 11/2025
+,171 Stony Hollow Road,Greenlawn,New York,11740.0,(CLOSED) 8020 - 12/2025
+,102 Camille Lane,East Patchogue,New York,11772.0,(CLOSED) 8020 - 10/2025
+,10 Walter Avenue,Hicksville,New York,11801.0,(CLOSED) 8020 - 10/2025
+,18 Doane Avenue,Port Jefferson Station,New York,11776.0,(CLOSED) 8020 - 12/2025
+,14 Lloyd Lane,Nesconset,New York,11767.0,(CLOSED) 8020 - 11/2025
+,150-17 108th Avenue,Queens,New York,11433.0,(CLOSED) 8020 - 12/2025
+,69 Poplar Street,Port Jefferson Station,New York,11776.0,(CLOSED) 8020 - 9/2025
+,37 Lancaster Place,Hempstead,New York,11550.0,(CLOSED) 8020 - 9/2025
+,52 Daly Road,East Northport,New York,11731.0,(CLOSED) 8020 - 11/2025
+,24 East 15th Street,Huntington Station,New York,11746.0,(CLOSED) 8020 - 10/2025
+,13 Evelyn Road,Port Washington,New York,11050.0,(CLOSED) 8020 - 11/2025
+,25 Mayfair Avenue,Floral Park,New York,11001.0,(CLOSED) 8020 - 11/2025
+,23 Cherry Street,East Northport,New York,11731.0,(CLOSED) 8020 - 11/2025
+,499 Silver Street,West Babylon,New York,11704.0,(CLOSED) 8020 - 9/2025
+,39 Acacia Avenue,Hempstead,New York,11550.0,(CLOSED) 8020 - 8/2025
+,45 Glade Lane,Levittown,New York,11756.0,(CLOSED) 8020 - 8/2025
+,45 Lion Lane,Westbury,New York,11590.0,(CLOSED) 8020 - 9/2025
+,30 Leyden Street,Huntington Station,New York,11746.0,(CLOSED) 8020 - 9/2025
+,333 Sylvan Lane,Westbury,New York,11590.0,(CLOSED) 8020 - 11/2025
+,120 Lena Avenue,Freeport,New York,11520.0,(CLOSED) 8020 - 11/2025
+,178 Beverly Road,Huntington Station,New York,11746.0,(CLOSED) 8020 - 9/2025
+,5 Warren Place,Plainview,New York,11803.0,(CLOSED) 8020 - 7/2025
+,17 Bellport Road,Mastic Beach,New York,11951.0,(CLOSED) 8020 - 8/2025
+,17 Rodney Place,Amityville,New York,11701.0,(CLOSED) 8020 - 12/2025
+,8 Rockaway Avenue,Westbury,New York,11590.0,(CLOSED) 8020 - 8/2025
+,19 Ivy Street,Farmingdale,New York,11735.0,(CLOSED) 8020 - 8/2025
+,127 Norfleet Lane,Medford,New York,11763.0,(CLOSED) 8020 - 9/2025
+,355 Sylvan Lane,Westbury,New York,11590.0,(CLOSED) 8020 - 9/2025
+,30 Shell Road,Rocky Point,New York,11778.0,(CLOSED) 8020 - 8/2025
+,1030 Prospect Avenue,Westbury,New York,11590.0,(CLOSED) 8020 - 9/2025
+,43 Harmon Street,Long Beach,New York,11561.0,(CLOSED) 8020 - 9/2025
+,73 Midwood Avenue,South Farmingdale,New York,11735.0,(CLOSED) 8020 - 8/2025
+,2052 Central Drive North,East Meadow,New York,11554.0,(CLOSED) 8020 - 9/2025
+,20 Arlington Terrace,Lake Grove,New York,11755.0,(CLOSED) 8020 - 7/2025
+,45 Ronald Drive East,Amityville,New York,11701.0,(CLOSED) 8020 - 7/2025
+,332 Jamaica Boulevard,Carle Place,New York,11514.0,(CLOSED) 8020 - 7/2025
+,8 North Westbury Road,Hampton Bays,New York,11946.0,(CLOSED) 8020 - 8/2025
+,24 Calvert Avenue,West Babylon,New York,11704.0,(CLOSED) 8020 - 8/2025
+,191 Laurel Road,East Northport,New York,11731.0,(CLOSED) 8020 - 8/2025
+,44 Willis Avenue,Merrick,New York,11566.0,(CLOSED) 8020 - 8/2025
+,398 Glen Drive,Shirley,New York,11967.0,(CLOSED) 8020 - 8/2025
+,72 Woodside Avenue,Freeport,New York,11520.0,(CLOSED) 8020 - 7/2025
+,1423 9th Street,West Babylon,New York,11704.0,(CLOSED) 8020 - 7/2025
+,1 Adelaide Street,Huntington Station,New York,11746.0,(CLOSED) 8020 - 7/2025
+,56 Pennaquid Road,Coram,New York,11727.0,(CLOSED) 8020 - 12/2025
+,11 Forest Lane,Westbury,New York,11590.0,(CLOSED) 8020 - 7/2025
+,470 Miller Avenue,Freeport,New York,11520.0,(CLOSED) 8020 - 10/2025
+,28 Lexington Avenue,Brentwood,New York,11717.0,(CLOSED) 8020 - 7/2025
+,24 Laura Drive,Centereach,New York,11720.0,(CLOSED) 8020 - 6/2025
+,1222 Powell Avenue,North Merrick,New York,11566.0,(CLOSED) 8020 - 7/2025
+,6 Youngs Lane,Setauket- East Setauket,New York,11733.0,(CLOSED) 8020 - 8/2025
+,5075 Main Road,Laurel,New York,11948.0,(CLOSED) 8020 - 6/2025
+,42 Kirkwood Road,Port Washington,New York,11050.0,(CLOSED) 8020 - 6/2025
+,8933 238th Street,Queens,New York,11426.0,(CLOSED) 8020 - 6/2025
+,219 Front Avenue,Brentwood,New York,11717.0,(CLOSED) 8020 - 5/2025
+,38 Pond Lane,Levittown,New York,11756.0,(CLOSED) 8020 - 3/2025
+,35 Cotton Lane,Levittown,New York,11756.0,(CLOSED) 8020 - 3/2025
+,215 West Marie Street,Hicksville,New York,11801.0,(CLOSED) 8020 - 1/2025
+,112 Old Oak Lane,Levittown,New York,11756.0,(CLOSED) 8020 - 1/2025
+,547 Taylor Avenue,East Patchogue,New York,11772.0,(CLOSED) 8020 - 5/2025
+,8 Storz Place,Lindenhurst,New York,11757.0,(CLOSED) 8020 - 8/2025
+,2723 Jerusalem Avenue,North Bellmore,New York,11710.0,(CLOSED) 8020 - 6/2025
+,148 Claywood Drive,Brentwood,New York,11717.0,(CLOSED) 8020 - 6/2025
+,24 Madison Avenue,Hempstead,New York,11550.0,(CLOSED) 8020 - 8/2025
+,11 Cobbler Lane,Setauket- East Setauket,New York,11733.0,(CLOSED) 8020 - 6/2025
+,254 East Columbia Street,Hempstead,New York,11550.0,(CLOSED) 8020 - 7/2025
+,3423 Park Avenue,Wantagh,New York,11793.0,(CLOSED) 8020 - 5/2025
+,90 Selden Boulevard,Centereach,New York,11720.0,(CLOSED) 8020 - 4/2025
+,29 Patience Lane,Westbury,New York,11590.0,(CLOSED) 8020 - 6/2025
+,136 Serpentine Lane,Islandia,New York,11749.0,(CLOSED) 8020 - 1/2025
+,48 Sperry Court,New Hyde Park,New York,11040.0,(CLOSED) 8020 - 8/2025
+,3690 Lufberry Avenue,Wantagh,New York,11793.0,(CLOSED) 8020 - 6/2025
+,9 Wakefield Avenue,Coram,New York,11727.0,(CLOSED) 8020 - 5/2025
+,31 Libby Avenue,Hicksville,New York,11801.0,(CLOSED) 8020 - 5/2025
+,268 Grand Avenue,Freeport,New York,11520.0,(CLOSED) 8020 - 5/2025
+,7 Ford Drive West,Massapequa,New York,11758.0,(CLOSED) 8020 - 5/2025
+,1110 Terrace Boulevard,New Hyde Park,New York,11040.0,(CLOSED) 8020 - 5/2025
+,581 South 14th Street,Lindenhurst,New York,11757.0,(CLOSED) 8020 - 2/2025
+,125 Fairview Boulevard,Hempstead,New York,11550.0,(CLOSED) 8020 - 3/2025
+,5 Dearborn Avenue,Patchogue,New York,11772.0,(CLOSED) 8020 - 5/2025
+,17 Susan Drive,Bellport,New York,11713.0,(CLOSED) 8020 - 6/2025
+,10 Anne Drive,Selden,New York,11784.0,(CLOSED) 8020 - 4/2025
+,640 Wyngate Drive East,Valley Stream,New York,11580.0,(CLOSED) 8020 - 6/2025
+,101 Charles Avenue,Massapequa Park,New York,11762.0,(CLOSED) 8020 - 5/2025
+,1115 North Broadway,Massapequa,New York,11758.0,(CLOSED) 8020 - 4/2025
+,11 Haug Drive,Lake Ronkonkoma,New York,11779.0,(CLOSED) 8020 - 1/2025
+,43 Bowdoin Road,Centereach,New York,11720.0,(CLOSED) 8020 - 11/2025
+,2737 Sheila Court,East Meadow,New York,11554.0,(CLOSED) 8020 - 7/2025
+,6 Connetquot Drive,Oakdale,New York,11769.0,(CLOSED) 8020 - 5/2025
+,143 Walter Avenue,Hauppauge,New York,11788.0,(CLOSED) 8020 - 2/2025
+,179 Hazelwood Drive,Westbury,New York,11590.0,(CLOSED) 8020 - 5/2025
+,69 Laurelton Drive,Mastic Beach,New York,11951.0,(CLOSED) 8020 - 5/2025
+,69 14th Street,Hicksville,New York,11801.0,(CLOSED) 8020 - 2/2025
+,136 Balsam Lane,Levittown,New York,11756.0,(CLOSED) 8020 - 6/2025
+,253 West 24th Street,Deer Park,New York,11729.0,(CLOSED) 8020 - 2/2025
+,6 Pompano Lane,Massapequa Park,New York,11762.0,(CLOSED) 8020 - 4/2025
+,125 Patchogue Avenue,Mastic,New York,11950.0,(CLOSED) 8020 - 1/2025
+,80 Margaret Drive,Coram,New York,11727.0,(CLOSED) 8020 - 2/2025
+,62 Lambert Avenue,Farmingdale,New York,11735.0,(CLOSED) 8020 - 1/2025
+,1131 Campagnoli Avenue,Copiague,New York,11726.0,(CLOSED) 8020 - 2/2025
+,656 North Delaware Avenue,Lindenhurst,New York,11757.0,(CLOSED) 8020 - 4/2025
+,2183 Bright Avenue,East Meadow,New York,11554.0,(CLOSED) 8020 - 3/2025
+,50 Squires Avenue,East Quogue,New York,11942.0,(CLOSED) 8020 - 6/2025
+,98 Paula Boulevard,Selden,New York,11784.0,(CLOSED) 8020 - 3/2025
+,454 Columbus Avenue,East Patchogue,New York,11772.0,(CLOSED) 8020 - 1/2025
+,23 Monty Place,Shirley,New York,11967.0,(CLOSED) 8020 - 3/2025
+,82 Fulton Avenue,Mastic,New York,11950.0,(CLOSED) 8020 - 1/2025
+,7 Ashleigh Court,Glen Cove,New York,11542.0,(CLOSED) 8020 - 3/2025
+,2144 Ocean Avenue,Ronkonkoma,New York,11779.0,(CLOSED) 8020 - 4/2025
+,327 North Forest Avenue,Rockville Centre,New York,11570.0,(CLOSED) 8020 - 2/2025
+,51 Stevenson Road,Hewlett,New York,11557.0,(CLOSED) 8020 - 1/2025
+,32 Thorne Avenue,Hempstead,New York,11550.0,(CLOSED) 8020 - 2/2025
+,17 Pompano Lane,Massapequa Park,New York,11762.0,(CLOSED) 8020 - 3/2025
+,21 Turnip Hill Street,Northport,New York,11768.0,(CLOSED) 8020 - 1/2025
+,28 Beverly Road,South Farmingdale,New York,11735.0,(CLOSED) 8020 - 1/2025
+,42 Smith Street,Glen Head,New York,11545.0,(CLOSED) 8020 - 2/2025
+,63 Harmony Drive,Massapequa Park,New York,11762.0,(CLOSED) 8020 - 1/2025
+,1404 Middle Country Road,Centereach,New York,11720.0,(CLOSED) 8020 - 6/2025
+,2386 Marlboro Street,East Meadow,New York,11554.0,(CLOSED) 8020 - 2/2025
+,165 Wavecrest Drive,Mastic Beach,New York,11951.0,(CLOSED) 8020 - 6/2025
+,181 Locust Drive,Bay Shore,New York,11706.0,(CLOSED) 8020 - 2/2025
+,37 Cedar Branch Street,Middle Island,New York,11953.0,(CLOSED) 8020 - 7/2025
+,732 Woodside Drive,Wantagh,New York,11793.0,(CLOSED) 8020 - 2/2025
+,47 Dayton Avenue,Holtsville,New York,11742.0,(CLOSED) 8020 - 4/2025
+,45 Rotterdam Street,Huntington,New York,11743.0,(CLOSED) 8020 - 5/2025
+,248 East Shore Road,Lindenhurst,New York,11757.0,(CLOSED) 8020 - 1/2025
+,34 Whittier Drive,Mastic Beach,New York,11951.0,(CLOSED) 8020 - 1/2025
+,35 Florence Avenue,Freeport,New York,11520.0,(CLOSED) 8020 - 3/2025
+,136 Beach 117th Street,Queens,New York,11694.0,(CLOSED) 8020 - 10/2025
+,46 Locust Drive,Nesconset,New York,11767.0,(CLOSED) 8020 - 4/2025
+51624111700,71 Dean Street,North Babylon,,11703.0,(CLOSED) 8020 - 12/2025
+51624111700,100 Hickory Road,Mastic Beach,,11951.0,(CLOSED) 8020 - 12/2025
+51624111700,14 Carlton Avenue,Mastic,,11950.0,(CLOSED) 8020 - 12/2025
+,340 Half Mile Road,Central Islip,,11722.0,(CLOSED) 8020 - 12/2025
+51624111700,26 Rosedale Avenue,Freeport,,11520.0,(CLOSED) 8020 - 12/2025
+51624111700,25 Mayfair Avenue,Floral Park,,11001.0,(CLOSED) 8020 - 11/2025
+51624111700,45 Lion Lane,Westbury,,11590.0,(CLOSED) 8020 - 9/2025
+51624111700,24 Calvert Avenue,West Babylon,,11704.0,(CLOSED) 8020 - 8/2025
+51624111700,48 Sperry Court,New Hyde Park,,11040.0,(CLOSED) 8020 - 8/2025
+51624111700,136 Beach 117th Street,Queens,,11694.0,(CLOSED) 8020 - 10/2025
+51624111700,6 Pompano Lane,Massapequa Park,,11762.0,(CLOSED) 8020 - 4/2025
+51624111700,253 West 24th Street,Deer Park,,11729.0,(CLOSED) 8020 - 2/2025
+51624111700,136 Balsam Lane,Levittown,,11756.0,(CLOSED) 8020 - 6/2025
+51624111700,69 14th Street,Hicksville,,11801.0,(CLOSED) 8020 - 2/2025
+,69 Laurelton Drive,Mastic Beach,,11951.0,(CLOSED) 8020 - 5/2025
+51624111700,175 Franklin Avenue,Malverne,,11565.0,(CLOSED) 8020 - 12/2025
+,63 Harmony Drive,Massapequa Park,,11762.0,(CLOSED) 8020 - 1/2025
+,42 Smith Street,Glen Head,,11545.0,(CLOSED) 8020 - 2/2025
+51624111700,51 Stevenson Road,Hewlett,,11557.0,(CLOSED) 8020 - 1/2025
+51624111700,327 North Forest Avenue,Rockville Centre,,11570.0,(CLOSED) 8020 - 2/2025
+51624111700,2144 Ocean Avenue,Ronkonkoma,,11779.0,(CLOSED) 8020 - 4/2025
+51624111700,7 Ashleigh Court,Glen Cove,,11542.0,(CLOSED) 8020 - 3/2025
+51624111700,52 Coles Street,Glen Cove,,11542.0,(CLOSED) 8020 - 12/2025
+51624111700,82 Fulton Avenue,Mastic,,11950.0,(CLOSED) 8020 - 1/2025
+63184063550,704 South 5th Street,Lindenhurst,,11757.0,(CLOSED) 8020 - 12/2025
+51624111700,268 Grand Avenue,Freeport,,11520.0,(CLOSED) 8020 - 5/2025
+,31 Libby Avenue,Hicksville,,11801.0,(CLOSED) 8020 - 5/2025
+51624111700,9 Wakefield Avenue,Coram,,11727.0,(CLOSED) 8020 - 5/2025
+51624111700,267 Ellery Street,Brentwood,,11717.0,(CLOSED) 8020 - 12/2025
+,3690 Lufberry Avenue,Wantagh,,11793.0,(CLOSED) 8020 - 6/2025
+63184063550,15 Herbert Court,Mastic,,11950.0,(CLOSED) 8020 - 12/2025
+63173957630,52 Spar Drive,Mastic Beach,,11951.0,(CLOSED) 8020 - 12/2025
+51624111700,136 Serpentine Lane,Islandia,,11749.0,(CLOSED) 8020 - 1/2025
+63184063550,29 Patience Lane,Westbury,,11590.0,(CLOSED) 8020 - 6/2025
+51624111700,90 Selden Boulevard,Centereach,,11720.0,(CLOSED) 8020 - 4/2025
+51624111700,3423 Park Avenue,Wantagh,,11793.0,(CLOSED) 8020 - 5/2025
+63184063550,254 East Columbia Street,Hempstead,,11550.0,(CLOSED) 8020 - 7/2025
+51624111700,11 Cobbler Lane,Setauket- East Setauket,,11733.0,(CLOSED) 8020 - 6/2025
+51624111700,45 Rotterdam Street,Huntington,,11743.0,(CLOSED) 8020 - 5/2025
+51624111700,8 Rockaway Avenue,Westbury,,11590.0,(CLOSED) 8020 - 8/2025
+51624111700,17 Rodney Place,Amityville,,11701.0,(CLOSED) 8020 - 12/2025
+51624111700,17 Bellport Road,Mastic Beach,,11951.0,(CLOSED) 8020 - 8/2025
+51624111700,5 Warren Place,Plainview,,11803.0,(CLOSED) 8020 - 7/2025
+51624111700,178 Beverly Road,Huntington Station,,11746.0,(CLOSED) 8020 - 9/2025
+51624111700,120 Lena Avenue,Freeport,,11520.0,(CLOSED) 8020 - 11/2025
+51624111700,333 Sylvan Lane,Westbury,,11590.0,(CLOSED) 8020 - 11/2025
+51624111700,30 Leyden Street,Huntington Station,,11746.0,(CLOSED) 8020 - 9/2025
+63174744020,45 Glade Lane,Levittown,,11756.0,(CLOSED) 8020 - 8/2025
+51624111700,39 Acacia Avenue,Hempstead,,11550.0,(CLOSED) 8020 - 8/2025
+51624111700,499 Silver Street,West Babylon,,11704.0,(CLOSED) 8020 - 9/2025
+51624111700,23 Cherry Street,East Northport,,11731.0,(CLOSED) 8020 - 11/2025
+51624111700,13 Evelyn Road,Port Washington,,11050.0,(CLOSED) 8020 - 11/2025
+51624111700,24 East 15th Street,Huntington Station,,11746.0,(CLOSED) 8020 - 10/2025
+51624111700,52 Daly Road,East Northport,,11731.0,(CLOSED) 8020 - 11/2025
+51624111700,37 Lancaster Place,Hempstead,,11550.0,(CLOSED) 8020 - 9/2025
+51624111700,69 Poplar Street,Port Jefferson Station,,11776.0,(CLOSED) 8020 - 9/2025
+63184063550,150-17 108th Avenue,Queens,,11433.0,(CLOSED) 8020 - 12/2025
+51624111700,14 Lloyd Lane,Nesconset,,11767.0,(CLOSED) 8020 - 11/2025
+51624111700,18 Doane Avenue,Port Jefferson Station,,11776.0,(CLOSED) 8020 - 12/2025
+51624111700,10 Walter Avenue,Hicksville,,11801.0,(CLOSED) 8020 - 10/2025
+51624111700,102 Camille Lane,East Patchogue,,11772.0,(CLOSED) 8020 - 10/2025
+51624111700,171 Stony Hollow Road,Greenlawn,,11740.0,(CLOSED) 8020 - 12/2025
+51624111700,160 Stony Hollow Road,Greenlawn,,11740.0,(CLOSED) 8020 - 11/2025
+51624111700,18 Cove Drive,Sound Beach,,11789.0,(CLOSED) 8020 - 11/2025
+51624111700,15 Corchaug Trail,Ridge,,11961.0,(CLOSED) 8020 - 11/2025
+51624111700,73 Elaine Drive,Oceanside,,11572.0,(CLOSED) 8020 - 12/2025
+51624111700,35 Maple Avenue,Bellport,,11713.0,(CLOSED) 8020 - 12/2025
+51624111700,179 Cranberry Drive,Mastic Beach,,11951.0,(CLOSED) 8020 - 12/2025
+51624111700,73 Maple Avenue,Shirley,,11967.0,(CLOSED) 8020 - 10/2025
+51624111700,26 Silver Street,Patchogue,,11772.0,(CLOSED) 8020 - 12/2025
+51624111700,44 16th Street,Wading River,,11792.0,(CLOSED) 8020 - 12/2025
+51624111700,30 Oakdale Avenue,Central Islip,,11722.0,(CLOSED) 8020 - 12/2025
+51624111700,59 Manchester Road,Huntington,,11743.0,(CLOSED) 8020 - 11/2025
+51624111700,886 Bellmore Avenue,North Bellmore,,11710.0,(CLOSED) 8020 - 12/2025
+51624111700,207 Deer Road,Ronkonkoma,,11779.0,(CLOSED) 8020 - 12/2025
+51624111700,27 Silo Lane,Levittown,,11756.0,(CLOSED) 8020 - 11/2025
+51624111700,32 Everett Street,Lynbrook,,11563.0,(CLOSED) 8020 - 11/2025
+,368 Main Street,Setauket- East Setauket,,11733.0,(CLOSED) 8020 - 11/2025
+,372 Main Street,Setauket- East Setauket,,11733.0,(CLOSED) 8020 - 11/2025
+51624111700,7 Kristin Court,Bay Shore,,11706.0,(CLOSED) 8020 - 11/2025
+,1 Martin Court,Coram,,11727.0,(CLOSED) 8020 - 10/2025
+51624111700,55 Moore Avenue,Oceanside,,11572.0,(CLOSED) 8020 - 12/2025
+63184063550,1233 Front Street,Uniondale,,11553.0,(CLOSED) 8020 - 11/2025
+,14 Garfield Place,Lindenhurst,,11757.0,(CLOSED) 8020 - 12/2025
+63184063550,68 Coppersmith Road,Levittown,,11756.0,(CLOSED) 8020 - 12/2025
+51624111700,11 Haug Drive,Lake Ronkonkoma,,11779.0,(CLOSED) 8020 - 1/2025
+51624111700,1115 North Broadway,Massapequa,,11758.0,(CLOSED) 8020 - 4/2025
+,101 Charles Avenue,Massapequa Park,,11762.0,(CLOSED) 8020 - 5/2025
+51624111700,640 Wyngate Drive East,Valley Stream,,11580.0,(CLOSED) 8020 - 6/2025
+51624111700,10 Anne Drive,Selden,,11784.0,(CLOSED) 8020 - 4/2025
+51624111700,46 Locust Drive,Nesconset,,11767.0,(CLOSED) 8020 - 4/2025
+,35 Florence Avenue,Freeport,,11520.0,(CLOSED) 8020 - 3/2025
+51624111700,34 Whittier Drive,Mastic Beach,,11951.0,(CLOSED) 8020 - 1/2025
+51624111700,47 Dayton Avenue,Holtsville,,11742.0,(CLOSED) 8020 - 4/2025
+51624111700,732 Woodside Drive,Wantagh,,11793.0,(CLOSED) 8020 - 2/2025
+51624111700,37 Cedar Branch Street,Middle Island,,11953.0,(CLOSED) 8020 - 7/2025
+51624111700,181 Locust Drive,Bay Shore,,11706.0,(CLOSED) 8020 - 2/2025
+51624111700,165 Wavecrest Drive,Mastic Beach,,11951.0,(CLOSED) 8020 - 6/2025
+,2386 Marlboro Street,East Meadow,,11554.0,(CLOSED) 8020 - 2/2025
+,1404 Middle Country Road,Centereach,,11720.0,(CLOSED) 8020 - 6/2025
+51624111700,28 Beverly Road,South Farmingdale,,11735.0,(CLOSED) 8020 - 1/2025
+51624111700,1043 East 104th Street,Brooklyn,,11236.0,(CLOSED) 8020 - 12/2025
+51624111700,21 Turnip Hill Street,Northport,,11768.0,(CLOSED) 8020 - 1/2025
+51624111700,100 Maple Court,Roslyn,,11576.0,(CLOSED) 8020 - 12/2025
+51624111700,17 Pompano Lane,Massapequa Park,,11762.0,(CLOSED) 8020 - 3/2025
+51624111700,32 Thorne Avenue,Hempstead,,11550.0,(CLOSED) 8020 - 2/2025
+63184063550,219 Front Avenue,Brentwood,,11717.0,(CLOSED) 8020 - 5/2025
+51624111700,378 East 58th Street,Brooklyn,,11203.0,(CLOSED) 8020 - 12/2025
+51624111700,23 Monty Place,Shirley,,11967.0,(CLOSED) 8020 - 3/2025
+51624111700,454 Columbus Avenue,East Patchogue,,11772.0,(CLOSED) 8020 - 1/2025
+51624111700,98 Paula Boulevard,Selden,,11784.0,(CLOSED) 8020 - 3/2025
+51624111700,50 Squires Avenue,East Quogue,,11942.0,(CLOSED) 8020 - 6/2025
+51624111700,2183 Bright Avenue,East Meadow,,11554.0,(CLOSED) 8020 - 3/2025
+51624111700,656 North Delaware Avenue,Lindenhurst,,11757.0,(CLOSED) 8020 - 4/2025
+51624111700,1131 Campagnoli Avenue,Copiague,,11726.0,(CLOSED) 8020 - 2/2025
+63173957630,73 Midwood Avenue,South Farmingdale,,11735.0,(CLOSED) 8020 - 8/2025
+63173957630,19 Ivy Street,Farmingdale,,11735.0,(CLOSED) 8020 - 8/2025
+51624111700,62 Lambert Avenue,Farmingdale,,11735.0,(CLOSED) 8020 - 1/2025
+51624111700,80 Margaret Drive,Coram,,11727.0,(CLOSED) 8020 - 2/2025
+51624111700,125 Patchogue Avenue,Mastic,,11950.0,(CLOSED) 8020 - 1/2025
+51624111700,300 Private Road 8,East Marion,,11939.0,(CLOSED) 8020 - 12/2025
+51624111700,76 Lido Promenade E,Lindenhurst,,11757.0,(CLOSED) 8020 - 12/2025
+51624111700,56 Bennetts Road,Setauket- East Setauket,,11733.0,(CLOSED) 8020 - 12/2025
+51624111700,179 Hazelwood Drive,Westbury,,11590.0,(CLOSED) 8020 - 5/2025
+51624111700,61 Parkway Boulevard,Wyandanch,,11798.0,(CLOSED) 8020 - 12/2025
+51624111700,17 Riverside Avenue,Mastic Beach,,11951.0,(CLOSED) 8020 - 12/2025
+51624111700,2289 Stewart Avenue,Westbury,,11590.0,(CLOSED) 8020 - 12/2025
+,143 Walter Avenue,Hauppauge,,11788.0,(CLOSED) 8020 - 2/2025
+51624111700,130-49 232nd Street,Queens,,11413.0,(CLOSED) 8020 - 12/2025
+51624111700,6 Connetquot Drive,Oakdale,,11769.0,(CLOSED) 8020 - 5/2025
+63184063550,2737 Sheila Court,East Meadow,,11554.0,(CLOSED) 8020 - 7/2025
+51624111700,43 Bowdoin Road,Centereach,,11720.0,(CLOSED) 8020 - 11/2025
+,24 Madison Avenue,Hempstead,,11550.0,(CLOSED) 8020 - 8/2025
+51624111700,148 Claywood Drive,Brentwood,,11717.0,(CLOSED) 8020 - 6/2025
+51624111700,204 Carnation Drive,Farmingdale,,11735.0,(CLOSED) 8020 - 12/2025
+51624111700,2723 Jerusalem Avenue,North Bellmore,,11710.0,(CLOSED) 8020 - 6/2025
+51624111700,8 Storz Place,Lindenhurst,,11757.0,(CLOSED) 8020 - 8/2025
+51624111700,547 Taylor Avenue,East Patchogue,,11772.0,(CLOSED) 8020 - 5/2025
+51624111700,112 Old Oak Lane,Levittown,,11756.0,(CLOSED) 8020 - 1/2025
+63174744020,215 West Marie Street,Hicksville,,11801.0,(CLOSED) 8020 - 1/2025
+,35 Cotton Lane,Levittown,,11756.0,(CLOSED) 8020 - 3/2025
+,38 Pond Lane,Levittown,,11756.0,(CLOSED) 8020 - 3/2025
+51624111700,8933 238th Street,Queens,,11426.0,(CLOSED) 8020 - 6/2025
+51624111700,42 Kirkwood Road,Port Washington,,11050.0,(CLOSED) 8020 - 6/2025
+51624111700,5075 Main Road,Laurel,,11948.0,(CLOSED) 8020 - 6/2025
+51624111700,6 Youngs Lane,Setauket- East Setauket,,11733.0,(CLOSED) 8020 - 8/2025
+51624111700,1222 Powell Avenue,North Merrick,,11566.0,(CLOSED) 8020 - 7/2025
+51624111700,24 Laura Drive,Centereach,,11720.0,(CLOSED) 8020 - 6/2025
+,28 Lexington Avenue,Brentwood,,11717.0,(CLOSED) 8020 - 7/2025
+,470 Miller Avenue,Freeport,,11520.0,(CLOSED) 8020 - 10/2025
+51624111700,6 Chestnut St,Central Islip,,11722.0,(CLOSED) 8020 - 1/2025
+51624111700,11 Forest Lane,Westbury,,11590.0,(CLOSED) 8020 - 7/2025
+51624111700,56 Pennaquid Road,Coram,,11727.0,(CLOSED) 8020 - 12/2025
+51624111700,1 Adelaide Street,Huntington Station,,11746.0,(CLOSED) 8020 - 7/2025
+51624111700,1423 9th Street,West Babylon,,11704.0,(CLOSED) 8020 - 7/2025
+51624111700,72 Woodside Avenue,Freeport,,11520.0,(CLOSED) 8020 - 7/2025
+,203 Massachusetts Avenue,Massapequa,,11758.0,(CLOSED) 8020 - 12/2025
+51624111700,398 Glen Drive,Shirley,,11967.0,(CLOSED) 8020 - 8/2025
+51624111700,44 Willis Avenue,Merrick,,11566.0,(CLOSED) 8020 - 8/2025
+51624111700,191 Laurel Road,East Northport,,11731.0,(CLOSED) 8020 - 8/2025
+51624111700,259 Covert Street,Westbury,,11590.0,(CLOSED) 8020 - 12/2025
+63184063550,8 North Westbury Road,Hampton Bays,,11946.0,(CLOSED) 8020 - 8/2025
+,332 Jamaica Boulevard,Carle Place,,11514.0,(CLOSED) 8020 - 7/2025
+51624111700,1610 2nd Street,West Babylon,,11704.0,(CLOSED) 8020 - 12/2025
+51624111700,45 Ronald Drive East,Amityville,,11701.0,(CLOSED) 8020 - 7/2025
+51624111700,20 Arlington Terrace,Lake Grove,,11755.0,(CLOSED) 8020 - 7/2025
+51624111700,2052 Central Drive North,East Meadow,,11554.0,(CLOSED) 8020 - 9/2025
+51624111700,43 Harmon Street,Long Beach,,11561.0,(CLOSED) 8020 - 9/2025
+51624111700,1030 Prospect Avenue,Westbury,,11590.0,(CLOSED) 8020 - 9/2025
+51624111700,30 Shell Road,Rocky Point,,11778.0,(CLOSED) 8020 - 8/2025
+,355 Sylvan Lane,Westbury,,11590.0,(CLOSED) 8020 - 9/2025
+51624111700,127 Norfleet Lane,Medford,,11763.0,(CLOSED) 8020 - 9/2025
+51624111700,17 Susan Drive,Bellport,,11713.0,(CLOSED) 8020 - 6/2025
+51624111700,5 Dearborn Avenue,Patchogue,,11772.0,(CLOSED) 8020 - 5/2025
+51624111700,125 Fairview Boulevard,Hempstead,,11550.0,(CLOSED) 8020 - 3/2025
+51624111700,85 Hawthorne Street,Selden,,11784.0,(CLOSED) 8020 - 12/2025
+51624111700,581 South 14th Street,Lindenhurst,,11757.0,(CLOSED) 8020 - 2/2025
+51624111700,1110 Terrace Boulevard,New Hyde Park,,11040.0,(CLOSED) 8020 - 5/2025
+51624111700,7 Ford Drive West,Massapequa,,11758.0,(CLOSED) 8020 - 5/2025
+63184063550,63 Levey Boulevard,Wyandanch,,11798.0,(CLOSED) 8020 - 12/2025
+51624111700,633 7th Street,West Babylon,,11704.0,(CLOSED) 8020 - 12/2025
+51624111700,1367 Pine Acres Boulevard,Bay Shore,,11706.0,(CLOSED) 8020 - 12/2025
+51624111700,39 Handsome Avenue,Sayville,,11782.0,(CLOSED) 8020 - 12/2025
+51624111700,3 Ware Avenue,Huntington,,11743.0,(CLOSED) 8020 - 12/2025
+51624111700,161 Grand Avenue,Freeport,,11520.0,(CLOSED) 8020 - 10/2025
+63184063550,163 Crest Avenue,Elmont,,11003.0,(CLOSED) 8020 - 12/2025
+51624111700,287 Clearmeadow Drive,East Meadow,,11554.0,(CLOSED) 8020 - 12/2025
+51624111700,119 Grant Boulevard,North Bellmore,,11710.0,(CLOSED) 8020 - 12/2025
+,101 Home Street,North Bellmore,,11710.0,(CLOSED) 8020 - 10/2025
+,18 Oakdale Place,Massapequa Park,,11762.0,(CLOSED) 8020 - 12/2025
+,237 Beaver Drive,Mastic Beach,,11951.0,(CLOSED) 8020 - 11/2025
+51624111700,1 Gables Boulevard,Setauket- East Setauket,,11733.0,(CLOSED) 8020 - 12/2025
+51630531100,40 Buttercup Lane,Levittown,,11756.0,(CLOSED) 8020 - 12/2025
+51624111700,213 West 24th Street,Deer Park,,11729.0,(CLOSED) 8020 - 12/2025
+63184063550,161 Baisley Avenue,East Rockaway,,11518.0,(CLOSED) 8020 - 12/2025
+51624111700,8 Sherwood Road,Glen Cove,,11542.0,(CLOSED) 8020 - 12/2025
+51624111700,45 Merokee Place,Farmingdale,,11735.0,(CLOSED) 8020 - 12/2025
+51624111700,30 Fairview Boulevard,Hempstead,,11550.0,(CLOSED) 8020 - 12/2025
+51624111700,194 Central Park Road,Plainview,,11803.0,(CLOSED) 8020 - 12/2025
+51624111700,7 Rugby Road,Westbury,,11590.0,(CLOSED) 8020 - 12/2025
+51624111700,82 Roses Grove Road,Southampton,,11968.0,(CLOSED) 8020 - 12/2025
+51624111700,1 Hudson Court,Lynbrook,,11563.0,(CLOSED) 8020 - 12/2025
+51624111700,510 Albern Avenue,Oceanside,,11572.0,(CLOSED) 8020 - 12/2025
+51624111700,248 East Shore Road,Lindenhurst,,11757.0,(CLOSED) 8020 - 1/2025
+51624111700,48 Hillside Ave,Freeport,,11520.0,(CLOSED) 8020 - 12/2025

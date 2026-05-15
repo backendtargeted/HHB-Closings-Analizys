@@ -1,0 +1,48 @@
+{
+  "stamp_utc": "20260515T143340Z",
+  "merge_note": "Merged adapted Podio closings (159 rows) with Tina Closed+Executed (205 rows) \u2192 364 rows after dedupe by address_key+month.",
+  "inputs": {
+    "podio_closings": "D:\\HHB-Closings-Analizys\\Data_ingestion_samples\\past_patches\\podio\\Closings - Last view used.xlsx",
+    "tina_opportunities_report": "D:\\HHB-Closings-Analizys\\Data_ingestion_samples\\past_patches\\podio\\New Opportunities Report - Tina-2026-05-14-10-01-03.xlsx",
+    "adapted_podio_rows": 159,
+    "tina_closed_executed_rows": 205,
+    "merged_rows_before_tags": 364,
+    "closings_tag_rows": 364,
+    "adapted_skipped_no_date": 170,
+    "usaddress_fallback_rows": 0,
+    "charles_sms_rows_prepared": 173419,
+    "opportunity_sidecar_all_rows": 2364
+  },
+  "allow_unmapped": true,
+  "cold_unmapped": [
+    "prank voicemail",
+    "transfer",
+    "unknown"
+  ],
+  "sms_unmapped": [],
+  "crm_unmapped": [
+    "dead call / dead deal"
+  ],
+  "crm_metrics": {
+    "crm_total_rows": 2198,
+    "crm_matched_by_phone": 0,
+    "crm_matched_by_address": 883,
+    "cold_overrides_applied": 2365,
+    "sms_overrides_applied": 178,
+    "crm_unmatched_rows": 1315,
+    "sf_tags_created_total": 125,
+    "sf_tags_created_status": 6,
+    "sf_tags_created_updated": 119,
+    "sf_skipped_updated_on": 764,
+    "sf_skipped_created_date": 0
+  },
+  "csv_paths": [
+    "D:\\HHB-Closings-Analizys\\_ingest_out\\20260515T143340Z_podio_closings_opps\\csv\\property_status_updates.csv",
+    "D:\\HHB-Closings-Analizys\\_ingest_out\\20260515T143340Z_podio_closings_opps\\csv\\phone_status_tags_updates.csv",
+    "D:\\HHB-Closings-Analizys\\_ingest_out\\20260515T143340Z_podio_closings_opps\\csv\\salesforce_status_tags.csv",
+    "D:\\HHB-Closings-Analizys\\_ingest_out\\20260515T143340Z_podio_closings_opps\\csv\\closings_status_tags.csv"
+  ],
+  "zip_path": "D:\\HHB-Closings-Analizys\\_ingest_out\\20260515T143340Z_podio_closings_opps\\reisift_import.zip",
+  "zip_bytes": 7144868,
+  "lead_source_sidecar_rows": 159
+}

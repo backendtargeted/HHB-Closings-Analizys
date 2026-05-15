@@ -29,8 +29,11 @@ npm run dev
 #### Backend
 ```bash
 cd backend
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+pip install -r requirements.txt
+python -m flask --app app.main run --host 0.0.0.0 --port 8000 --debug
 ```
+
+This stack is **Flask**, not FastAPI — there is no `/docs` OpenAPI UI on the backend.
 
 #### Frontend (in a new terminal)
 ```bash
@@ -64,7 +67,8 @@ npm run dev
 ## Access Points
 
 Once both servers are running:
-- **Frontend**: http://localhost:3000
+- **Frontend (local Vite)**: http://localhost:3000
+- **Frontend (Docker compose)**: http://localhost:3300
 - **Backend API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 - **API Alternative Docs**: http://localhost:8000/redoc
@@ -110,5 +114,5 @@ pip install -r requirements.txt
 - Backend auto-reloads on file changes (thanks to `--reload` flag)
 - Frontend hot-reloads automatically (Vite feature)
 - Check browser console and terminal for errors
-- Backend logs appear in the terminal running uvicorn
+- Backend logs appear in the terminal running Flask
 - Frontend logs appear in the terminal running npm

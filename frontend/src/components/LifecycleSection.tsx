@@ -140,7 +140,7 @@ const LifecycleSection = ({ stats }: LifecycleSectionProps) => {
       {tab === 'paths' && (
         <div className="space-y-3">
           <p className="text-xs text-stone-500">
-            Top ordered tag paths (deduped) before close. Median days use first 8020 contact → close.
+            Top ordered tag paths before close. Paths collapse consecutive identical steps; identical tag tokens on one row are deduped when parsing Tags. Median days use first 8020 contact → close. See docs/REPORT_METHODOLOGY.md.
           </p>
           {paths.length === 0 ? (
             <p className="text-sm text-stone-600">No path data.</p>

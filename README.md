@@ -2,19 +2,18 @@
 
 A modern web application for analyzing contact history for closed deals, built with React + Vite frontend and Flask backend.
 
-**Operations:** See [RUNBOOK.md](RUNBOOK.md) for the full marketing → REISift → analysis pipeline, backdated closings/CRM playbooks, and optional **as-of** snapshots.
+**Operations:** [RUNBOOK.md](RUNBOOK.md) — marketing → REISift → analysis pipeline, playbooks, API.
+
+**Report methodology:** [docs/REPORT_METHODOLOGY.md](docs/REPORT_METHODOLOGY.md) — how tags are parsed, deduped, matched, counted, and turned into lifecycle metrics.
 
 ## Features
 
-- **Interactive File Upload**: Drag-and-drop interface for Excel and CSV files
-- **Real-time Progress**: Polling-based progress updates during analysis
-- **Interactive Charts**: Visualizations using Recharts
-  - Contact count distribution
-  - Channel breakdown (CC, SMS, DM)
-- **Advanced Filtering**: Filter results by lead source, contact count, match status, and search
-- **Export Options**: Export results as Excel, CSV, or JSON
-- **Responsive Design**: Mobile-friendly interface with Tailwind CSS
-- **Brand Identity**: Custom styling with navy blue (#1B3A57) and gold (#F4B942)
+- **Contact-history analysis**: Derives closed deals from REISift **`Tags`** (optional legacy closings workbook)
+- **Past patches**: Generate four REISift import CSVs (property/phone/SF tags/closings markers) from cold, SMS, CRM, closings inputs
+- **Lead lifecycle**: Funnel stages, paths, first-touch, SF status trail from parsed tags
+- **Resumable uploads**: Chunked large CSV upload via API (see RUNBOOK)
+- **Interactive UI**: Charts (CC/SMS/DM), filters, Excel/CSV/JSON export (includes Lifecycle Events sheet)
+- **Tag dedupe**: Identical tag tokens on one row are counted once (see methodology doc)
 
 ## Tech Stack
 
@@ -66,29 +65,33 @@ docker-compose up --build
 ```
 
 This will start both backend and frontend services:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
+- Frontend: http://localhost:3300 (nginx; API proxied at `/api`)
+- Backend API: http://localhost:8000 (direct; UI uses same-origin `/api` in Docker)
 
 ## Usage
 
-1. Upload your closed deals Excel file and contact history CSV file
-2. Click "Run Analysis" to start the analysis
-3. View real-time progress updates
-4. Explore results with interactive charts and filters
-5. Export results in your preferred format
+1. **Regular analysis:** Export contacts from REISift (must include **`Tags`** and address columns). Upload the CSV in **Regular updates**. Closed deals are derived from tags such as `(CLOSED) 8020 - MM/YYYY` unless you use the legacy closings workbook path.
+2. **Historical backfill (optional):** Use **Past patches** to build a REISift import zip, import into REISift, re-export, then analyze.
+3. Run analysis, review lifecycle and contact counts, export Excel/CSV/JSON.
+
+See [docs/REPORT_METHODOLOGY.md](docs/REPORT_METHODOLOGY.md) for counting rules and matching behavior.
 
 ## Project Structure
 
 ```
 .
+├── docs/
+│   └── REPORT_METHODOLOGY.md   # How closings reports are computed
+├── RUNBOOK.md                  # Operator workflows
 ├── backend/
 │   ├── app/
 │   │   ├── api/          # API routes and models
-│   │   ├── services/     # Business logic
+│   │   ├── services/     # analysis, lifecycle, marketing_mapper, cadence_from_history
 │   │   ├── utils/        # Utility functions
 │   │   └── main.py       # Flask application
 │   ├── requirements.txt
 │   └── Dockerfile
+├── scripts/              # One-time ingest + cadence probe CLIs
 ├── frontend/
 │   ├── src/
 │   │   ├── components/   # React components

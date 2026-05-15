@@ -77,10 +77,33 @@ def filter_closed_deals_by_as_of(closed_deals: pd.DataFrame, as_of_date: str) ->
     return closed_deals.loc[mask].copy().reset_index(drop=True)
 
 
+def _dedupe_parsed_tag_events(parsed: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    One row per logical event: duplicate tokens in Tags (e.g. double REISift import)
+    share the same (type, month-level date, channel, label) and are counted once.
+    """
+    seen: set = set()
+    out: List[Dict[str, Any]] = []
+    for p in parsed:
+        key = (
+            str(p.get("type", "")),
+            str(p.get("date", "")),
+            str(p.get("channel") or ""),
+            str(p.get("label") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out
+
+
 def parse_tags(tags_str):
     """
     Parse the Tags column to extract contact information.
     Returns a list of dictionaries with contact details.
+    Identical logical events (same type, date, channel, label) are returned once
+    so duplicate comma-separated tokens do not inflate counts.
     """
     if pd.isna(tags_str) or tags_str == '':
         return []
@@ -222,7 +245,7 @@ def parse_tags(tags_str):
                 except ValueError:
                     pass
     
-    return contacts
+    return _dedupe_parsed_tag_events(contacts)
 
 
 def parse_closings_address(full_address):

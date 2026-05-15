@@ -10,7 +10,7 @@ You have existing containers running (`hhboffers-*`) on ports:
 
 Your new **Contact Attribution Analysis** app uses:
 - **8000** (Backend API)
-- **3000** (Frontend)
+- **3300** (Frontend — nginx in Docker; maps to container port 80)
 
 ✅ **No port conflicts** - safe to deploy alongside existing containers.
 

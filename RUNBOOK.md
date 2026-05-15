@@ -19,6 +19,8 @@ HHB web app / API: contact-history CSV (source of truth) + optional legacy closi
 - **REISift**: holds property/phone + **Tags** (comma-separated history).
 - **This app**: runs CSV-first analysis from **Tags** (and optionally uses legacy closings workbook input); parses 8020 contact lines, list purchase, skip trace, **(SF) CRM** tags, and **closing** markers; derives **lead lifecycle** (funnel, paths, first-touch) for the UI and exports (see cheat sheet + `backend/app/services/lifecycle.py`).
 
+**Report methodology (deep dive):** [docs/REPORT_METHODOLOGY.md](docs/REPORT_METHODOLOGY.md) — tag parsing, dedupe rules, matching, counting, lifecycle, exports, and experimental cadence probes.
+
 ---
 
 ## Standard monthly process
@@ -137,6 +139,8 @@ None for baseline operation (works out-of-the-box with local upload storage).
 4. **Download REISift import bundle** (or individual CSVs). Confirm column shapes against REISift’s bulk-import docs.
 5. Import into REISift; re-export contacts; run **Regular updates** analysis in this app.
 
+**One-time Podio backfill (scripts, not UI):** When closings live in Podio exports rather than legacy Report `.xlsx` with address columns, use `scripts/one_time_podio_closings_opps_tags_bundle.py` (Podio Closings + Tina New Opportunities Closed/Executed merge) or `scripts/one_time_samples_reisift_zip.py` (Podio Closings only). Artifacts under `_ingest_out/`. See [docs/REPORT_METHODOLOGY.md §11](docs/REPORT_METHODOLOGY.md#11-one-time-podio--offline-ingest-scripts).
+
 ---
 
 ## Backdated playbook B — Old CRM → Historical Salesforce-style tags
@@ -175,6 +179,8 @@ The **Past patches** screen no longer drives “as-of” analysis; use **`POST /
 | `(SF) UPDATED - {status} - YYYY-MM-DD` | Parsed for **lifecycle** (day precision); status label matched to engaged/converted heuristics |
 | `(SF) STATUS - {status} - YYYY-MM-DD` | Same (typically lead-created row from mapper) |
 
+**Duplicate tags:** If REISift (or a double import) leaves the **same** token twice in `Tags`, the parser dedupes by `(type, date, channel, label)` so CC/SMS/DM totals and lifecycle are not inflated. See [docs/REPORT_METHODOLOGY.md §4.2](docs/REPORT_METHODOLOGY.md#42-duplicate-tag-deduplication).
+
 **Separator:** `MM/YYYY` or `MM-YYYY` for 8020 and CLOSED lines; `(SF)` lines use **`YYYY-MM-DD`** at the end of the tag.
 
 ### Lead lifecycle stages (analysis)
@@ -204,6 +210,18 @@ Stages are computed only from tags **strictly before** each deal’s **Date Clos
 | **`useWebSocket.ts`** | Present in frontend but **unused**; progress uses **HTTP polling**. |
 | **Tag date precision** | `(8020)`, list, skip, `(CLOSED)` use **first of month**; `(SF) UPDATED` / `(SF) STATUS` use **calendar day** (`YYYY-MM-DD`). Comparison to `Date Closed` uses the full close timestamp for the analyzed deal row. |
 | **Large CSV upload via UI / EasyPanel** | UI nginx timeouts and body size are in `frontend/nginx.conf`. If large uploads still die near **60s**, raise Traefik/EasyPanel ingress timeouts — see **Large uploads and reverse proxies (EasyPanel / Traefik)**. |
+
+---
+
+## Experimental: cadence probes (offline)
+
+**Not** part of the web UI report. Uses the same tag parser to summarize **days between consecutive events** on a REISift export — useful when designing future outreach cadences (see Data Orchestration / Golden Loop brainstorm).
+
+```bash
+python scripts/probe_contact_cadence_from_csv.py --csv path/to/export.csv --limit 2000 --mode before_close
+```
+
+Module: `backend/app/services/cadence_from_history.py`. `(8020)` tags are month-granular; `(SF)` day tags improve gap resolution. Details: [docs/REPORT_METHODOLOGY.md §12](docs/REPORT_METHODOLOGY.md#12-experimental-cadence-from-history).
 
 ---
 

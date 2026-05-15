@@ -44,10 +44,11 @@ const PastPatchesGuide = () => {
         <strong>Analysis link:</strong> the <code className="font-mono">salesforce_status_tags.csv</code> file produces{' '}
         <code className="font-mono">(SF) UPDATED …</code> / <code className="font-mono">(SF) STATUS …</code> rows in REISift.
         After bulk import and re-export, <strong>Regular updates</strong> uses those tags in the{' '}
-        <strong>Lead lifecycle</strong> funnel and path views (along with list/skip/8020 markers).
+        <strong>Lead lifecycle</strong> funnel and path views (along with list/skip/8020 markers). Duplicate identical tags on one row are counted once in reports.
       </p>
       <p className="text-xs text-amber-900/70">
-        Operator checklist and import order: <code className="font-mono">RUNBOOK.md</code> in the repo.
+        Operator checklist: <code className="font-mono">RUNBOOK.md</code>. Report rules: <code className="font-mono">docs/REPORT_METHODOLOGY.md</code>.
+        One-time Podio backfills: <code className="font-mono">scripts/one_time_podio_closings_opps_tags_bundle.py</code> (see RUNBOOK playbook A).
       </p>
     </section>
   );

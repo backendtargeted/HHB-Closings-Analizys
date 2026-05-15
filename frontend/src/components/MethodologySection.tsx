@@ -16,27 +16,40 @@ const MethodologySection = () => {
       {isOpen && (
         <div className="px-4 pb-4 pt-1 text-stone-600 text-sm space-y-3 border-t border-stone-100">
           <p>
-            <strong className="text-stone-800">Data sources:</strong> Core analysis runs from the contact-history CSV using the <code className="bg-stone-100 px-1 rounded">Tags</code> column. Closed deals are derived from tags such as <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020 - MM/YYYY</code> and converted-style SF status tags. Optional closings workbook upload is legacy-only.
+            <strong className="text-stone-800">Data sources:</strong> Core analysis runs from the contact-history CSV using the{' '}
+            <code className="bg-stone-100 px-1 rounded">Tags</code> column. Closed deals are derived from tags such as{' '}
+            <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020 - MM/YYYY</code> and converted-style SF status tags. Optional closings workbook upload is legacy-only (address-based match).
           </p>
           <p>
-            <strong className="text-stone-800">Matching:</strong> When a legacy closings workbook is provided, deals are matched to CSV rows by normalizing addresses (lowercase, standard abbreviations, no punctuation) and optional city. If no exact match is found, we try a partial street match, then street number plus city.
+            <strong className="text-stone-800">Matching:</strong> CSV-only mode attaches each deal to the same export row (by row index). Legacy workbook mode matches by normalized address and city, with partial-street and street-number fallbacks.
           </p>
           <p>
-            <strong className="text-stone-800">Contact counts:</strong> The Tags column is parsed for patterns like <code className="bg-stone-100 px-1 rounded">(8020) CC - MM-YYYY</code>, <code className="bg-stone-100 px-1 rounded">(8020) SMS - MM-YYYY</code>, and <code className="bg-stone-100 px-1 rounded">(8020) DM - MM-YYYY</code>. Only contacts with a date <strong>before</strong> each deal&apos;s Date Closed are counted. CC_Count, SMS_Count, and DM_Count are the per-channel totals; Total_Contacts is their sum. Tags like <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020 - MM/YYYY</code> are recognized for REISift backfills but do not add to those channel counts.
+            <strong className="text-stone-800">Contact counts:</strong> Tags matching{' '}
+            <code className="bg-stone-100 px-1 rounded">(8020) CC|SMS|DM - MM/YYYY</code> are counted only when their date is{' '}
+            <strong>before</strong> the deal&apos;s Date Closed. CC, SMS, and DM counts sum to Total Contacts.{' '}
+            <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020</code>, list purchase, skip trace, and{' '}
+            <code className="bg-stone-100 px-1 rounded">(SF)</code> tags do not add to channel totals.
+          </p>
+          <p>
+            <strong className="text-stone-800">Duplicate tags:</strong> If the same tag token appears twice on one row (e.g. after a double REISift import), identical events are deduplicated by type, date, channel, and label so counts are not doubled.
           </p>
           <p>
             <strong className="text-stone-800">Other tag families:</strong>{' '}
-            <code className="bg-stone-100 px-1 rounded">List Purchased 8020 MM/YYYY</code>,{' '}
-            <code className="bg-stone-100 px-1 rounded">Skip Traced … MM/YYYY</code>,{' '}
-            <code className="bg-stone-100 px-1 rounded">(SF) UPDATED - status - YYYY-MM-DD</code>, and{' '}
-            <code className="bg-stone-100 px-1 rounded">(SF) STATUS - status - YYYY-MM-DD</code> are parsed for the{' '}
-            <strong>lead lifecycle</strong> section (funnel, top paths, first-touch channel). They do not increase CC/SMS/DM counts. After importing CRM tags via Past patches, re-export contacts so these appear in the Tags column.
+            <code className="bg-stone-100 px-1 rounded">List Purchased 8020</code>,{' '}
+            <code className="bg-stone-100 px-1 rounded">Skip Traced</code>, and{' '}
+            <code className="bg-stone-100 px-1 rounded">(SF) UPDATED|STATUS</code> drive the{' '}
+            <strong>lead lifecycle</strong> funnel, paths, and SF trail. Import CRM history via Past patches, then re-export contacts so these appear in Tags.
           </p>
           <p>
-            <strong className="text-stone-800">Lifecycle stages:</strong> Acquired → Researched → First contacted → Engaged (SF labels in an allow-list) → Converted (e.g. converted). &quot;Highest stage&quot; ignores the trivial always-on closed row; see <code className="bg-stone-100 px-1 rounded">backend/app/services/lifecycle.py</code> for label sets.
+            <strong className="text-stone-800">Lifecycle stages:</strong> Acquired → Researched → First contacted → Engaged (SF allow-list) → Converted. Stages use tags strictly before Date Closed. &quot;Highest stage&quot; excludes the always-on closed stage. Path strings dedupe only consecutive identical steps.
           </p>
           <p>
-            <strong className="text-stone-800">Summary stats:</strong> Match rate is the share of deals with at least one matching CSV record. Averages and medians are over Total_Contacts for matched deals. Channel totals (Total CC/SMS/DM Contacts) are the sum of those counts across all matched deals. Average/Median Days to Close use the time from first contact to Date Closed when available. Older saved reports may omit lifecycle stats until you run a new analysis.
+            <strong className="text-stone-800">Summary stats:</strong> Match rate = deals with a matched CSV row. Channel totals sum per-deal counts across matched deals. Month-granular 8020 tags use the first of the month internally; SF tags use calendar days.
+          </p>
+          <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">
+            Full methodology: repo{' '}
+            <code className="bg-stone-100 px-1 rounded">docs/REPORT_METHODOLOGY.md</code> and operator{' '}
+            <code className="bg-stone-100 px-1 rounded">RUNBOOK.md</code>.
           </p>
         </div>
       )}
