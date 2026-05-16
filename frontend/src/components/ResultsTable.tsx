@@ -75,6 +75,7 @@ const ResultsTable = ({ results }: ResultsTableProps) => {
               {[
                 'Address',
                 'Date_Closed',
+                'Date_Under_Contract',
                 'Lead_Source',
                 'Path_Sequence',
                 'Total_Contacts',
@@ -107,6 +108,11 @@ const ResultsTable = ({ results }: ResultsTableProps) => {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {result.Date_Closed ? new Date(result.Date_Closed).toLocaleDateString() : '-'}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {result.Date_Under_Contract
+                    ? new Date(result.Date_Under_Contract).toLocaleDateString()
+                    : '-'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {result.Lead_Source}

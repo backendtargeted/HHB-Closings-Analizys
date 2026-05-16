@@ -10,8 +10,12 @@ import os
 from typing import Dict, List, Any, Optional
 import json
 
+from .closing_resolution import (
+    filter_closings_by_stage,
+    resolve_milestones_from_parsed,
+    use_legacy_min_close_date,
+)
 from .lifecycle import (
-    CONVERTED_LABELS,
     aggregate_lifecycle_stats,
     build_events,
     compute_first_touch,
@@ -23,7 +27,6 @@ from .lifecycle import (
     get_highest_stage,
     sf_status_trail,
 )
-from .marketing_mapper import normalize_status
 
 
 def normalize_address(address):
@@ -385,7 +388,9 @@ def match_deals_to_csv(closed_deals: pd.DataFrame, csv_data: pd.DataFrame) -> Li
                 'closed_date': str(deal['Date Closed']),
                 'address': str(deal['Address']),
                 'lead_source': str(deal['Lead Source']),
-                'csv_record': match.to_dict()
+                'csv_record': match.to_dict(),
+                'workbook_close': deal.get('Date Closed'),
+                'deal_meta': {},
             })
         else:
             # No match found
@@ -395,7 +400,9 @@ def match_deals_to_csv(closed_deals: pd.DataFrame, csv_data: pd.DataFrame) -> Li
                 'closed_date': str(deal['Date Closed']),
                 'address': str(deal['Address']),
                 'lead_source': str(deal['Lead Source']),
-                'csv_record': None
+                'csv_record': None,
+                'workbook_close': deal.get('Date Closed'),
+                'deal_meta': {},
             })
     
     return matches
@@ -403,38 +410,26 @@ def match_deals_to_csv(closed_deals: pd.DataFrame, csv_data: pd.DataFrame) -> Li
 
 def derive_closed_deals_from_csv(csv_data: pd.DataFrame, as_of_date: Optional[str] = None) -> pd.DataFrame:
     """
-    Build closed-deal rows directly from contact-history tags.
-    Prefers explicit (CLOSED) markers; falls back to converted SF statuses.
+    Build closed-deal rows from contact-history tags.
+
+    Default: Date Closed requires a (CLOSED) tag; SF converted/under contract sets
+    Date Under Contract only. USE_LEGACY_MIN_CLOSE_DATE restores old min() behavior.
     """
     cutoff: Optional[pd.Timestamp] = None
     if as_of_date:
         cutoff = pd.Timestamp(date.fromisoformat(as_of_date.strip())).normalize()
 
+    legacy_mode = use_legacy_min_close_date()
     rows: List[Dict[str, Any]] = []
     for idx, rec in csv_data.iterrows():
         tags_str = rec.get("Tags", "")
         parsed = parse_tags(tags_str)
-        close_candidates: List[datetime] = []
+        resolved = resolve_milestones_from_parsed(parsed, legacy_mode=legacy_mode)
 
-        for p in parsed:
-            ptype = str(p.get("type", ""))
-            if ptype == "closing":
-                try:
-                    close_candidates.append(datetime.fromisoformat(str(p.get("date"))))
-                except ValueError:
-                    continue
-            elif ptype in ("sf_updated", "sf_status"):
-                label = normalize_status(str(p.get("label", "")))
-                if label in CONVERTED_LABELS:
-                    try:
-                        close_candidates.append(datetime.fromisoformat(str(p.get("date"))))
-                    except ValueError:
-                        continue
-
-        if not close_candidates:
+        if resolved.date_closed is None:
             continue
 
-        closed_dt = min(close_candidates)
+        closed_dt = resolved.date_closed
         if cutoff is not None and pd.Timestamp(closed_dt).normalize() > cutoff:
             continue
 
@@ -452,17 +447,38 @@ def derive_closed_deals_from_csv(csv_data: pd.DataFrame, as_of_date: Optional[st
             or rec.get("LeadSource")
             or "Contact History Tags"
         )
+        uc_iso = (
+            resolved.date_under_contract.date().isoformat()
+            if resolved.date_under_contract
+            else None
+        )
         rows.append(
             {
                 "Address": address,
                 "Date Closed": closed_dt.date().isoformat(),
+                "Date Under Contract": uc_iso,
                 "Lead Source": str(lead_source),
                 "csv_index": int(idx),
+                "Close Date Source": resolved.close_source,
+                "Contract Date Source": resolved.contract_source,
+                "Has_CLOSED_Tag": resolved.has_closed_tag,
+                "Has_Contract_SF_Tag": resolved.has_contract_sf_tag,
             }
         )
 
+    columns = [
+        "Address",
+        "Date Closed",
+        "Date Under Contract",
+        "Lead Source",
+        "csv_index",
+        "Close Date Source",
+        "Contract Date Source",
+        "Has_CLOSED_Tag",
+        "Has_Contract_SF_Tag",
+    ]
     if not rows:
-        return pd.DataFrame(columns=["Address", "Date Closed", "Lead Source", "csv_index"])
+        return pd.DataFrame(columns=columns)
     return pd.DataFrame(rows)
 
 
@@ -488,9 +504,50 @@ def match_closed_rows_to_csv(closed_deals: pd.DataFrame, csv_data: pd.DataFrame)
                 "address": str(deal.get("Address", "")),
                 "lead_source": str(deal.get("Lead Source", "")),
                 "csv_record": csv_record,
+                "workbook_close": deal.get("Date Closed"),
+                "deal_meta": {
+                    k: deal.get(k)
+                    for k in (
+                        "Date Under Contract",
+                        "Close Date Source",
+                        "Contract Date Source",
+                        "Has_CLOSED_Tag",
+                        "Has_Contract_SF_Tag",
+                    )
+                    if k in deal.index
+                },
             }
         )
     return matches
+
+
+def _workbook_close_dt(raw: Any) -> Optional[datetime]:
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return None
+    try:
+        return pd.to_datetime(raw).to_pydatetime()
+    except (ValueError, TypeError):
+        return None
+
+
+def _milestone_provenance_row(
+    resolved: Any,
+    deal_meta: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    meta = deal_meta or {}
+    uc = resolved.date_under_contract
+    if uc is None and meta.get("Date Under Contract"):
+        try:
+            uc = pd.to_datetime(meta["Date Under Contract"]).to_pydatetime()
+        except (ValueError, TypeError):
+            uc = None
+    return {
+        "Date Under Contract": uc.date().isoformat() if uc else meta.get("Date Under Contract"),
+        "Close Date Source": resolved.close_source or meta.get("Close Date Source"),
+        "Contract Date Source": resolved.contract_source or meta.get("Contract Date Source"),
+        "Has_CLOSED_Tag": bool(resolved.has_closed_tag or meta.get("Has_CLOSED_Tag")),
+        "Has_Contract_SF_Tag": bool(resolved.has_contract_sf_tag or meta.get("Has_Contract_SF_Tag")),
+    }
 
 
 def analyze_contacts(matches: List[Dict]) -> pd.DataFrame:
@@ -498,8 +555,16 @@ def analyze_contacts(matches: List[Dict]) -> pd.DataFrame:
     Analyze contact history for matched deals.
     """
     results = []
+    legacy_mode = use_legacy_min_close_date()
     
     for match in matches:
+        empty_provenance = {
+            "Date Under Contract": None,
+            "Close Date Source": None,
+            "Contract Date Source": None,
+            "Has_CLOSED_Tag": False,
+            "Has_Contract_SF_Tag": False,
+        }
         if match['csv_record'] is None:
             # No match found
             results.append({
@@ -528,15 +593,24 @@ def analyze_contacts(matches: List[Dict]) -> pd.DataFrame:
                 'Skip Traced Date': None,
                 'Closed Marker Date': None,
                 'Lifecycle Events': None,
+                **empty_provenance,
             })
             continue
         
-        closed_date = pd.to_datetime(match['closed_date'])
         csv_record = match['csv_record']
-        
-        # Parse tags
         tags_str = csv_record.get('Tags', '')
         contacts = parse_tags(tags_str)
+        wb_close = _workbook_close_dt(match.get("workbook_close"))
+        resolved = resolve_milestones_from_parsed(
+            contacts,
+            legacy_mode=legacy_mode,
+            workbook_close=wb_close,
+        )
+        if resolved.date_closed is not None:
+            closed_date = pd.Timestamp(resolved.date_closed)
+        else:
+            closed_date = pd.to_datetime(match['closed_date'])
+        provenance = _milestone_provenance_row(resolved, match.get("deal_meta"))
         
         # Filter contacts that occurred before closing date
         contacts_before = []
@@ -615,6 +689,7 @@ def analyze_contacts(matches: List[Dict]) -> pd.DataFrame:
             'Skip Traced Date': sk_d,
             'Closed Marker Date': cl_d,
             'Lifecycle Events': lifecycle_events_json,
+            **provenance,
         })
     
     if not results:
@@ -645,6 +720,11 @@ def analyze_contacts(matches: List[Dict]) -> pd.DataFrame:
                 "Skip Traced Date",
                 "Closed Marker Date",
                 "Lifecycle Events",
+                "Date Under Contract",
+                "Close Date Source",
+                "Contract Date Source",
+                "Has_CLOSED_Tag",
+                "Has_Contract_SF_Tag",
             ]
         )
     return pd.DataFrame(results)
@@ -709,6 +789,7 @@ def perform_analysis(
 
     if closings_file_path:
         closed_deals = pd.read_excel(closings_file_path)
+        closed_deals = filter_closings_by_stage(closed_deals)
         if as_of_clean:
             original_n = len(closed_deals)
             try:

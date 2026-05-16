@@ -21,7 +21,7 @@ from .marketing_mapper import normalize_status
 # Stage classification (normalized lowercase status strings)
 # ---------------------------------------------------------------------------
 
-# "Converted" pipeline — strong buying intent / contract (mapper CRM keys).
+# SF "converted" / under contract — contract signed, not settlement closed (mapper CRM keys).
 CONVERTED_LABELS: frozenset[str] = frozenset(
     normalize_status(x) for x in ("converted", "under contract", "under_contract")
 )

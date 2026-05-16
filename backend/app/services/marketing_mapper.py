@@ -518,6 +518,10 @@ def process_closings_for_tags(file_path: str) -> pd.DataFrame:
     if not addr_col:
         raise ValueError("Closings file must include Address (or Property address / Street).")
 
+    from .closing_resolution import filter_closings_by_stage
+
+    df = filter_closings_by_stage(df)
+
     rows: List[Dict[str, str]] = []
     for _, row in df.iterrows():
         closed = pd.to_datetime(row[date_col], errors="coerce")

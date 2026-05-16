@@ -99,15 +99,20 @@ Tests: `backend/tests/test_parse_tags_dedupe.py`.
 For each CSV row with non-empty **`Tags`**:
 
 1. Parse and dedupe tags.
-2. Collect **close candidates:**
-   - Any **`closing`** event (`(CLOSED) 8020 - …`), and
-   - Any **`sf_updated` / `sf_status`** whose normalized label is in **`CONVERTED_LABELS`** (`converted`, `under contract`, etc. — see `lifecycle.py`).
-3. If no candidates → row is not a closed deal.
-4. **`Date Closed`** = **earliest** date among candidates (`min`).
-5. Row must have a non-empty combined address after address fallback logic.
-6. Apply **`as_of`** cutoff if provided.
+2. **Contract vs closed (default):**
+   - **`Date Under Contract`** = earliest **`sf_updated` / `sf_status`** whose normalized label is in **`CONVERTED_LABELS`** (`converted`, `under contract`, … — Salesforce “converted” means under contract, not settlement closed).
+   - **`Date Closed`** = earliest among **`closing`** events (`(CLOSED) 8020 - …`) only. SF converted/under contract **does not** qualify a row as closed.
+3. If no **`closing`** event → row is not a closed deal (unless legacy mode; see below).
+4. Row must have a non-empty combined address after address fallback logic.
+5. Apply **`as_of`** cutoff if provided (compared to **`Date Closed`**).
 
-**Analyst note:** If both an early SF “converted” day and a later `(CLOSED)` month exist, **the earlier date wins**. Month-granular `(CLOSED)` tags use the first day of that month internally for comparison.
+**Workbook + tags:** When a legacy closings workbook is uploaded, **`Date Closed`** = **earliest** of workbook **`Date Closed`** and any **`(CLOSED)`** tag on the matched CSV row.
+
+**Legacy mode:** Set environment variable **`USE_LEGACY_MIN_CLOSE_DATE=1`** to restore the old rule where SF converted dates could define **`Date Closed`** via `min(SF converted, CLOSED)`.
+
+**Closings workbook Stage filter:** Rows with **`Stage`** are kept only when the stage is a closing type (**Closed**, **Executed**, **Funded**, **Closed Won**, etc.). **Closed Lost** and pipeline stages (Follow-up, etc.) are excluded. If no **`Stage`** column exists, all rows with a parseable close date are kept.
+
+Month-granular **`(CLOSED)`** tags use the first day of that month internally for comparison.
 
 ---
 
@@ -255,6 +260,7 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 |-------|----------|
 | Tag parse + dedupe | `backend/app/services/analysis.py` — `parse_tags`, `_dedupe_parsed_tag_events` |
 | Derive closings | `analysis.py` — `derive_closed_deals_from_csv` |
+| Close vs contract rules | `closing_resolution.py` — `resolve_milestones_from_parsed`, `filter_closings_by_stage` |
 | Workbook match | `analysis.py` — `match_deals_to_csv` |
 | Contact KPIs | `analysis.py` — `analyze_contacts`, `perform_analysis` |
 | Lifecycle | `backend/app/services/lifecycle.py` |

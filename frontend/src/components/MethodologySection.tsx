@@ -17,8 +17,9 @@ const MethodologySection = () => {
         <div className="px-4 pb-4 pt-1 text-stone-600 text-sm space-y-3 border-t border-stone-100">
           <p>
             <strong className="text-stone-800">Data sources:</strong> Core analysis runs from the contact-history CSV using the{' '}
-            <code className="bg-stone-100 px-1 rounded">Tags</code> column. Closed deals are derived from tags such as{' '}
-            <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020 - MM/YYYY</code> and converted-style SF status tags. Optional closings workbook upload is legacy-only (address-based match).
+            <code className="bg-stone-100 px-1 rounded">Tags</code> column. <strong>Date Closed</strong> requires a{' '}
+            <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020 - MM/YYYY</code> tag and/or a closings workbook row (earliest wins). SF{' '}
+            <code className="bg-stone-100 px-1 rounded">converted</code> / under contract sets <strong>Date Under Contract</strong> only — contract signed is not the same as closed. Optional closings workbook upload is legacy-only (address-based match).
           </p>
           <p>
             <strong className="text-stone-800">Matching:</strong> CSV-only mode attaches each deal to the same export row (by row index). Legacy workbook mode matches by normalized address and city, with partial-street and street-number fallbacks.
@@ -41,7 +42,7 @@ const MethodologySection = () => {
             <strong>lead lifecycle</strong> funnel, paths, and SF trail. Import CRM history via Past patches, then re-export contacts so these appear in Tags.
           </p>
           <p>
-            <strong className="text-stone-800">Lifecycle stages:</strong> Acquired → Researched → First contacted → Engaged (SF allow-list) → Converted. Stages use tags strictly before Date Closed. &quot;Highest stage&quot; excludes the always-on closed stage. Path strings dedupe only consecutive identical steps.
+            <strong className="text-stone-800">Lifecycle stages:</strong> Acquired → Researched → First contacted → Engaged (SF allow-list) → Converted (SF &quot;converted&quot; = under contract / contract signed). Stages use tags strictly before Date Closed. Settlement closed is a separate milestone from contract signed. Path strings dedupe only consecutive identical steps.
           </p>
           <p>
             <strong className="text-stone-800">Summary stats:</strong> Match rate = deals with a matched CSV row. Channel totals sum per-deal counts across matched deals. Month-granular 8020 tags use the first of the month internally; SF tags use calendar days.

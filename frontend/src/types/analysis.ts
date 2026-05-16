@@ -38,6 +38,11 @@ export interface AnalysisResult {
   Skip_Traced_Date?: string | null;
   Closed_Marker_Date?: string | null;
   Lifecycle_Events?: LifecycleEvent[] | null;
+  Date_Under_Contract?: string | null;
+  Close_Date_Source?: string | null;
+  Contract_Date_Source?: string | null;
+  Has_CLOSED_Tag?: boolean | null;
+  Has_Contract_SF_Tag?: boolean | null;
 }
 
 export interface TopPathRow {

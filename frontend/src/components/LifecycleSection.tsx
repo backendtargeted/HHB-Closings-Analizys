@@ -19,7 +19,12 @@ const FUNNEL_STAGES = [
   { key: 'Researched', label: 'Skip traced', countKey: 'Funnel_Researched_Count' as const },
   { key: 'First contact', label: '8020 CC/SMS/DM', countKey: 'Funnel_First_Contacted_Count' as const },
   { key: 'Engaged', label: 'SF engaged', countKey: 'Funnel_Engaged_Count' as const },
-  { key: 'Converted', label: 'SF converted', countKey: 'Funnel_Converted_Count' as const },
+  {
+    key: 'Converted',
+    label: 'SF converted (under contract)',
+    countKey: 'Funnel_Converted_Count' as const,
+    help: 'Salesforce "converted" / under contract — contract signed, not settlement closed.',
+  },
 ];
 
 const COLORS = ['#1e3a5f', '#2d5a87', '#3d7aaf', '#c9a227', '#10b981', '#f59e0b'];
@@ -45,6 +50,7 @@ const LifecycleSection = ({ stats }: LifecycleSectionProps) => {
       name: s.label,
       short: s.key,
       count: stats[s.countKey] ?? 0,
+      help: 'help' in s ? (s as { help?: string }).help : undefined,
     }));
   }, [stats]);
 

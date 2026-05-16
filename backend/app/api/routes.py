@@ -443,6 +443,11 @@ def _transform_result(r: dict) -> dict:
         "Skip_Traced_Date": r.get("Skip Traced Date"),
         "Closed_Marker_Date": r.get("Closed Marker Date"),
         "Lifecycle_Events": lev,
+        "Date_Under_Contract": r.get("Date Under Contract"),
+        "Close_Date_Source": r.get("Close Date Source"),
+        "Contract_Date_Source": r.get("Contract Date Source"),
+        "Has_CLOSED_Tag": r.get("Has_CLOSED_Tag"),
+        "Has_Contract_SF_Tag": r.get("Has_Contract_SF_Tag"),
     }
     return out
 

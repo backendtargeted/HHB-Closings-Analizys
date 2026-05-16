@@ -60,6 +60,11 @@ class AnalysisResult(BaseModel):
     Skip_Traced_Date: Optional[str] = None
     Closed_Marker_Date: Optional[str] = None
     Lifecycle_Events: Optional[List[LifecycleEvent]] = None
+    Date_Under_Contract: Optional[str] = None
+    Close_Date_Source: Optional[str] = None
+    Contract_Date_Source: Optional[str] = None
+    Has_CLOSED_Tag: Optional[bool] = None
+    Has_Contract_SF_Tag: Optional[bool] = None
 
 
 class SummaryStats(BaseModel):
