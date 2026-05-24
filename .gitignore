@@ -3,6 +3,23 @@
 /cadence_measurement.csv
 /Testy
 
+# CSV reports (generated CRM exports and analysis outputs — often large)
+/closings_analysis*.csv
+**/*analysis_export*.csv
+**/main_analysis_export_results.csv
+**/Report-*.csv
+**/*_Report*.csv
+**/*_report_history.csv
+**/*_report_paired_history.csv
+
+# Generated ingest / e2e output (includes report CSVs and large exports)
+_ingest_out/
+_e2e_*_out/
+
+# Keep small test fixtures
+!backend/tests/fixtures/
+!backend/tests/fixtures/**
+
 # Python
 __pycache__/
 *.py[cod]

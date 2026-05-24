@@ -17,6 +17,7 @@ export const useAnalysis = () => {
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
   const [resumableUploadPending, setResumableUploadPending] = useState(false);
+  const [uploadError, setUploadError] = useState<Error | null>(null);
 
   const { data: uploadCaps, refetch: refetchUploadCaps } = useQuery({
     queryKey: ['upload-capabilities'],
@@ -108,6 +109,7 @@ export const useAnalysis = () => {
       };
 
       try {
+        setUploadError(null);
         const { data: caps } = await refetchUploadCaps();
         if (caps?.resumable_upload !== true) {
           throw new Error('Resumable uploads are not available. Check /api/upload/capabilities.');
@@ -131,8 +133,10 @@ export const useAnalysis = () => {
           setResumableUploadPending(false);
         }
       } catch (error) {
-        console.error('Analysis error:', error);
-        throw error;
+        const err = error instanceof Error ? error : new Error(String(error));
+        setUploadError(err);
+        console.error('Analysis error:', err);
+        throw err;
       }
     },
     [refetchUploadCaps, startAnalysisMutation]
@@ -151,7 +155,7 @@ export const useAnalysis = () => {
       startAnalysisMutation.isPending ||
       analysisStatus?.status === 'running' ||
       analysisStatus?.status === 'pending',
-    isError: startAnalysisMutation.isError,
-    error: startAnalysisMutation.error,
+    isError: uploadError !== null || startAnalysisMutation.isError,
+    error: uploadError ?? startAnalysisMutation.error,
   };
 };

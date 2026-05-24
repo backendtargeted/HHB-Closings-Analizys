@@ -103,6 +103,12 @@ def _write_manifest(upload_id: str, data: Dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
+def _destroy_upload_session(upload_id: str) -> None:
+    """Remove session files. Caller must hold _lock if concurrent access is possible."""
+    _manifest_path(upload_id).unlink(missing_ok=True)
+    shutil.rmtree(_upload_chunk_dir(upload_id), ignore_errors=True)
+
+
 def _cleanup_expired_sessions() -> None:
     now = datetime.now(timezone.utc)
     ttl = timedelta(hours=_SESSION_TTL_HOURS)
@@ -114,7 +120,7 @@ def _cleanup_expired_sessions() -> None:
             updated = datetime.fromisoformat(str(updated_raw))
             if now - updated > ttl:
                 upload_id = str(data.get("upload_id") or path.stem)
-                cancel_upload(upload_id)
+                _destroy_upload_session(upload_id)
         except Exception:
             continue
 
@@ -233,8 +239,7 @@ def finalize_upload(upload_id: str) -> Dict[str, Any]:
 
 def cancel_upload(upload_id: str) -> None:
     with _lock:
-        _manifest_path(upload_id).unlink(missing_ok=True)
-        shutil.rmtree(_upload_chunk_dir(upload_id), ignore_errors=True)
+        _destroy_upload_session(upload_id)
 
 
 def get_limits() -> Dict[str, int]:

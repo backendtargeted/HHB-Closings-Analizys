@@ -1,0 +1,13 @@
+{
+  "policy_id": "config_default_v1",
+  "tina_wins_fields": ["stage", "close_date", "created_date"],
+  "tina_source_systems": ["salesforce_tina"],
+  "older_export_wins_systems": ["salesforce_report"],
+  "source_system_close_rank": {
+    "podio_closings": 0,
+    "salesforce_past_closings": 1,
+    "salesforce_report": 2,
+    "salesforce_tina": 3
+  },
+  "closed_lost_token_mode": "option_a"
+}
