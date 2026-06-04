@@ -3,6 +3,7 @@ import {
   Bar,
   BarChart,
   Cell,
+  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -20,6 +21,8 @@ interface QualifiedLeadsResultsProps {
   onNewRun: () => void;
   onExportRows: () => void;
   exporting: boolean;
+  /** When true, omit page header and action buttons (e.g. embedded in monthly consolidated). */
+  embedded?: boolean;
 }
 
 const QualifiedLeadsResults = ({
@@ -28,6 +31,7 @@ const QualifiedLeadsResults = ({
   onNewRun,
   onExportRows,
   exporting,
+  embedded = false,
 }: QualifiedLeadsResultsProps) => {
   const m = result.metrics;
 
@@ -47,41 +51,45 @@ const QualifiedLeadsResults = ({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-bold text-teal-950">Qualified leads summary</h2>
-          <p className="text-sm text-stone-600 mt-1">
-            Window: {m.date_window_start} → {m.date_window_end}
-            {m.create_date_min && (
-              <span className="text-stone-500">
-                {' '}
-                (file span {m.create_date_min} – {m.create_date_max})
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={onExportRows}
-            disabled={exporting}
-            className="px-4 py-2 rounded-lg border border-teal-700 text-teal-900 text-sm font-medium hover:bg-teal-50 disabled:opacity-50"
-          >
-            {exporting ? 'Exporting…' : 'Download row detail CSV'}
-          </button>
-          <button
-            type="button"
-            onClick={onNewRun}
-            className="px-4 py-2 rounded-lg bg-teal-800 text-white text-sm font-medium hover:bg-teal-900"
-          >
-            New upload
-          </button>
-        </div>
-      </div>
+      {!embedded && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-bold text-teal-950">Qualified leads summary</h2>
+              <p className="text-sm text-stone-600 mt-1">
+                Window: {m.date_window_start} → {m.date_window_end}
+                {m.create_date_min && (
+                  <span className="text-stone-500">
+                    {' '}
+                    (file span {m.create_date_min} – {m.create_date_max})
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onExportRows}
+                disabled={exporting}
+                className="px-4 py-2 rounded-lg border border-teal-700 text-teal-900 text-sm font-medium hover:bg-teal-50 disabled:opacity-50"
+              >
+                {exporting ? 'Exporting…' : 'Download row detail CSV'}
+              </button>
+              <button
+                type="button"
+                onClick={onNewRun}
+                className="px-4 py-2 rounded-lg bg-teal-800 text-white text-sm font-medium hover:bg-teal-900"
+              >
+                New upload
+              </button>
+            </div>
+          </div>
 
-      <p className="text-sm text-stone-600 bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 leading-relaxed">
-        {m.qualified_rate_window_note}
-      </p>
+          <p className="text-sm text-stone-600 bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 leading-relaxed">
+            {m.qualified_rate_window_note}
+          </p>
+        </>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Rows in file" value={m.rows_ingested} />
@@ -92,25 +100,40 @@ const QualifiedLeadsResults = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-          <h3 className="text-lg font-semibold text-stone-800 mb-4">Share of posted leads by channel</h3>
-          <ResponsiveContainer width="100%" height={320}>
-            <PieChart>
+          <h3 className="text-lg font-semibold text-stone-800 mb-2">Share of posted leads by channel</h3>
+          <p className="text-xs text-stone-500 mb-4">Hover slices for counts; legend lists full channel names.</p>
+          <ResponsiveContainer width="100%" height={400}>
+            <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
               <Pie
                 data={chartData}
                 dataKey="value"
                 nameKey="name"
                 cx="50%"
-                cy="50%"
-                innerRadius={55}
-                outerRadius={95}
-                label={({ name, share }) => `${name}: ${share.toFixed(1)}%`}
-                labelLine={false}
+                cy="42%"
+                innerRadius={58}
+                outerRadius={88}
+                isAnimationActive={false}
               >
                 {chartData.map((_, i) => (
                   <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="#fff" strokeWidth={1} />
                 ))}
               </Pie>
-              <Tooltip formatter={(v: number, _n, p) => [`${v} leads (${(p?.payload as { share?: number })?.share?.toFixed(1)}%)`, 'Count']} />
+              <Tooltip
+                formatter={(v: number, _n, p) => {
+                  const share = (p?.payload as { share?: number })?.share;
+                  return [`${Number(v).toLocaleString()} leads (${share?.toFixed(1) ?? 0}%)`, 'Count'];
+                }}
+              />
+              <Legend
+                layout="vertical"
+                align="right"
+                verticalAlign="middle"
+                wrapperStyle={{ fontSize: 12, lineHeight: '1.5', paddingLeft: 12 }}
+                formatter={(value: string, entry) => {
+                  const share = (entry?.payload as { share?: number })?.share;
+                  return `${value} — ${share?.toFixed(1) ?? 0}%`;
+                }}
+              />
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -118,9 +141,9 @@ const QualifiedLeadsResults = ({
         <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-stone-800 mb-4">Qualified lead counts</h3>
           <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 16 }}>
-              <XAxis type="number" />
-              <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
+            <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 24, top: 8, bottom: 8 }}>
+              <XAxis type="number" tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))} />
+              <YAxis type="category" dataKey="name" width={148} tick={{ fontSize: 11 }} />
               <Tooltip />
               <Bar dataKey="value" fill="#0f766e" radius={[0, 4, 4, 0]} />
             </BarChart>

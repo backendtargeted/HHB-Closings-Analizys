@@ -85,6 +85,7 @@ logs/
 backend/uploads/
 backend/exports/
 backend/reports/
+data/reports/
 
 # Testing
 TESTING-SUMMARY.md

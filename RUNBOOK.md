@@ -1,6 +1,6 @@
 # HHB Closings + Marketing — Operations Runbook
 
-End-to-end process: normalize marketing data → **REISift** → export contacts → **Contact Attribution Analysis** (this repo). Includes **backdated** closings, historical CRM tags, and (API-only) **period snapshots** (`as_of`).
+End-to-end process: normalize marketing data → **REISift** → export contacts → **Contact Attribution Analysis** (this repo). Includes **backdated** closings, historical CRM tags, **monthly consolidated** list/distress reporting, and (API-only) **period snapshots** (`as_of`).
 
 ---
 
@@ -12,12 +12,15 @@ marketing_ingestion_mapper.py  →  REISift import CSVs  →  REISift (system of
                                                     Contacts export (CSV + Tags)
                                                               ↓
 HHB web app / API: contact-history CSV (source of truth) + optional legacy closings workbook  →  reports + exports
+                                                              ↓
+Salesforce Total Qualified Leads export  →  Monthly consolidated (list + channel + journey)
 ```
 
 - **Mapper (standalone GUI):** `Python_Tools/7_Utilities/marketing_ingestion_mapper.py` — same logic as the in-app generator below (keep in sync until consolidated).
 - **Mapper (this repo):** `backend/app/services/marketing_mapper.py` — used by **Past patches** in the web UI: cold-calling CSV, many SMS CSVs, CRM extract, closings `.xlsx` → the four REISift-shaped CSVs.
-- **REISift**: holds property/phone + **Tags** (comma-separated history).
+- **REISift**: holds property/phone + **Tags** (comma-separated history) and **Lists** (comma-separated distress / list membership on the contacts export).
 - **This app**: runs CSV-first analysis from **Tags** (and optionally uses legacy closings workbook input); parses 8020 contact lines, list purchase, skip trace, **(SF) CRM** tags, and **closing** markers; derives **lead lifecycle** (funnel, paths, first-touch) for the UI and exports (see cheat sheet + `backend/app/services/lifecycle.py`).
+- **Monthly consolidated** (`backend/app/services/monthly_consolidated.py`): ranks REISift **Lists** by CRM signals, qualified leads, and closings for one calendar month; embeds qualified-lead channel mix and closing-cohort lifecycle in one XLSX.
 
 **Report methodology (deep dive):** [docs/REPORT_METHODOLOGY.md](docs/REPORT_METHODOLOGY.md) — tag parsing, dedupe rules, matching, counting, lifecycle, exports, and experimental cadence probes.
 
@@ -37,19 +40,21 @@ HHB web app / API: contact-history CSV (source of truth) + optional legacy closi
 3. **Import into REISift** (per REISift’s bulk-update docs for each file type). Spot-check a few rows before full run.
 
 4. **Export from REISift** a contacts/properties CSV that includes at least:
-   - `Property address`, `Property city`, **`Tags`**
+   - `Property address`, `Property city`, **`Tags`**, **`Created`**
+   - **`Lists`** (required for **Monthly consolidated**; comma-separated distress / list tokens per property)
    - Any columns your matching logic expects (see `backend/app/services/analysis.py`).
 
-5. **Run attribution analysis**
-   - **Docker:** UI `http://localhost:3300`, API `http://localhost:8000` (see Gotchas).
-   - **Local:** `README.md` — Flask on 8000, Vite on 3000.
-   - Upload **contacts CSV**. Closed deals are derived from tags; optional legacy closings workbook upload remains supported for backward compatibility. Optional **`as_of`** filter is still supported on **`POST /api/analyze`** (not shown in the current UI).
+5. **Run reports** (pick what you need each month):
+   - **Monthly consolidated (recommended for list + channel + journey):** UI → **Monthly consolidated** → upload REISift export + Salesforce **Total Qualified Leads** export → pick report month (`YYYY-MM`) → **Run monthly report** → download consolidated XLSX. See [Monthly consolidated report](#monthly-consolidated-report) below.
+   - **Regular attribution:** UI → **Regular updates** → upload contacts CSV. Closed deals are derived from tags; optional legacy closings workbook upload remains supported. Optional **`as_of`** filter is still supported on **`POST /api/analyze`** (not shown in the current UI).
+   - **Qualified leads only:** UI → **Qualified leads** → SF export + Create Date window (same QL rules embedded in monthly consolidated).
 
 6. **Archive**
-   - Download Excel/CSV/JSON export from the UI. Excel includes a **Lifecycle Events** sheet (one row per parsed tag event before close, when events exist).
-   - Optionally compare two job IDs via `/api/compare`.
+   - Download Excel/CSV/JSON export from the UI. Regular attribution Excel includes a **Lifecycle Events** sheet (one row per parsed tag event before close, when events exist).
+   - Monthly consolidated XLSX includes Summary, List Performance, List Combinations, Qualified Channels, Lifecycle (+ Top Paths when closings exist in cohort).
+   - Optionally compare two attribution job IDs via `/api/compare`.
 
-**Saved reports:** JSON snapshots written before lifecycle fields were added will **not** include funnel/path columns; re-run analysis to populate them.
+**Saved reports:** JSON snapshots written before lifecycle fields were added will **not** include funnel/path columns; re-run analysis to populate them. Monthly consolidated reports persist under `{REPORTS_DIR}/monthly_consolidated/{job_id}.json` and appear in the sidebar with type **Monthly consolidated**.
 
 ---
 
@@ -75,6 +80,68 @@ CSV-only analysis (`POST /api/analyze` with `csv_path` only) builds closed deals
 - **Aggressive filter (only if one export row holds the full history per closed deal):** Keep rows that contain a recognized close signal, e.g. `(CLOSED) 8020 - MM/YYYY` (or `M/YYYY`), and/or `(SF) UPDATED` / `(SF) STATUS` with a label that normalizes into converted labels in `backend/app/services/lifecycle.py`. If you remove the only row that carries a deal’s tags, that deal disappears from results.
 
 **Practical minimum export:** Headers at least `Tags`, `Property address`, `Property city` (or rely on `Address` when street is empty), optionally `Lead Source`; then apply the row filters above.
+
+**Monthly consolidated minimum:** All of the above plus **`Created`** (cohort filter) and **`Lists`** (comma-separated tokens). Address columns (`Property address`, city, state, zip) improve qualified-lead ↔ REISift matching.
+
+---
+
+## Monthly consolidated report
+
+**When:** Ongoing **monthly** review of which REISift distress **lists** correlate with CRM activity, qualified leads, and closings — plus channel mix and closing-cohort journey in one place.
+
+**UI:** Docker `http://localhost:3300` → **Monthly consolidated** (fourth workflow tab).
+
+**Implementation:** `backend/app/services/monthly_consolidated.py`, API prefix `/api/monthly-consolidated`.
+
+### Inputs
+
+| File | Required columns | Role |
+|------|------------------|------|
+| **REISift contacts export** | `Created`, `Lists`, `Tags`, address fields | Month cohort + list metrics + CRM/closing tags |
+| **Salesforce Total Qualified Leads** | `Lead Source`, `Create Date` (+ address for list attribution) | Same rules as **Qualified leads** workspace (`qualified_leads.py`) |
+
+### Report month and cohort
+
+- Form field **`report_month`**: `YYYY-MM` (HTML month picker in UI).
+- **Cohort** = REISift rows whose **`Created`** date falls in that calendar month (inclusive, naive calendar date).
+- **Important:** Metrics describe properties **added to REISift in that month**, not necessarily closings or SF leads that **occurred** in that month. The UI and XLSX Summary repeat this methodology note.
+
+### Metric definitions (locked product rules)
+
+| Metric | Definition |
+|--------|------------|
+| **CRM leads** | Cohort rows with any **`(SF)`** token in `Tags` (e.g. `(SF) UPDATED`, `(SF) STATUS`) — no separate SF CRM file |
+| **Qualified leads** | Rows in the SF export passing existing **Total Qualified Leads** rules; **Create Date** filtered to the same calendar month as the cohort |
+| **Closings** | Cohort rows with **`(CLOSED) 8020 - MM/YYYY`** (or `M/YYYY`) in `Tags` — same parser as regular attribution |
+| **List attribution** | Comma-split **`Lists`**; each property **counts toward every list** on its row (**stacked** = multiple tokens = positive signal) |
+| **Closing rate (per list)** | `closings on that list ÷ REISift cohort rows carrying that list token` |
+| **List combinations** | Sorted unique token set per row; only combinations with **≥ 10** cohort rows; ranked by **closing count** (export capped at top 100) |
+| **Qualified → list credit** | Address join (`make_address_key`) between in-window SF rows and cohort REISift rows; unmatched SF rows are reported in warnings when match rate &lt; 50% |
+
+Optional column **`List Stack`** (numeric) is present on many exports but is **not** used as the primary stacked classifier — parsed token count on `Lists` drives stacked stats.
+
+### XLSX sheets
+
+| Sheet | Content |
+|-------|---------|
+| Summary | Cohort counts, CRM/closing/stacked totals, period metadata |
+| List Performance | Per-list rows, rates, stacked row counts |
+| List Combinations | ≥10-row combinations, ranked by closings |
+| Qualified Channels | Channel counts/shares (same as QL workspace) |
+| Lifecycle | Funnel stage counts for **closing rows in cohort** |
+| Top Paths | Top journey paths (when lifecycle data exists) |
+
+### Large REISift files
+
+Exports with **500k+ rows** are supported but the analyze request is **synchronous** (expect **30–90 seconds**). Apply the same proxy timeout guidance as [Large uploads and reverse proxies](#large-uploads-and-reverse-proxies-easypanel--traefik) if the browser or edge proxy cuts off before the backend finishes.
+
+### Operator checklist (monthly)
+
+1. Complete REISift ingest / tag updates for the period (Past patches or regular mapper flow if needed).
+2. Export full contacts CSV including **`Created`**, **`Lists`**, **`Tags`**, addresses.
+3. Export Salesforce **Total Qualified Leads** for the same calendar month (or full file — window is applied in-app).
+4. Run **Monthly consolidated** for `YYYY-MM`; review warnings (especially QL address match rate).
+5. Download consolidated XLSX; archive alongside any **Regular updates** attribution runs you still run ad hoc.
 
 ---
 
@@ -210,6 +277,7 @@ Stages are computed only from tags **strictly before** each deal’s **Date Clos
 | **`useWebSocket.ts`** | Present in frontend but **unused**; progress uses **HTTP polling**. |
 | **Tag date precision** | `(8020)`, list, skip, `(CLOSED)` use **first of month**; `(SF) UPDATED` / `(SF) STATUS` use **calendar day** (`YYYY-MM-DD`). Comparison to `Date Closed` uses the full close timestamp for the analyzed deal row. |
 | **Large CSV upload via UI / EasyPanel** | UI nginx timeouts and body size are in `frontend/nginx.conf`. If large uploads still die near **60s**, raise Traefik/EasyPanel ingress timeouts — see **Large uploads and reverse proxies (EasyPanel / Traefik)**. |
+| **Monthly consolidated on huge exports** | Two multipart files (REISift + SF QL); analysis runs synchronously after upload. Timeouts affect **POST** `/api/monthly-consolidated/analyze`, not just resumable attribution uploads. |
 
 ---
 
@@ -248,6 +316,13 @@ Module: `backend/app/services/cadence_from_history.py`. `(8020)` tags are month-
 | `GET /api/qualified-leads/<job_id>` | Qualified leads metrics JSON |
 | `GET /api/qualified-leads/<job_id>/export` | Row-level CSV (channel, in-window flag) |
 | `DELETE /api/qualified-leads/<job_id>` | Remove qualified-leads job dir |
+| `POST /api/monthly-consolidated/analyze` | Multipart: `reisift_file`, `qualified_leads_file`; form `report_month=YYYY-MM` |
+| `GET /api/monthly-consolidated/<job_id>` | Monthly consolidated metrics JSON |
+| `GET /api/monthly-consolidated/<job_id>/export` | Multi-sheet XLSX (Summary, lists, combinations, channels, lifecycle) |
+| `DELETE /api/monthly-consolidated/<job_id>` | Remove job dir + saved JSON |
+| `GET /api/reports` | All saved reports (attribution + qualified leads + monthly consolidated) |
+
+**Report persistence:** Attribution → `{REPORTS_DIR}/{job_id}.json` or `snapshots/{as_of}/`. Qualified leads → `{REPORTS_DIR}/qualified_leads/{job_id}.json`. Monthly consolidated → `{REPORTS_DIR}/monthly_consolidated/{job_id}.json`. Upload working copies → `{UPLOAD_STORAGE_DIR}/monthly_consolidated/{job_id}/`. Docker Compose mounts `./data/reports:/app/reports` (host folder survives image rebuilds; avoid `docker compose down -v` on upload volumes if you need those too).
 
 ---
 
@@ -255,7 +330,7 @@ Module: `backend/app/services/cadence_from_history.py`. `(8020)` tags are month-
 
 | Variable | Role |
 |----------|------|
-| `REPORTS_DIR` | Persisted JSON (default `/app/reports` in Docker) |
+| `REPORTS_DIR` | Persisted JSON (default `/app/reports` in Docker; compose bind-mounts `./data/reports` so rebuilds keep reports) |
 | `VITE_API_URL` | Frontend API base at build time (dev default `http://localhost:8000/api`) |
 | `UPLOAD_STORAGE_DIR` | Root directory for resumable upload files/chunks/manifests |
 | `UPLOAD_MAX_CHUNK_MB` | Per-chunk limit for resumable uploads |

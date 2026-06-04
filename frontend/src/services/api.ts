@@ -10,6 +10,8 @@ import type {
 } from '../types/analysis';
 import type { PatchUploadResponse } from '../types/patches';
 import type { QualifiedLeadsAnalyzeResponse } from '../types/qualifiedLeads';
+import type { MonthlyConsolidatedAnalyzeResponse } from '../types/monthlyConsolidated';
+import type { SavedReportsListResponse } from '../types/reports';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -145,6 +147,11 @@ export const listAnalyses = async () => {
   return response.data;
 };
 
+export const listReports = async (): Promise<SavedReportsListResponse> => {
+  const response = await api.get<SavedReportsListResponse>('/reports');
+  return response.data;
+};
+
 export const deleteAnalysis = async (jobId: string): Promise<void> => {
   await api.delete(`/analysis/${jobId}`);
 };
@@ -211,4 +218,41 @@ export const downloadQualifiedLeadsExport = async (jobId: string): Promise<Blob>
 
 export const deleteQualifiedLeadsJob = async (jobId: string): Promise<void> => {
   await api.delete(`/qualified-leads/${jobId}`);
+};
+
+export const analyzeMonthlyConsolidated = async (
+  reisiftFile: File,
+  qualifiedLeadsFile: File,
+  reportMonth: string
+): Promise<MonthlyConsolidatedAnalyzeResponse> => {
+  const form = new FormData();
+  form.append('reisift_file', reisiftFile);
+  form.append('qualified_leads_file', qualifiedLeadsFile);
+  form.append('report_month', reportMonth);
+  const response = await api.post<MonthlyConsolidatedAnalyzeResponse>(
+    '/monthly-consolidated/analyze',
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return response.data;
+};
+
+export const getMonthlyConsolidatedJob = async (
+  jobId: string
+): Promise<MonthlyConsolidatedAnalyzeResponse> => {
+  const response = await api.get<MonthlyConsolidatedAnalyzeResponse>(
+    `/monthly-consolidated/${jobId}`
+  );
+  return response.data;
+};
+
+export const downloadMonthlyConsolidatedExport = async (jobId: string): Promise<Blob> => {
+  const response = await api.get(`/monthly-consolidated/${jobId}/export`, {
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+export const deleteMonthlyConsolidatedJob = async (jobId: string): Promise<void> => {
+  await api.delete(`/monthly-consolidated/${jobId}`);
 };

@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 COPY app/ ./app/
 
 # Create directories for uploads and exports
-RUN mkdir -p uploads exports
+RUN mkdir -p uploads exports reports
 
 # Expose port
 EXPOSE 8000

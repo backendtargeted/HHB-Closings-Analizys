@@ -28,7 +28,12 @@ const CHANNEL_LABELS: Record<string, string> = {
   Other: 'Other',
 };
 
-const QualifiedLeadsWorkspace = () => {
+interface QualifiedLeadsWorkspaceProps {
+  onRunComplete?: () => void;
+  onOpenResult?: (data: QualifiedLeadsAnalyzeResponse) => void;
+}
+
+const QualifiedLeadsWorkspace = ({ onRunComplete, onOpenResult }: QualifiedLeadsWorkspaceProps) => {
   const [file, setFile] = useState<File | null>(null);
   const [useFullSpan, setUseFullSpan] = useState(true);
   const [startDate, setStartDate] = useState('');
@@ -72,7 +77,12 @@ const QualifiedLeadsWorkspace = () => {
         startDate: startDate.trim() || undefined,
         endDate: endDate.trim() || undefined,
       });
-      setResult(data);
+      onRunComplete?.();
+      if (onOpenResult) {
+        onOpenResult(data);
+      } else {
+        setResult(data);
+      }
     } catch (err) {
       setError(getAxiosErrorMessage(err, 'Analysis failed'));
     } finally {

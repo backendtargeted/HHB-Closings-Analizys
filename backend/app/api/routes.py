@@ -17,6 +17,12 @@ from pathlib import Path
 
 from ..services.analysis import perform_analysis
 from ..services import resumable_uploads
+from ..services.report_store import (
+    REPORT_TYPE_ATTRIBUTION,
+    delete_report_file,
+    list_report_index,
+    save_attribution_report,
+)
 from ..utils.file_handler import EXPORT_DIR
 from .models import (
     AnalysisResponse,
@@ -100,23 +106,7 @@ def save_report_to_disk(job_id: str, result: Dict, created_at: str) -> None:
     """Persist analysis result to reports/{job_id}.json or reports/snapshots/{as_of}/{job_id}.json."""
     try:
         _ensure_reports_dir()
-        as_of = result.get("as_of")
-        if as_of:
-            snap_dir = REPORTS_DIR / "snapshots" / str(as_of)
-            snap_dir.mkdir(parents=True, exist_ok=True)
-            path = snap_dir / f"{job_id}.json"
-        else:
-            path = REPORTS_DIR / f"{job_id}.json"
-        payload = {
-            "results": result.get("results", []),
-            "stats": result.get("stats", {}),
-            "matched_count": result.get("matched_count", 0),
-            "total_deals": result.get("total_deals", 0),
-            "created_at": created_at,
-            "as_of": as_of,
-        }
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(_sanitize_for_json(payload), f, indent=2)
+        save_attribution_report(job_id, result, created_at, REPORTS_DIR)
     except OSError as exc:
         logger.exception("Failed to persist report %s to %s: %s", job_id, REPORTS_DIR, exc)
 
@@ -133,6 +123,10 @@ def load_reports_from_disk() -> None:
             job_id = path.stem
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
+            if data.get("report_type") == "qualified_leads":
+                continue
+            if "results" not in data and "stats" not in data:
+                continue
             created_at = data.get("created_at", datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat())
             as_of = data.get("as_of")
             analysis_results[job_id] = {
@@ -653,11 +647,14 @@ def list_analyses():
     analyses = [
         {
             "job_id": job_id,
+            "report_type": REPORT_TYPE_ATTRIBUTION,
             "status": job["status"],
             "created_at": job.get("created_at", ""),
             "matched_count": analysis_results.get(job_id, {}).get("matched_count", 0),
             "total_deals": analysis_results.get(job_id, {}).get("total_deals", 0),
             "as_of": job.get("as_of") or analysis_results.get(job_id, {}).get("as_of"),
+            "summary": f"{analysis_results.get(job_id, {}).get('matched_count', 0):,} / "
+            f"{analysis_results.get(job_id, {}).get('total_deals', 0):,} matched",
         }
         for job_id, job in analysis_jobs.items()
     ]
@@ -665,16 +662,41 @@ def list_analyses():
     return jsonify({"analyses": analyses})
 
 
+@api_bp.route("/reports", methods=["GET"])
+def list_all_reports():
+    """
+    Unified saved reports: attribution (disk + memory) and qualified leads (disk).
+    """
+    disk_items = {item["job_id"]: item for item in list_report_index(REPORTS_DIR)}
+    for job_id, job in analysis_jobs.items():
+        if job_id in disk_items:
+            disk_items[job_id]["status"] = job.get("status", "completed")
+            continue
+        if job.get("status") != "completed":
+            continue
+        res = analysis_results.get(job_id, {})
+        matched = int(res.get("matched_count", 0) or 0)
+        total = int(res.get("total_deals", 0) or 0)
+        disk_items[job_id] = {
+            "job_id": job_id,
+            "report_type": REPORT_TYPE_ATTRIBUTION,
+            "status": job.get("status", "completed"),
+            "created_at": job.get("created_at", ""),
+            "summary": f"{matched:,} / {total:,} matched",
+            "matched_count": matched,
+            "total_deals": total,
+            "as_of": job.get("as_of") or res.get("as_of"),
+        }
+    reports = sorted(disk_items.values(), key=lambda x: x.get("created_at", ""), reverse=True)
+    return jsonify({"reports": reports})
+
+
 @api_bp.route("/analysis/<job_id>", methods=["DELETE"])
 def delete_analysis(job_id: str):
     """
     Delete a saved report (JSON file and in-memory entry).
     """
-    for path in REPORTS_DIR.rglob(f"{job_id}.json"):
-        try:
-            path.unlink()
-        except OSError as exc:
-            logger.warning("Failed to delete persisted report %s at %s: %s", job_id, path, exc)
+    delete_report_file(job_id, REPORTS_DIR)
     analysis_jobs.pop(job_id, None)
     analysis_results.pop(job_id, None)
     return jsonify({"detail": "Deleted", "job_id": job_id})

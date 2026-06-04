@@ -8,10 +8,12 @@ services:
       - ./backend:/app
       - uploads:/app/uploads
       - exports:/app/exports
-      - reports:/app/reports
+      # Host bind mount: survives image rebuilds (avoid `docker compose down -v`)
+      - ./data/reports:/app/reports
     environment:
       - ENV=production
       - MAX_UPLOAD_MB=2048
+      - REPORTS_DIR=/app/reports
     restart: unless-stopped
     networks:
       - contact-attribution-network
@@ -36,7 +38,6 @@ services:
 volumes:
   uploads:
   exports:
-  reports:
 
 networks:
   contact-attribution-network:

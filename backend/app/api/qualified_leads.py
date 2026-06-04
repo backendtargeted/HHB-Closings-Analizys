@@ -15,6 +15,11 @@ from typing import Any, Dict
 from flask import Blueprint, jsonify, request, send_file
 
 from ..services.qualified_leads import analyze_file, parse_ymd_param, rows_to_export_csv
+from ..services.report_store import (
+    delete_report_file,
+    load_qualified_leads_report,
+    save_qualified_leads_report,
+)
 from ..utils.file_handler import UPLOAD_DIR
 
 qualified_leads_bp = Blueprint("qualified_leads", __name__)
@@ -23,6 +28,26 @@ QL_ROOT = UPLOAD_DIR / "qualified_leads"
 QL_ROOT.mkdir(parents=True, exist_ok=True)
 
 _job_results: Dict[str, Dict[str, Any]] = {}
+
+
+def load_qualified_leads_from_disk() -> None:
+    """Restore in-memory cache from persisted reports/qualified_leads/*.json."""
+    from ..services.report_store import get_reports_dir
+
+    ql_dir = get_reports_dir() / "qualified_leads"
+    if not ql_dir.is_dir():
+        return
+    for path in ql_dir.glob("*.json"):
+        try:
+            job_id = path.stem
+            loaded = load_qualified_leads_report(job_id)
+            if loaded:
+                _job_results[job_id] = {
+                    "metrics": loaded["metrics"],
+                    "rows": loaded.get("rows", []),
+                }
+        except (json.JSONDecodeError, OSError):
+            continue
 
 
 def _sanitize_for_json(obj: Any) -> Any:
@@ -88,16 +113,27 @@ def qualified_leads_analyze():
         shutil.rmtree(job_dir, ignore_errors=True)
         return jsonify({"detail": f"Analysis failed: {exc}"}), 500
 
+    metrics = result.to_dict()
     payload = {
         "job_id": job_id,
-        "metrics": result.to_dict(),
+        "metrics": metrics,
         "use_full_file_span": use_full,
     }
     _job_results[job_id] = {
-        "metrics": result.to_dict(),
+        "metrics": metrics,
         "rows": result.rows,
         "file_path": str(file_path),
     }
+
+    try:
+        save_qualified_leads_report(
+            job_id,
+            metrics=metrics,
+            use_full_file_span=use_full,
+            rows=result.rows,
+        )
+    except OSError as exc:
+        return jsonify({"detail": f"Failed to save report: {exc}"}), 500
 
     meta_path = job_dir / "result.json"
     with open(meta_path, "w", encoding="utf-8") as fh:
@@ -112,7 +148,27 @@ def qualified_leads_get(job_id: str):
     if cached:
         return jsonify(
             _sanitize_for_json(
-                {"job_id": job_id, "metrics": cached["metrics"]}
+                {
+                    "job_id": job_id,
+                    "metrics": cached["metrics"],
+                    "use_full_file_span": cached.get("use_full_file_span", False),
+                }
+            )
+        )
+    loaded = load_qualified_leads_report(job_id)
+    if loaded:
+        _job_results[job_id] = {
+            "metrics": loaded["metrics"],
+            "rows": loaded.get("rows", []),
+            "use_full_file_span": loaded.get("use_full_file_span", False),
+        }
+        return jsonify(
+            _sanitize_for_json(
+                {
+                    "job_id": job_id,
+                    "metrics": loaded["metrics"],
+                    "use_full_file_span": loaded.get("use_full_file_span", False),
+                }
             )
         )
     meta_path = QL_ROOT / job_id / "result.json"
@@ -127,10 +183,17 @@ def qualified_leads_get(job_id: str):
 def qualified_leads_export(job_id: str):
     cached = _job_results.get(job_id)
     if not cached:
-        meta_path = QL_ROOT / job_id / "result.json"
-        if not meta_path.is_file():
-            return jsonify({"detail": "Job not found"}), 404
-        return jsonify({"detail": "Row export unavailable after server restart; re-run analysis"}), 404
+        loaded = load_qualified_leads_report(job_id)
+        if loaded:
+            cached = {
+                "metrics": loaded["metrics"],
+                "rows": loaded.get("rows", []),
+            }
+            _job_results[job_id] = cached
+    if not cached:
+        return jsonify({"detail": "Job not found"}), 404
+    if not cached.get("rows"):
+        return jsonify({"detail": "Row export unavailable; re-run analysis to regenerate rows"}), 404
 
     from ..services.qualified_leads import QualifiedLeadsResult
 
@@ -166,8 +229,8 @@ def qualified_leads_export(job_id: str):
 @qualified_leads_bp.route("/<job_id>", methods=["DELETE"])
 def qualified_leads_delete(job_id: str):
     _job_results.pop(job_id, None)
+    delete_report_file(job_id)
     job_dir = QL_ROOT / job_id
     if job_dir.is_dir():
         shutil.rmtree(job_dir, ignore_errors=True)
-        return jsonify({"detail": "Deleted"})
-    return jsonify({"detail": "Job not found"}), 404
+    return jsonify({"detail": "Deleted"})

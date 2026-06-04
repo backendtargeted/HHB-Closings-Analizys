@@ -1,4 +1,4 @@
-export type WorkspaceMode = 'regular' | 'pastPatches' | 'qualifiedLeads';
+export type WorkspaceMode = 'regular' | 'pastPatches' | 'qualifiedLeads' | 'monthlyConsolidated';
 
 interface ModeSwitcherProps {
   mode: WorkspaceMode;
@@ -12,7 +12,7 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
         Choose workflow
       </p>
       <div
-        className="grid grid-cols-1 md:grid-cols-3 gap-4"
+        className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4"
         role="tablist"
         aria-label="Analysis workflow type"
       >
@@ -98,6 +98,33 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
             </div>
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-teal-200/80 text-teal-950">
               Consolidation
+            </span>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'monthlyConsolidated'}
+          id="tab-monthly"
+          aria-controls="panel-workspace"
+          onClick={() => onChange('monthlyConsolidated')}
+          className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700 focus-visible:ring-offset-2 ${
+            mode === 'monthlyConsolidated'
+              ? 'border-indigo-600/80 bg-indigo-50/90 shadow-md ring-1 ring-indigo-600/20'
+              : 'border-stone-200 bg-white/80 hover:border-indigo-200 hover:bg-indigo-50/40'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-indigo-950 tracking-tight">Monthly consolidated</h2>
+              <p className="text-indigo-950/80 text-sm mt-2 leading-relaxed">
+                REISift list + stacked distress performance, CRM tags, qualified leads, and closing
+                journey for one Created month — single XLSX download.
+              </p>
+            </div>
+            <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-indigo-200/80 text-indigo-950">
+              Monthly
             </span>
           </div>
         </button>
