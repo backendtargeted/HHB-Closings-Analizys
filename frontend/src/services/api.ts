@@ -11,7 +11,10 @@ import type {
 } from '../types/analysis';
 import type { PatchUploadResponse } from '../types/patches';
 import type { QualifiedLeadsAnalyzeResponse } from '../types/qualifiedLeads';
-import type { MonthlyConsolidatedAnalyzeResponse } from '../types/monthlyConsolidated';
+import type {
+  MonthlyConsolidatedAnalyzeResponse,
+  MonthlyConsolidatedJobStatus,
+} from '../types/monthlyConsolidated';
 import type { SavedReportsListResponse } from '../types/reports';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -21,7 +24,28 @@ const UPLOAD_TOO_LARGE_MSG =
   'Upload too large for the server limit. Try fewer/smaller files or contact admin.';
 
 const GATEWAY_TIMEOUT_MSG =
-  'The server stopped responding during upload or analysis (502). Large files are uploaded in chunks automatically; if this persists, ask ops to raise EasyPanel/Traefik timeouts to 600s.';
+  'The server stopped responding (502). Try again — uploads use short requests and analysis runs in the background.';
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function pollMonthlyConsolidatedJob(
+  jobId: string,
+  onProgress?: (pct: number, message: string) => void
+): Promise<MonthlyConsolidatedAnalyzeResponse> {
+  const deadline = Date.now() + 30 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const status = await getMonthlyConsolidatedJobStatus(jobId);
+    onProgress?.(90 + Math.round((status.progress ?? 0) * 0.1), status.message);
+    if (status.status === 'completed') {
+      return getMonthlyConsolidatedJob(jobId);
+    }
+    if (status.status === 'failed') {
+      throw new Error(status.message || 'Analysis failed');
+    }
+    await sleep(1000);
+  }
+  throw new Error('Analysis timed out after 30 minutes');
+}
 
 export function getAxiosErrorMessage(err: unknown, fallback: string): string {
   if (!axios.isAxiosError(err)) {
@@ -301,8 +325,9 @@ export const analyzeMonthlyConsolidated = async (
   const qlPath = await uploadFileResumable('qualified_leads', qualifiedLeadsFile, (pct, msg) => {
     onProgress?.(45 + Math.round(pct * 0.45), msg);
   });
-  onProgress?.(90, 'Analyzing…');
-  const result = await analyzeMonthlyConsolidatedFromPaths(reisiftPath, qlPath);
+  onProgress?.(90, 'Starting analysis…');
+  const started = await analyzeMonthlyConsolidatedFromPaths(reisiftPath, qlPath);
+  const result = await pollMonthlyConsolidatedJob(started.job_id, onProgress);
   onProgress?.(100, 'Done');
   return result;
 };
@@ -310,13 +335,22 @@ export const analyzeMonthlyConsolidated = async (
 export const analyzeMonthlyConsolidatedFromPaths = async (
   reisiftPath: string,
   qualifiedLeadsPath: string
-): Promise<MonthlyConsolidatedAnalyzeResponse> => {
-  const response = await api.post<MonthlyConsolidatedAnalyzeResponse>(
+): Promise<{ job_id: string; status: string; message: string }> => {
+  const response = await api.post<{ job_id: string; status: string; message: string }>(
     '/monthly-consolidated/analyze',
     {
       reisift_path: reisiftPath,
       qualified_leads_path: qualifiedLeadsPath,
     }
+  );
+  return response.data;
+};
+
+export const getMonthlyConsolidatedJobStatus = async (
+  jobId: string
+): Promise<MonthlyConsolidatedJobStatus> => {
+  const response = await api.get<MonthlyConsolidatedJobStatus>(
+    `/monthly-consolidated/${jobId}/status`
   );
   return response.data;
 };

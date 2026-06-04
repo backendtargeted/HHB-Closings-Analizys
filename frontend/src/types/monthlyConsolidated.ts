@@ -49,7 +49,15 @@ export interface MonthlyConsolidatedMetrics {
 export interface MonthlyConsolidatedAnalyzeResponse {
   job_id: string;
   status: string;
-  metrics: MonthlyConsolidatedMetrics;
-  warnings: string[];
+  metrics?: MonthlyConsolidatedMetrics;
+  warnings?: string[];
   created_at?: string;
+  message?: string;
+}
+
+export interface MonthlyConsolidatedJobStatus {
+  job_id: string;
+  status: 'pending' | 'running' | 'started' | 'completed' | 'failed';
+  progress: number;
+  message: string;
 }

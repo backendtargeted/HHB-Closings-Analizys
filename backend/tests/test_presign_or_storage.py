@@ -139,10 +139,29 @@ class TestMonthlyConsolidatedAnalyzePaths(unittest.TestCase):
             "/api/monthly-consolidated/analyze",
             json={"reisift_path": reisift_path, "qualified_leads_path": ql_path},
         )
-        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
-        payload = r.get_json()
+        self.assertEqual(r.status_code, 202, r.get_data(as_text=True))
+        job_id = r.get_json()["job_id"]
+
+        import time
+
+        deadline = time.time() + 30
+        status = None
+        while time.time() < deadline:
+            st = client.get(f"/api/monthly-consolidated/{job_id}/status")
+            self.assertEqual(st.status_code, 200, st.get_data(as_text=True))
+            status = st.get_json()
+            if status.get("status") == "completed":
+                break
+            if status.get("status") == "failed":
+                self.fail(status.get("message"))
+            time.sleep(0.2)
+
+        self.assertEqual(status.get("status"), "completed")
+        done = client.get(f"/api/monthly-consolidated/{job_id}")
+        self.assertEqual(done.status_code, 200, done.get_data(as_text=True))
+        payload = done.get_json()
         self.assertEqual(payload.get("status"), "completed")
-        self.assertIn("job_id", payload)
+        self.assertIn("metrics", payload)
 
 
 class TestAnalyzeXor(unittest.TestCase):
