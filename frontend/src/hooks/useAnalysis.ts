@@ -63,8 +63,8 @@ export const useAnalysis = () => {
     async (closingsFile: File | null, csvFile: File, asOf?: string | null) => {
       const uploadOneFileResumable = async (kind: 'csv' | 'closings', file: File): Promise<string> => {
         const { data: capsData } = await refetchUploadCaps();
-        const maxChunkBytes = capsData?.limits?.max_chunk_bytes ?? 8 * 1024 * 1024;
-        const chunkSize = Math.min(maxChunkBytes, 8 * 1024 * 1024);
+        const maxChunkBytes = capsData?.limits?.max_chunk_bytes ?? 2 * 1024 * 1024;
+        const chunkSize = maxChunkBytes;
         const init = await initResumableUpload(kind, file.name, file.size, chunkSize);
         setStatusMessage(`Uploading ${file.name}...`);
 

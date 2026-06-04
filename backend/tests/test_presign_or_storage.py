@@ -41,11 +41,23 @@ class TestResumableUploadFlow(unittest.TestCase):
         self.assertEqual(c2.status_code, 200)
 
         done = client.post(f"/api/upload/resumable/{upload_id}/complete")
-        self.assertEqual(done.status_code, 200, done.get_data(as_text=True))
+        self.assertIn(done.status_code, (200, 202), done.get_data(as_text=True))
+
+        import time
+
+        deadline = time.time() + 30
         payload = done.get_json()
-        self.assertEqual(payload.get("kind"), "csv")
-        self.assertIn("csv_path", payload)
-        self.assertTrue(str(payload["csv_path"]).endswith(".csv"))
+        while time.time() < deadline and payload.get("status") != "completed":
+            st = client.get(f"/api/upload/resumable/{upload_id}/status")
+            self.assertEqual(st.status_code, 200)
+            payload = st.get_json()
+            if payload.get("status") == "failed":
+                self.fail(payload.get("finalize_error"))
+            time.sleep(0.1)
+
+        self.assertEqual(payload.get("status"), "completed")
+        self.assertIn("final_path", payload)
+        self.assertTrue(str(payload["final_path"]).endswith(".csv"))
 
     def test_init_cleans_expired_sessions_without_deadlock(self):
         """create_upload runs cleanup while holding the lock; must not re-enter cancel_upload."""
@@ -101,9 +113,22 @@ class TestResumableUploadFlow(unittest.TestCase):
             self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
 
         done = client.post(f"/api/upload/resumable/{upload_id}/complete")
-        self.assertEqual(done.status_code, 200, done.get_data(as_text=True))
+        self.assertIn(done.status_code, (200, 202), done.get_data(as_text=True))
+
+        import time
+
+        deadline = time.time() + 30
         payload = done.get_json()
-        self.assertIn("reisift_path", payload)
+        while time.time() < deadline and payload.get("status") != "completed":
+            st = client.get(f"/api/upload/resumable/{upload_id}/status")
+            self.assertEqual(st.status_code, 200)
+            payload = st.get_json()
+            if payload.get("status") == "failed":
+                self.fail(payload.get("finalize_error"))
+            time.sleep(0.1)
+
+        self.assertEqual(payload.get("status"), "completed")
+        self.assertTrue(str(payload.get("final_path", "")).endswith(".csv"))
 
 
 class TestMonthlyConsolidatedAnalyzePaths(unittest.TestCase):
@@ -129,8 +154,25 @@ class TestMonthlyConsolidatedAnalyzePaths(unittest.TestCase):
             put = client.put(f"/api/upload/resumable/{upload_id}/chunk/0", data=data)
             self.assertEqual(put.status_code, 200)
             done = client.post(f"/api/upload/resumable/{upload_id}/complete")
-            self.assertEqual(done.status_code, 200, done.get_data(as_text=True))
-            return done.get_json()[f"{kind}_path"]
+            self.assertIn(done.status_code, (200, 202), done.get_data(as_text=True))
+
+            import time
+
+            deadline = time.time() + 30
+            payload = done.get_json()
+            while time.time() < deadline and payload.get("status") != "completed":
+                st = client.get(f"/api/upload/resumable/{upload_id}/status")
+                self.assertEqual(st.status_code, 200)
+                payload = st.get_json()
+                if payload.get("status") == "failed":
+                    self.fail(payload.get("finalize_error"))
+                time.sleep(0.1)
+
+            self.assertEqual(payload.get("status"), "completed")
+            path_key = f"{kind}_path"
+            if done.status_code == 200 and path_key in done.get_json():
+                return done.get_json()[path_key]
+            return payload["final_path"]
 
         reisift_path = upload_fixture("reisift", "monthly_reisift_sample.csv")
         ql_path = upload_fixture("qualified_leads", "qualified_leads_sample.csv")

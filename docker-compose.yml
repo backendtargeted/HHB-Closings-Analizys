@@ -13,7 +13,24 @@ services:
     environment:
       - ENV=production
       - MAX_UPLOAD_MB=2048
+      # Resumable uploads — mirror these on the Easypanel API service too.
+      - UPLOAD_STORAGE_DIR=/app/uploads
+      - UPLOAD_MAX_CHUNK_MB=2
+      - UPLOAD_MAX_TOTAL_MB=2048
+      - UPLOAD_SESSION_TTL_HOURS=24
       - REPORTS_DIR=/app/reports
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
     networks:
       - contact-attribution-network
@@ -25,12 +42,14 @@ services:
         # Same-origin API via nginx /api → backend (fixes "Network Error" in Docker when :8000 is wrong)
         VITE_API_URL: /api
     environment:
+      # Compose: service name "backend". Easypanel UI service: crm-reports_api:8000 (or your API DNS).
       - BACKEND_UPSTREAM=backend:8000
     container_name: contact-attribution-frontend
     ports:
       - "3300:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - contact-attribution-network

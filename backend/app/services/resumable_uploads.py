@@ -220,12 +220,69 @@ def get_upload_status(upload_id: str) -> Dict[str, Any]:
         return _read_manifest(upload_id)
 
 
-def finalize_upload(upload_id: str) -> Dict[str, Any]:
-    ensure_dirs()
+def _assemble_upload(upload_id: str) -> None:
+    """Concatenate chunk files into the final upload path."""
     with _lock:
         manifest = _read_manifest(upload_id)
         if manifest.get("status") == "completed":
+            return
+        total_chunks = int(manifest["total_chunks"])
+        expected_size = int(manifest["total_size"])
+        ext = Path(str(manifest["filename"])).suffix
+        final_name = f"{manifest['kind']}_{upload_id}{ext}"
+        final_path = _FINAL_DIR / final_name
+
+    with open(final_path, "wb") as out:
+        for i in range(total_chunks):
+            part = _upload_chunk_dir(upload_id) / f"{i:08d}.part"
+            if not part.exists():
+                raise ValueError(f"Missing chunk file: {i}")
+            with open(part, "rb") as pf:
+                shutil.copyfileobj(pf, out, length=8 * 1024 * 1024)
+
+    actual_size = final_path.stat().st_size
+    if actual_size != expected_size:
+        final_path.unlink(missing_ok=True)
+        raise ValueError(f"Final size mismatch: expected {expected_size}, got {actual_size}")
+
+    shutil.rmtree(_upload_chunk_dir(upload_id), ignore_errors=True)
+
+    with _lock:
+        manifest = _read_manifest(upload_id)
+        manifest["status"] = "completed"
+        manifest["final_path"] = str(final_path)
+        manifest["finalize_error"] = None
+        manifest["updated_at"] = _utc_iso_now()
+        _write_manifest(upload_id, manifest)
+
+
+def _finalize_worker(upload_id: str) -> None:
+    try:
+        _assemble_upload(upload_id)
+    except Exception as exc:
+        with _lock:
+            try:
+                manifest = _read_manifest(upload_id)
+                manifest["status"] = "failed"
+                manifest["finalize_error"] = str(exc)
+                manifest["updated_at"] = _utc_iso_now()
+                _write_manifest(upload_id, manifest)
+            except FileNotFoundError:
+                pass
+
+
+def request_finalize(upload_id: str) -> Dict[str, Any]:
+    """Start background chunk assembly; returns immediately unless already done."""
+    ensure_dirs()
+    with _lock:
+        manifest = _read_manifest(upload_id)
+        status = manifest.get("status")
+        if status == "completed":
             return manifest
+        if status == "assembling":
+            return manifest
+        if status == "failed":
+            raise ValueError(str(manifest.get("finalize_error") or "Upload assembly failed"))
 
         total_chunks = int(manifest["total_chunks"])
         uploaded_chunks = [int(i) for i in manifest.get("uploaded_chunks", [])]
@@ -233,30 +290,35 @@ def finalize_upload(upload_id: str) -> Dict[str, Any]:
         if missing:
             raise ValueError(f"Missing chunks: {missing[:10]}")
 
-        ext = Path(str(manifest["filename"])).suffix
-        final_name = f"{manifest['kind']}_{upload_id}{ext}"
-        final_path = _FINAL_DIR / final_name
-
-        with open(final_path, "wb") as out:
-            for i in range(total_chunks):
-                part = _upload_chunk_dir(upload_id) / f"{i:08d}.part"
-                if not part.exists():
-                    raise ValueError(f"Missing chunk file: {i}")
-                with open(part, "rb") as pf:
-                    shutil.copyfileobj(pf, out, length=8 * 1024 * 1024)
-
-        actual_size = final_path.stat().st_size
-        expected_size = int(manifest["total_size"])
-        if actual_size != expected_size:
-            final_path.unlink(missing_ok=True)
-            raise ValueError(f"Final size mismatch: expected {expected_size}, got {actual_size}")
-
-        shutil.rmtree(_upload_chunk_dir(upload_id), ignore_errors=True)
-        manifest["status"] = "completed"
-        manifest["final_path"] = str(final_path)
+        manifest["status"] = "assembling"
+        manifest["finalize_error"] = None
         manifest["updated_at"] = _utc_iso_now()
         _write_manifest(upload_id, manifest)
+
+    thread = threading.Thread(target=_finalize_worker, args=(upload_id,), daemon=True)
+    thread.start()
+    return get_upload_status(upload_id)
+
+
+def finalize_upload(upload_id: str) -> Dict[str, Any]:
+    """Blocking finalize — used in tests; production uses request_finalize + polling."""
+    import time
+
+    manifest = request_finalize(upload_id)
+    if manifest.get("status") == "completed":
         return manifest
+
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        manifest = get_upload_status(upload_id)
+        status = manifest.get("status")
+        if status == "completed":
+            return manifest
+        if status == "failed":
+            raise ValueError(str(manifest.get("finalize_error") or "Upload assembly failed"))
+        time.sleep(0.1)
+
+    raise TimeoutError("Upload assembly timed out")
 
 
 def cancel_upload(upload_id: str) -> None:

@@ -265,19 +265,31 @@ def upload_resumable_status(upload_id: str):
             "uploaded_chunks": manifest["uploaded_chunks"],
             "status": manifest["status"],
             "final_path": manifest.get("final_path"),
+            "finalize_error": manifest.get("finalize_error"),
         }
     )
 
 
 @api_bp.route("/upload/resumable/<upload_id>/complete", methods=["POST"])
 def upload_resumable_complete(upload_id: str):
-    """Assemble chunks into a final file path."""
+    """Start background chunk assembly (returns 202) or return paths when already done."""
     try:
-        manifest = resumable_uploads.finalize_upload(upload_id)
+        manifest = resumable_uploads.request_finalize(upload_id)
     except FileNotFoundError:
         return jsonify({"detail": "Upload session not found"}), 404
     except ValueError as exc:
         return jsonify({"detail": str(exc)}), 400
+
+    if manifest.get("status") != "completed":
+        return jsonify(
+            {
+                "upload_id": manifest["upload_id"],
+                "kind": manifest["kind"],
+                "status": manifest.get("status"),
+                "message": "Upload assembly started",
+            }
+        ), 202
+
     final_path = manifest.get("final_path")
     if not final_path:
         return jsonify({"detail": "Upload completed without final path"}), 500

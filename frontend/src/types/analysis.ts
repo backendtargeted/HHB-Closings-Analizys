@@ -141,15 +141,16 @@ export interface ResumableUploadStatusResponse {
   chunk_size: number;
   total_chunks: number;
   uploaded_chunks: number[];
-  status: 'pending' | 'uploading' | 'completed';
+  status: 'pending' | 'uploading' | 'assembling' | 'completed' | 'failed';
   final_path?: string | null;
+  finalize_error?: string | null;
 }
 
 export interface ResumableUploadCompleteResponse {
   upload_id: string;
   kind: ResumableUploadKind;
-  status: 'completed';
-  path: string;
+  status: 'assembling' | 'completed';
+  path?: string;
   message: string;
   csv_path?: string;
   closings_path?: string;

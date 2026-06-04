@@ -26,9 +26,41 @@ const UPLOAD_TOO_LARGE_MSG =
   'Upload too large for the server limit. Try fewer/smaller files or contact admin.';
 
 const GATEWAY_TIMEOUT_MSG =
-  'The server stopped responding (502). Try again — uploads use short requests and analysis runs in the background.';
+  'The server stopped responding (502). Wait a moment and try again — large files upload and analyze in the background.';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitForResumableUploadComplete(
+  uploadId: string,
+  onProgress?: (message: string) => void
+): Promise<string> {
+  const deadline = Date.now() + 30 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const status = await getResumableUploadStatus(uploadId);
+    if (status.status === 'completed' && status.final_path) {
+      return status.final_path;
+    }
+    if (status.status === 'failed') {
+      throw new Error(status.finalize_error || 'Upload assembly failed');
+    }
+    onProgress?.(
+      status.status === 'assembling' ? 'Assembling uploaded file…' : 'Waiting for upload…'
+    );
+    await sleep(1000);
+  }
+  throw new Error('Upload assembly timed out');
+}
+
+function pathFromCompleteResponse(
+  kind: ResumableUploadKind,
+  finalized: ResumableUploadCompleteResponse
+): string | undefined {
+  if (kind === 'csv') return finalized.csv_path ?? finalized.path;
+  if (kind === 'closings') return finalized.closings_path ?? finalized.excel_path ?? finalized.path;
+  if (kind === 'reisift') return finalized.reisift_path ?? finalized.path;
+  if (kind === 'qualified_leads') return finalized.qualified_leads_path ?? finalized.path;
+  return finalized.path;
+}
 
 async function pollMonthlyConsolidatedJob(
   jobId: string,
@@ -262,8 +294,8 @@ export async function uploadFileResumable(
   if (caps.resumable_upload !== true) {
     throw new Error('Resumable uploads are not available. Check /api/upload/capabilities.');
   }
-  const maxChunkBytes = caps.limits?.max_chunk_bytes ?? 8 * 1024 * 1024;
-  const chunkSize = Math.min(maxChunkBytes, 8 * 1024 * 1024);
+  const maxChunkBytes = caps.limits?.max_chunk_bytes ?? 2 * 1024 * 1024;
+  const chunkSize = maxChunkBytes;
   const init = await initResumableUpload(kind, file.name, file.size, chunkSize);
   onProgress?.(0, `Uploading ${file.name}…`);
 
@@ -297,21 +329,14 @@ export async function uploadFileResumable(
     }
   }
 
-  const finalized = await completeResumableUpload(init.upload_id);
-  if (kind === 'csv' && finalized.csv_path) {
-    return finalized.csv_path;
+  const completeResponse = await completeResumableUpload(init.upload_id);
+  let filePath = pathFromCompleteResponse(kind, completeResponse);
+  if (!filePath) {
+    filePath = await waitForResumableUploadComplete(init.upload_id, (msg) =>
+      onProgress?.(100, msg)
+    );
   }
-  if (kind === 'closings') {
-    const closingsPath = finalized.closings_path ?? finalized.excel_path;
-    if (closingsPath) return closingsPath;
-  }
-  if (kind === 'reisift' && finalized.reisift_path) {
-    return finalized.reisift_path;
-  }
-  if (kind === 'qualified_leads' && finalized.qualified_leads_path) {
-    return finalized.qualified_leads_path;
-  }
-  throw new Error(`${kind} upload did not return a file path`);
+  return filePath;
 }
 
 export const analyzeMonthlyConsolidated = async (
