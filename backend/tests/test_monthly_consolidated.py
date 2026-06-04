@@ -9,16 +9,18 @@ import pytest
 from app.services.monthly_consolidated import (
     analyze,
     analysis_list_tokens,
+    combinations_from_scan,
     compute_combinations,
     compute_list_metrics,
     filter_reisift_cohort,
     is_excluded_list_token,
-    is_non_stack_list_token,
+    list_metrics_from_scan,
     parse_report_month,
     prepare_reisift_cohort,
     resolve_combo_min_rows,
     row_has_closing_tag,
     row_has_sf_tag,
+    scan_cohort,
     split_list_tokens,
     stackable_list_tokens,
 )
@@ -98,9 +100,18 @@ def test_combinations_min_rows():
     assert any(c.lists_key == "Default Risk + High Equity" for c in combos)
 
 
-def test_non_stack_lists_excluded_from_combos():
-    assert is_non_stack_list_token("DNC + Dead Deals")
-    assert is_non_stack_list_token("Closings App MLSLI TBD")
+def test_hygiene_lists_fully_excluded():
+    assert is_excluded_list_token("DNC + Dead Deals")
+    assert is_excluded_list_token("Closings App MLSLI TBD")
+    assert is_excluded_list_token("DNC")
+    assert is_excluded_list_token("Closings App")
+    assert is_excluded_list_token("MLSLI")
+    assert is_excluded_list_token("Buyers (Investorbase)")
+    assert is_excluded_list_token("Appraiva (Source List)")
+    assert not is_excluded_list_token("High Equity")
+
+
+def test_hygiene_lists_excluded_from_metrics_and_combos():
     df = pd.DataFrame(
         [
             {
@@ -108,18 +119,37 @@ def test_non_stack_lists_excluded_from_combos():
                 "Tags": "(8020) CC - 1/2025",
             },
             {
-                "Lists": "High Equity, Default Risk, DNC + Dead Deals",
+                "Lists": "High Equity, Default Risk, DNC, Dead Deals",
                 "Tags": "(CLOSED) 8020 - 6/2025",
             },
             {
-                "Lists": "High Equity, Default Risk, DNC + Dead Deals",
+                "Lists": "High Equity, Default Risk, Closings App, MLSLI",
                 "Tags": "(8020) SMS - 2/2025",
+            },
+            {
+                "Lists": "Leads, DNC, Buyers (Investorbase)",
+                "Tags": "(8020) DM - 3/2025",
             },
         ]
     )
     assert stackable_list_tokens(df.iloc[0]["Lists"]) == ["High Equity"]
+    assert set(stackable_list_tokens(df.iloc[1]["Lists"])) == {
+        "Default Risk",
+        "High Equity",
+    }
+    metrics = compute_list_metrics(df, {})
+    tokens = {m.token for m in metrics}
+    assert "DNC" not in tokens
+    assert "Dead Deals" not in tokens
+    assert "Closings App" not in tokens
+    assert "MLSLI" not in tokens
+    assert "Buyers (Investorbase)" not in tokens
     combos, _ = compute_combinations(df, min_rows=2)
-    assert all("DNC + Dead Deals" not in c.lists_key for c in combos)
+    for c in combos:
+        assert "DNC" not in c.lists_key
+        assert "Dead Deals" not in c.lists_key
+        assert "Closings App" not in c.lists_key
+        assert "MLSLI" not in c.lists_key
     assert any(c.lists_key == "Default Risk + High Equity" for c in combos)
 
 
@@ -195,3 +225,26 @@ def test_analyze_includes_tag_lead_source_and_open_pipeline():
     result = analyze(str(REISIFT), str(QL))
     assert len(result.tag_lead_source_counts) > 0
     assert result.open_pipeline_lifecycle.get("open_rows", 0) >= 0
+
+
+def test_analyze_reports_progress_callbacks():
+    steps: list[tuple[int, str]] = []
+
+    def on_progress(pct: int, msg: str) -> None:
+        steps.append((pct, msg))
+
+    analyze(str(REISIFT), str(QL), "2025-03", on_progress=on_progress)
+    assert len(steps) >= 5
+    assert steps[0][0] < steps[-1][0]
+    assert any("Scanning" in msg for _, msg in steps)
+
+
+def test_scan_matches_legacy_list_and_combo_counts():
+    df = pd.read_csv(REISIFT)
+    cohort, _ = filter_reisift_cohort(df, date(2025, 3, 1), date(2025, 3, 31))
+    scan = scan_cohort(cohort)
+    lists = list_metrics_from_scan(scan, {"High Equity": 2})
+    combos, _ = combinations_from_scan(scan, list_metrics=lists, min_rows=2)
+    assert scan.crm_lead_rows == int(cohort["Tags"].apply(row_has_sf_tag).sum())
+    assert scan.closing_rows == int(cohort["Tags"].apply(row_has_closing_tag).sum())
+    assert any(c.lists_key == "Default Risk + High Equity" for c in combos)

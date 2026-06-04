@@ -116,7 +116,7 @@ CSV-only analysis (`POST /api/analyze` with `csv_path` only) builds closed deals
 | **Closings** | Cohort rows with **`(CLOSED) 8020 - MM/YYYY`** (or `M/YYYY`) in `Tags` — same parser as regular attribution |
 | **List attribution** | Comma-split **`Lists`**; each property **counts toward every list** on its row (**stacked** = multiple tokens = positive signal) |
 | **Closing rate (per list)** | `closings on that list ÷ REISift cohort rows carrying that list token` |
-| **List combinations** | **≥2 stackable distress lists** per row (excludes DNC + Dead Deals, Closings App MLSLI TBD, plus source lists); min rows = **median** multi-list combo size (floor 5); grouped by primary list; ranked by closings (export capped at top 100) |
+| **List combinations** | **≥2 stackable distress lists** per row (excludes source/import and hygiene lists: DNC, Dead Deals, Closings App, MLSLI, TBD, Buyers, etc.); min rows = **median** multi-list combo size (floor 5); grouped by primary list; ranked by closings (export capped at top 100) |
 | **Qualified → list credit** | Address join (`make_address_key`) between in-window SF rows and cohort REISift rows; unmatched SF rows are reported in warnings when match rate &lt; 50% |
 
 Optional column **`List Stack`** (numeric) is present on many exports but is **not** used as the primary stacked classifier — parsed token count on `Lists` drives stacked stats.

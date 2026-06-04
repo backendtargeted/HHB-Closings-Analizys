@@ -94,9 +94,13 @@ def _run_monthly_consolidated_job(
     try:
         _jobs[job_id]["status"] = "running"
         _jobs[job_id]["progress"] = 10
-        _jobs[job_id]["message"] = "Analyzing REISift export…"
+        _jobs[job_id]["message"] = "Starting analysis…"
 
-        result = analyze(reisift_path, ql_path, report_month)
+        def on_progress(progress: int, message: str) -> None:
+            _jobs[job_id]["progress"] = progress
+            _jobs[job_id]["message"] = message
+
+        result = analyze(reisift_path, ql_path, report_month, on_progress=on_progress)
 
         _jobs[job_id]["progress"] = 90
         _jobs[job_id]["message"] = "Saving report…"

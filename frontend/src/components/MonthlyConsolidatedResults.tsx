@@ -162,8 +162,9 @@ const MonthlyConsolidatedResults = ({
           List combinations (≥{comboMinRows.toLocaleString()} properties)
         </h3>
         <p className="text-xs text-stone-500 mb-4">
-          Distress-only stacks (excludes DNC + Dead Deals, Closings App MLSLI TBD). Threshold =
-          median multi-list combo size for this cohort. Grouped by primary distress list.
+          Distress-only stacks (excludes source/import and hygiene lists such as DNC, Dead
+          Deals, Closings App, MLSLI, TBD, Buyers). Threshold = median multi-list combo size
+          for this cohort. Grouped by primary distress list.
         </p>
         {m.combinations.length === 0 ? (
           <p className="text-sm text-stone-500 py-4">

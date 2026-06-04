@@ -14,7 +14,9 @@ from dataclasses import dataclass, field
 from datetime import date
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+ProgressCallback = Callable[[int, str], None]
 
 import pandas as pd
 
@@ -62,19 +64,22 @@ COMBO_MIN_ROWS_FLOOR = 5
 COMBO_MIN_ROWS_DEFAULT = 10
 QL_MATCH_WARN_THRESHOLD = 0.5
 
-# REISift source/import lists — excluded from list ranking, combinations, and QL attribution.
+# Not distress lists — excluded from list ranking, combinations, stacking, and QL attribution.
 EXCLUDED_LIST_TOKENS: frozenset[str] = frozenset(
     {
+        # Source / import
         "8020 source list",
         "podio (source)",
-    }
-)
-
-# Operational / hygiene lists — still appear in List Performance, but not in stacking or combos.
-NON_STACK_LIST_TOKENS: frozenset[str] = frozenset(
-    {
+        "appraiva (source list)",
+        # Hygiene / operational (incl. REISift tokens split from legacy combined names)
         "dnc + dead deals",
+        "dnc",
+        "dead deals",
+        "closings app",
+        "mlsli",
+        "tbd",
         "closings app mlsli tbd",
+        "buyers (investorbase)",
     }
 )
 
@@ -88,17 +93,18 @@ def is_excluded_list_token(token: str) -> bool:
 
 
 def is_non_stack_list_token(token: str) -> bool:
-    return _normalize_list_token(token) in NON_STACK_LIST_TOKENS
+    """Backward-compatible alias: hygiene lists are fully excluded now."""
+    return is_excluded_list_token(token)
 
 
 def analysis_list_tokens(lists_str: object) -> List[str]:
-    """Distress lists used for ranking; omits source/import lists."""
+    """Distress lists used for ranking; omits source/import and hygiene lists."""
     return [t for t in split_list_tokens(lists_str) if not is_excluded_list_token(t)]
 
 
 def stackable_list_tokens(lists_str: object) -> List[str]:
-    """Lists that count toward stacked rows and list combinations."""
-    return [t for t in analysis_list_tokens(lists_str) if not is_non_stack_list_token(t)]
+    """Lists that count toward stacked rows and list combinations (distress only)."""
+    return analysis_list_tokens(lists_str)
 
 
 def parse_report_month(value: str) -> Tuple[date, date]:
@@ -181,9 +187,24 @@ def row_has_sf_tag(tags_str: object) -> bool:
     return False
 
 
-def row_has_closing_tag(tags_str: object) -> bool:
-    parsed = _dedupe_parsed_tag_events(parse_tags(tags_str))
+def _parsed_has_closing(parsed: List[Dict[str, Any]]) -> bool:
     return any(p.get("type") == "closing" for p in parsed)
+
+
+def row_has_closing_tag(tags_str: object) -> bool:
+    if pd.isna(tags_str) or not str(tags_str).strip():
+        return False
+    text = str(tags_str)
+    if "(CLOSED)" not in text.upper():
+        return False
+    parsed = _dedupe_parsed_tag_events(parse_tags(text))
+    return _parsed_has_closing(parsed)
+
+
+def _parse_tags_cached(tags_str: object) -> List[Dict[str, Any]]:
+    if pd.isna(tags_str) or not str(tags_str).strip():
+        return []
+    return _dedupe_parsed_tag_events(parse_tags(str(tags_str)))
 
 
 def split_list_tokens(lists_str: object) -> List[str]:
@@ -273,6 +294,24 @@ class ComboMetric:
 
 
 @dataclass
+class CohortScanResult:
+    """Single-pass cohort aggregates (list metrics, combos, QL keys, lifecycle inputs)."""
+
+    crm_lead_rows: int = 0
+    closing_rows: int = 0
+    stacked_rows: int = 0
+    token_rows: Dict[str, int] = field(default_factory=dict)
+    token_crm: Dict[str, int] = field(default_factory=dict)
+    token_close: Dict[str, int] = field(default_factory=dict)
+    token_stacked: Dict[str, int] = field(default_factory=dict)
+    combo_groups: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    cohort_keys: Dict[str, List[str]] = field(default_factory=dict)
+    tag_lead_source_counts: Dict[str, int] = field(default_factory=dict)
+    open_pipeline_stages: List[str] = field(default_factory=list)
+    closing_matches: List[Dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
 class MonthlyConsolidatedResult:
     report_month: str
     cohort_scope: str
@@ -327,46 +366,205 @@ class MonthlyConsolidatedResult:
         }
 
 
-def compute_list_metrics(cohort_df: pd.DataFrame, ql_by_list: Dict[str, int]) -> List[ListMetric]:
-    token_rows: Dict[str, int] = {}
-    token_crm: Dict[str, int] = {}
-    token_close: Dict[str, int] = {}
-    token_stacked: Dict[str, int] = {}
-
-    for _, row in cohort_df.iterrows():
-        tokens = analysis_list_tokens(row.get("Lists"))
-        stackable = stackable_list_tokens(row.get("Lists"))
-        if not tokens:
-            continue
-        is_stacked = len(stackable) > 1
-        has_sf = row_has_sf_tag(row.get("Tags"))
-        has_close = row_has_closing_tag(row.get("Tags"))
-        for t in tokens:
-            token_rows[t] = token_rows.get(t, 0) + 1
-            if has_sf:
-                token_crm[t] = token_crm.get(t, 0) + 1
-            if has_close:
-                token_close[t] = token_close.get(t, 0) + 1
-            if is_stacked:
-                token_stacked[t] = token_stacked.get(t, 0) + 1
-
-    all_tokens = sorted(token_rows.keys(), key=lambda x: (-token_close.get(x, 0), -token_rows[x], x))
+def list_metrics_from_scan(
+    scan: CohortScanResult, ql_by_list: Dict[str, int]
+) -> List[ListMetric]:
+    all_tokens = sorted(
+        scan.token_rows.keys(),
+        key=lambda x: (-scan.token_close.get(x, 0), -scan.token_rows[x], x),
+    )
     metrics: List[ListMetric] = []
     for t in all_tokens:
-        rc = token_rows[t]
-        cc = token_close.get(t, 0)
+        rc = scan.token_rows[t]
+        cc = scan.token_close.get(t, 0)
         metrics.append(
             ListMetric(
                 token=t,
                 row_count=rc,
-                crm_lead_count=token_crm.get(t, 0),
+                crm_lead_count=scan.token_crm.get(t, 0),
                 qualified_lead_count=ql_by_list.get(t, 0),
                 closing_count=cc,
                 closing_rate=round(cc / rc, 6) if rc else 0.0,
-                stacked_row_count=token_stacked.get(t, 0),
+                stacked_row_count=scan.token_stacked.get(t, 0),
             )
         )
     return metrics
+
+
+def compute_list_metrics(cohort_df: pd.DataFrame, ql_by_list: Dict[str, int]) -> List[ListMetric]:
+    return list_metrics_from_scan(scan_cohort(cohort_df), ql_by_list)
+
+
+def _iat_val(series: Optional[pd.Series], i: int) -> object:
+    if series is None:
+        return None
+    return series.iat[i]
+
+
+def _address_key_at(
+    cohort_df: pd.DataFrame, i: int, addr_cols: Dict[str, Optional[str]]
+) -> str:
+    street_col = addr_cols.get("street")
+    city_col = addr_cols.get("city")
+    state_col = addr_cols.get("state")
+    zip_col = addr_cols.get("zip")
+    street = ""
+    city = ""
+    state = ""
+    zip_code = ""
+    if street_col:
+        v = cohort_df[street_col].iat[i]
+        if pd.notna(v):
+            street = str(v).strip()
+    if city_col:
+        v = cohort_df[city_col].iat[i]
+        if pd.notna(v):
+            city = str(v).strip()
+    if state_col:
+        v = cohort_df[state_col].iat[i]
+        if pd.notna(v):
+            state = str(v).strip()
+    if zip_col:
+        v = cohort_df[zip_col].iat[i]
+        if pd.notna(v):
+            zip_code = str(v).strip()
+    return make_address_key(street, city, state, zip_code)
+
+
+def scan_cohort(
+    cohort_df: pd.DataFrame,
+    created_col: Optional[str] = None,
+    default_end: Optional[pd.Timestamp] = None,
+    on_progress: Optional[ProgressCallback] = None,
+) -> CohortScanResult:
+    """
+    One pass over the cohort: list metrics, combinations, QL address keys,
+    tag lead sources, CRM open-pipeline stages, and closing lifecycle inputs.
+    """
+    result = CohortScanResult()
+    n = len(cohort_df)
+    if n == 0:
+        return result
+
+    if default_end is None:
+        default_end = pd.Timestamp.now()
+
+    tags_series = cohort_df["Tags"] if "Tags" in cohort_df.columns else None
+    lists_series = cohort_df["Lists"] if "Lists" in cohort_df.columns else None
+    created_series = (
+        cohort_df[created_col] if created_col and created_col in cohort_df.columns else None
+    )
+    addr_cols = {
+        "street": find_column_name(cohort_df, REISIFT_ADDR["street"]),
+        "city": find_column_name(cohort_df, REISIFT_ADDR["city"]),
+        "state": find_column_name(cohort_df, REISIFT_ADDR["state"]),
+        "zip": find_column_name(cohort_df, REISIFT_ADDR["zip"]),
+    }
+    progress_interval = max(25_000, n // 20) if n > 10_000 else 0
+
+    for i in range(n):
+        if progress_interval and on_progress and i > 0 and i % progress_interval == 0:
+            pct = 20 + int(35 * i / n)
+            on_progress(pct, f"Scanning cohort… ({i:,} / {n:,} rows)")
+
+        tags_val = _iat_val(tags_series, i)
+        lists_val = _iat_val(lists_series, i)
+
+        has_sf = row_has_sf_tag(tags_val)
+        parsed = _parse_tags_cached(tags_val)
+        has_close = _parsed_has_closing(parsed)
+
+        if has_sf:
+            result.crm_lead_rows += 1
+        if has_close:
+            result.closing_rows += 1
+
+        tokens = analysis_list_tokens(lists_val)
+        stackable = stackable_list_tokens(lists_val)
+        if len(stackable) > 1:
+            result.stacked_rows += 1
+
+        if tokens:
+            is_stacked = len(stackable) > 1
+            for t in tokens:
+                result.token_rows[t] = result.token_rows.get(t, 0) + 1
+                if has_sf:
+                    result.token_crm[t] = result.token_crm.get(t, 0) + 1
+                if has_close:
+                    result.token_close[t] = result.token_close.get(t, 0) + 1
+                if is_stacked:
+                    result.token_stacked[t] = result.token_stacked.get(t, 0) + 1
+
+        if len(stackable) >= 2:
+            key_tuple = tuple(sorted(stackable))
+            key = " + ".join(key_tuple)
+            if key not in result.combo_groups:
+                result.combo_groups[key] = {
+                    "lists": list(key_tuple),
+                    "row_count": 0,
+                    "closing_count": 0,
+                }
+            result.combo_groups[key]["row_count"] += 1
+            if has_close:
+                result.combo_groups[key]["closing_count"] += 1
+
+        addr_key = _address_key_at(cohort_df, i, addr_cols)
+        if addr_key and addr_key != "|||" and tokens:
+            bucket = result.cohort_keys.setdefault(addr_key, [])
+            for t in tokens:
+                if t not in bucket:
+                    bucket.append(t)
+
+        src = derive_tag_lead_source_from_parsed(parsed)
+        result.tag_lead_source_counts[src] = (
+            result.tag_lead_source_counts.get(src, 0) + 1
+        )
+
+        if has_sf and not has_close:
+            contacts = parse_tags(str(tags_val or ""))
+            events = build_events(contacts)
+            ref_end = default_end
+            if created_series is not None:
+                parsed_created = pd.to_datetime(created_series.iat[i], errors="coerce")
+                if pd.notna(parsed_created):
+                    ref_end = pd.Timestamp(parsed_created)
+            stages = compute_stage_funnel_open(events, ref_end)
+            result.open_pipeline_stages.append(get_highest_stage(stages))
+
+        if has_close:
+            street_col = addr_cols.get("street")
+            city_col = addr_cols.get("city")
+            street = ""
+            city = ""
+            if street_col:
+                v = cohort_df[street_col].iat[i]
+                if pd.notna(v):
+                    street = str(v).strip()
+            if city_col:
+                v = cohort_df[city_col].iat[i]
+                if pd.notna(v):
+                    city = str(v).strip()
+            addr = f"{street} {city}".strip() or street or "Unknown"
+            close_date = None
+            for p in parsed:
+                if p.get("type") == "closing":
+                    close_date = p.get("date")
+                    break
+            idx = int(cohort_df.index[i])
+            result.closing_matches.append(
+                {
+                    "deal_index": idx,
+                    "csv_index": idx,
+                    "closed_date": close_date or "",
+                    "address": addr,
+                    "lead_source": "Contact History Tags",
+                    "csv_record": cohort_df.iloc[i].to_dict(),
+                    "workbook_close": None,
+                    "deal_meta": None,
+                }
+            )
+
+    return result
 
 
 def resolve_combo_min_rows(multi_list_counts: List[int]) -> int:
@@ -403,24 +601,12 @@ def _combo_group_for_lists(
     return sorted(lists, key=sort_key)[0]
 
 
-def compute_combinations(
-    cohort_df: pd.DataFrame,
+def combinations_from_scan(
+    scan: CohortScanResult,
     min_rows: Optional[int] = None,
     list_metrics: Optional[List[ListMetric]] = None,
 ) -> Tuple[List[ComboMetric], int]:
-    groups: Dict[str, Dict[str, Any]] = {}
-    for _, row in cohort_df.iterrows():
-        tokens = stackable_list_tokens(row.get("Lists"))
-        if len(tokens) < 2:
-            continue
-        key_tuple = tuple(sorted(tokens))
-        key = " + ".join(key_tuple)
-        if key not in groups:
-            groups[key] = {"lists": list(key_tuple), "row_count": 0, "closing_count": 0}
-        groups[key]["row_count"] += 1
-        if row_has_closing_tag(row.get("Tags")):
-            groups[key]["closing_count"] += 1
-
+    groups = scan.combo_groups
     multi_counts = [g["row_count"] for g in groups.values()]
     threshold = min_rows if min_rows is not None else resolve_combo_min_rows(multi_counts)
 
@@ -461,10 +647,24 @@ def compute_combinations(
     return combos[:COMBO_EXPORT_CAP], threshold
 
 
+def compute_combinations(
+    cohort_df: pd.DataFrame,
+    min_rows: Optional[int] = None,
+    list_metrics: Optional[List[ListMetric]] = None,
+) -> Tuple[List[ComboMetric], int]:
+    return combinations_from_scan(
+        scan_cohort(cohort_df), min_rows=min_rows, list_metrics=list_metrics
+    )
+
+
 def attribute_qualified_leads_to_lists(
-    cohort_df: pd.DataFrame, sf_df: pd.DataFrame, start: date, end: date
+    cohort_df: pd.DataFrame,
+    sf_df: pd.DataFrame,
+    start: date,
+    end: date,
+    cohort_keys: Optional[Dict[str, List[str]]] = None,
 ) -> Tuple[Dict[str, int], Dict[str, Any]]:
-    ql_metrics = compute_qualified_leads_metrics(sf_df, start, end)
+    compute_qualified_leads_metrics(sf_df, start, end)
     prepared, _, _ = validate_and_prepare(sf_df)
     window_start = pd.Timestamp(start)
     window_end = pd.Timestamp(end) + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
@@ -482,18 +682,8 @@ def attribute_qualified_leads_to_lists(
             "match_rate_pct": 0.0,
         }
 
-    cohort_keys: Dict[str, List[str]] = {}
-    for _, row in cohort_df.iterrows():
-        key = _reisift_address_key(row)
-        if not key or key == "|||":
-            continue
-        tokens = analysis_list_tokens(row.get("Lists"))
-        if not tokens:
-            continue
-        cohort_keys.setdefault(key, [])
-        for t in tokens:
-            if t not in cohort_keys[key]:
-                cohort_keys[key].append(t)
+    if cohort_keys is None:
+        cohort_keys = scan_cohort(cohort_df).cohort_keys
 
     by_list: Dict[str, int] = {}
     matched = 0
@@ -599,11 +789,8 @@ def _row_reference_end(row: pd.Series, created_col: Optional[str], default_end: 
     return default_end
 
 
-def derive_tag_lead_source(tags_str: object) -> str:
-    """Tag-derived lead source: first 8020 channel, else LIST, else NONE."""
-    if pd.isna(tags_str) or not str(tags_str).strip():
-        return "NONE"
-    parsed = _dedupe_parsed_tag_events(parse_tags(tags_str))
+def derive_tag_lead_source_from_parsed(parsed: List[Dict[str, Any]]) -> str:
+    """Tag-derived lead source from pre-parsed events."""
     if not parsed:
         return "NONE"
 
@@ -631,11 +818,14 @@ def derive_tag_lead_source(tags_str: object) -> str:
     return "NONE"
 
 
-def build_tag_lead_source_counts(cohort_df: pd.DataFrame) -> List[Dict[str, Any]]:
-    counts: Dict[str, int] = {}
-    for _, row in cohort_df.iterrows():
-        src = derive_tag_lead_source(row.get("Tags"))
-        counts[src] = counts.get(src, 0) + 1
+def derive_tag_lead_source(tags_str: object) -> str:
+    """Tag-derived lead source: first 8020 channel, else LIST, else NONE."""
+    if pd.isna(tags_str) or not str(tags_str).strip():
+        return "NONE"
+    return derive_tag_lead_source_from_parsed(_parse_tags_cached(tags_str))
+
+
+def tag_lead_source_counts_to_api(counts: Dict[str, int]) -> List[Dict[str, Any]]:
     total = sum(counts.values()) or 1
     return [
         {
@@ -647,60 +837,34 @@ def build_tag_lead_source_counts(cohort_df: pd.DataFrame) -> List[Dict[str, Any]
     ]
 
 
+def build_tag_lead_source_counts(cohort_df: pd.DataFrame) -> List[Dict[str, Any]]:
+    return tag_lead_source_counts_to_api(scan_cohort(cohort_df).tag_lead_source_counts)
+
+
 def build_open_pipeline_lifecycle(
     cohort_df: pd.DataFrame,
     created_col: Optional[str],
     default_end: pd.Timestamp,
+    open_pipeline_stages: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Stuck-at-stage summary for cohort rows without a closing tag."""
-    open_mask = ~cohort_df["Tags"].apply(row_has_closing_tag)
-    open_df = cohort_df[open_mask]
-    if open_df.empty:
-        return {"open_rows": 0, "stuck_at_stage": []}
-
-    highest_stages: List[str] = []
-    for _, row in open_df.iterrows():
-        contacts = parse_tags(row.get("Tags", ""))
-        events = build_events(contacts)
-        ref_end = _row_reference_end(row, created_col, default_end)
-        stages = compute_stage_funnel_open(events, ref_end)
-        highest_stages.append(get_highest_stage(stages))
-
-    return aggregate_stuck_at_stage(highest_stages)
+    """Stuck-at-stage summary for CRM-tagged cohort rows without a closing tag."""
+    if open_pipeline_stages is None:
+        scan = scan_cohort(cohort_df, created_col, default_end)
+        open_pipeline_stages = scan.open_pipeline_stages
+    return aggregate_stuck_at_stage(open_pipeline_stages)
 
 
-def build_lifecycle_from_cohort(cohort_df: pd.DataFrame) -> Dict[str, Any]:
-    closing_rows = cohort_df[cohort_df["Tags"].apply(row_has_closing_tag)]
-    if closing_rows.empty:
+def build_lifecycle_from_matches(matches: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if not matches:
         return {}
-
-    matches: List[Dict[str, Any]] = []
-    for idx, row in closing_rows.iterrows():
-        street = _col_val(row, REISIFT_ADDR["street"])
-        city = _col_val(row, REISIFT_ADDR["city"])
-        addr = f"{street} {city}".strip() or street or "Unknown"
-        parsed = _dedupe_parsed_tag_events(parse_tags(row.get("Tags", "")))
-        close_date = None
-        for p in parsed:
-            if p.get("type") == "closing":
-                close_date = p.get("date")
-                break
-        matches.append(
-            {
-                "deal_index": int(idx),
-                "csv_index": int(idx),
-                "closed_date": close_date or "",
-                "address": addr,
-                "lead_source": "Contact History Tags",
-                "csv_record": row.to_dict(),
-                "workbook_close": None,
-                "deal_meta": None,
-            }
-        )
-
     results_df = analyze_contacts(matches)
     rows = results_df.to_dict(orient="records")
     return aggregate_lifecycle_stats(rows)
+
+
+def build_lifecycle_from_cohort(cohort_df: pd.DataFrame) -> Dict[str, Any]:
+    scan = scan_cohort(cohort_df)
+    return build_lifecycle_from_matches(scan.closing_matches)
 
 
 def _created_span_label(df: pd.DataFrame, created_col: Optional[str]) -> Tuple[str, str]:
@@ -716,9 +880,14 @@ def analyze(
     reisift_path: str,
     qualified_leads_path: str,
     report_month: Optional[str] = None,
+    on_progress: Optional[ProgressCallback] = None,
 ) -> MonthlyConsolidatedResult:
     warnings: List[str] = []
     month_text = (report_month or "").strip()
+
+    def report(progress: int, message: str) -> None:
+        if on_progress:
+            on_progress(progress, message)
 
     if month_text:
         start, end = parse_report_month(month_text)
@@ -729,6 +898,7 @@ def analyze(
         scope = "full_file"
         label = "full_export"
 
+    report(12, "Loading REISift export…")
     reisift_df = load_reisift_file(reisift_path)
     reisift_ingested = len(reisift_df)
     cohort_df, created_col, cohort_scope = prepare_reisift_cohort(reisift_df, start, end)
@@ -746,16 +916,23 @@ def analyze(
         period_start = start.isoformat()  # type: ignore[union-attr]
         period_end = end.isoformat()  # type: ignore[union-attr]
 
-    crm_lead_rows = int(cohort_df["Tags"].apply(row_has_sf_tag).sum()) if cohort_rows else 0
-    closing_rows = int(cohort_df["Tags"].apply(row_has_closing_tag).sum()) if cohort_rows else 0
+    if period_end:
+        try:
+            default_ref = pd.Timestamp(period_end)
+        except (ValueError, TypeError):
+            default_ref = pd.Timestamp.now()
+    else:
+        default_ref = pd.Timestamp.now()
 
-    stacked_rows = 0
-    if cohort_rows:
-        stacked_rows = int(
-            cohort_df["Lists"].apply(lambda x: len(stackable_list_tokens(x)) > 1).sum()
-        )
+    report(18, "Scanning cohort (lists, tags, pipeline)…")
+    scan = scan_cohort(cohort_df, created_col, default_ref, on_progress=on_progress)
+
+    crm_lead_rows = scan.crm_lead_rows
+    closing_rows = scan.closing_rows
+    stacked_rows = scan.stacked_rows
     stacked_pct = round(100.0 * stacked_rows / cohort_rows, 2) if cohort_rows else 0.0
 
+    report(58, "Loading qualified leads…")
     sf_df = load_qualified_leads_file(qualified_leads_path)
     from .qualified_leads import analyze_file as ql_analyze_file
 
@@ -767,8 +944,9 @@ def analyze(
         ql_start, ql_end = start, end  # type: ignore[assignment]
         ql_result = compute_qualified_leads_metrics(sf_df, ql_start, ql_end)
 
+    report(68, "Attributing qualified leads to lists…")
     ql_by_list, list_attr = attribute_qualified_leads_to_lists(
-        cohort_df, sf_df, ql_start, ql_end
+        cohort_df, sf_df, ql_start, ql_end, cohort_keys=scan.cohort_keys
     )
     if list_attr.get("match_rate_pct", 100) < QL_MATCH_WARN_THRESHOLD * 100:
         warnings.append(
@@ -776,37 +954,44 @@ def analyze(
             "list attribution may be understated."
         )
 
-    lists = compute_list_metrics(cohort_df, ql_by_list)
-    combinations, combo_min_rows = compute_combinations(cohort_df, list_metrics=lists)
-    lifecycle_raw = build_lifecycle_from_cohort(cohort_df) if closing_rows else {}
+    report(76, "Ranking lists and combinations…")
+    lists = list_metrics_from_scan(scan, ql_by_list)
+    combinations, combo_min_rows = combinations_from_scan(scan, list_metrics=lists)
+
+    report(82, "Analyzing closing lifecycle…")
+    lifecycle_raw = (
+        build_lifecycle_from_matches(scan.closing_matches) if closing_rows else {}
+    )
     lifecycle_stats = lifecycle_stats_for_api(lifecycle_raw)
 
-    if period_end:
-        try:
-            default_ref = pd.Timestamp(period_end)
-        except (ValueError, TypeError):
-            default_ref = pd.Timestamp.now()
-    else:
-        default_ref = pd.Timestamp.now()
+    report(86, "Finalizing open pipeline summary…")
+    open_pipeline = build_open_pipeline_lifecycle(
+        cohort_df, created_col, default_ref, open_pipeline_stages=scan.open_pipeline_stages
+    )
+    tag_lead_sources = tag_lead_source_counts_to_api(scan.tag_lead_source_counts)
+    report(88, "Analysis complete")
 
-    open_pipeline = build_open_pipeline_lifecycle(cohort_df, created_col, default_ref)
-    tag_lead_sources = build_tag_lead_source_counts(cohort_df) if cohort_rows else []
-
-    excluded_label = "8020 Source List and PODIO (SOURCE)"
-    non_stack_label = "DNC + Dead Deals and Closings App MLSLI TBD"
+    excluded_label = (
+        "8020 Source List, PODIO (SOURCE), Appraiva (Source List), "
+        "DNC / Dead Deals, Closings App, MLSLI, TBD, and Buyers (Investorbase)"
+    )
     list_scope = (
-        f"List metrics exclude {excluded_label} (source/import lists). "
-        f"Stacking and list combinations use distress lists only — excluding {non_stack_label}. "
+        f"List metrics, stacking, and combinations use distress lists only — excluding {excluded_label}. "
         f"Combinations require ≥2 stackable lists and ≥{combo_min_rows} cohort rows "
         f"(dynamic median threshold, floor {COMBO_MIN_ROWS_FLOOR}). "
         "List credit applies to every remaining list on a matched REISift property. "
         "Closing rate = closings on list ÷ REISift rows carrying that list."
+    )
+    pipeline_scope = (
+        "Open pipeline stuck-at-stage uses CRM-tagged rows without a closing tag "
+        "(not every non-closing row in the export). "
     )
     if cohort_scope == "full_file":
         methodology = (
             "Cohort = all rows in the uploaded REISift export. "
             "CRM leads = rows with any (SF) tag. Closings = (CLOSED) 8020 tags (existing app logic). "
             "Qualified leads use the full Create Date span of the uploaded Salesforce file. "
+            + pipeline_scope
             + list_scope
         )
     else:
@@ -814,6 +999,7 @@ def analyze(
             "Cohort = REISift properties whose Created date falls in the selected calendar month. "
             "CRM leads = cohort rows with any (SF) tag. Closings = (CLOSED) 8020 tags (existing app logic). "
             "Qualified leads use the Salesforce export with the same Create Date window; "
+            + pipeline_scope
             + list_scope
         )
 

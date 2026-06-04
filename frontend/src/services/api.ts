@@ -69,7 +69,10 @@ async function pollMonthlyConsolidatedJob(
   const deadline = Date.now() + 30 * 60 * 1000;
   while (Date.now() < deadline) {
     const status = await getMonthlyConsolidatedJobStatus(jobId);
-    onProgress?.(90 + Math.round((status.progress ?? 0) * 0.1), status.message);
+    const serverPct = status.progress ?? 0;
+    const uiPct =
+      serverPct >= 10 ? 90 + Math.round(((serverPct - 10) / 80) * 9) : 90;
+    onProgress?.(Math.min(99, uiPct), status.message);
     if (status.status === 'completed') {
       return asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(jobId));
     }
