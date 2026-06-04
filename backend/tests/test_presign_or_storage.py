@@ -82,6 +82,68 @@ class TestResumableUploadFlow(unittest.TestCase):
         self.assertEqual(init.status_code, 200, init.get_data(as_text=True))
         self.assertFalse(manifest_path.exists())
 
+    def test_reisift_kind_upload_complete(self):
+        client = app.test_client()
+        init = client.post(
+            "/api/upload/resumable/init",
+            json={
+                "kind": "reisift",
+                "filename": "contacts.csv",
+                "total_size": 12,
+                "chunk_size": 5,
+            },
+        )
+        self.assertEqual(init.status_code, 200, init.get_data(as_text=True))
+        upload_id = init.get_json()["upload_id"]
+
+        for idx, data in enumerate([b"abcde", b"fghij", b"kl"]):
+            r = client.put(f"/api/upload/resumable/{upload_id}/chunk/{idx}", data=data)
+            self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+
+        done = client.post(f"/api/upload/resumable/{upload_id}/complete")
+        self.assertEqual(done.status_code, 200, done.get_data(as_text=True))
+        payload = done.get_json()
+        self.assertIn("reisift_path", payload)
+
+
+class TestMonthlyConsolidatedAnalyzePaths(unittest.TestCase):
+    def test_analyze_from_resumable_paths(self):
+        from pathlib import Path
+
+        client = app.test_client()
+        fixtures = Path(__file__).resolve().parent / "fixtures"
+
+        def upload_fixture(kind: str, fixture_name: str) -> str:
+            data = (fixtures / fixture_name).read_bytes()
+            init = client.post(
+                "/api/upload/resumable/init",
+                json={
+                    "kind": kind,
+                    "filename": fixture_name,
+                    "total_size": len(data),
+                    "chunk_size": len(data),
+                },
+            )
+            self.assertEqual(init.status_code, 200, init.get_data(as_text=True))
+            upload_id = init.get_json()["upload_id"]
+            put = client.put(f"/api/upload/resumable/{upload_id}/chunk/0", data=data)
+            self.assertEqual(put.status_code, 200)
+            done = client.post(f"/api/upload/resumable/{upload_id}/complete")
+            self.assertEqual(done.status_code, 200, done.get_data(as_text=True))
+            return done.get_json()[f"{kind}_path"]
+
+        reisift_path = upload_fixture("reisift", "monthly_reisift_sample.csv")
+        ql_path = upload_fixture("qualified_leads", "qualified_leads_sample.csv")
+
+        r = client.post(
+            "/api/monthly-consolidated/analyze",
+            json={"reisift_path": reisift_path, "qualified_leads_path": ql_path},
+        )
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        payload = r.get_json()
+        self.assertEqual(payload.get("status"), "completed")
+        self.assertIn("job_id", payload)
+
 
 class TestAnalyzeXor(unittest.TestCase):
     def test_analyze_requires_csv_path(self):

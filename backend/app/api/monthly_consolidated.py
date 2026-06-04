@@ -26,6 +26,7 @@ from ..services.report_store import (
     load_monthly_consolidated_report,
     save_monthly_consolidated_report,
 )
+from ..services.resumable_uploads import resolve_trusted_final_path
 from ..utils.file_handler import UPLOAD_DIR
 
 monthly_consolidated_bp = Blueprint("monthly_consolidated", __name__)
@@ -62,8 +63,76 @@ def _sanitize_for_json(obj: Any) -> Any:
     return obj
 
 
+def _finalize_monthly_consolidated_job(
+    reisift_path: str,
+    ql_path: str,
+    report_month: str | None,
+) -> tuple[dict[str, Any], int]:
+    job_id = str(uuid.uuid4())
+    job_dir = MCR_ROOT / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        result = analyze(reisift_path, ql_path, report_month)
+    except ValueError as exc:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        return {"detail": str(exc)}, 400
+    except Exception as exc:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        return {"detail": f"Analysis failed: {exc}"}, 500
+
+    metrics = result.to_dict()
+    created_at = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "job_id": job_id,
+        "status": "completed",
+        "metrics": metrics,
+        "warnings": metrics.get("warnings", []),
+        "created_at": created_at,
+    }
+    _job_results[job_id] = {"metrics": metrics}
+
+    try:
+        save_monthly_consolidated_report(job_id, metrics=metrics, created_at=created_at)
+    except OSError as exc:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        return {"detail": f"Failed to save report: {exc}"}, 500
+
+    meta_path = job_dir / "result.json"
+    with open(meta_path, "w", encoding="utf-8") as fh:
+        json.dump(_sanitize_for_json(payload), fh, indent=2)
+
+    return payload, 200
+
+
 @monthly_consolidated_bp.route("/analyze", methods=["POST"])
 def monthly_consolidated_analyze():
+    if request.is_json:
+        data = request.get_json() or {}
+        report_month = (data.get("report_month") or "").strip() or None
+        reisift_raw = (data.get("reisift_path") or "").strip()
+        ql_raw = (data.get("qualified_leads_path") or "").strip()
+        if not reisift_raw:
+            return jsonify({"detail": "reisift_path is required"}), 400
+        if not ql_raw:
+            return jsonify({"detail": "qualified_leads_path is required"}), 400
+        if report_month:
+            try:
+                parse_report_month(report_month)
+            except ValueError as exc:
+                return jsonify({"detail": str(exc)}), 400
+        try:
+            reisift_path = str(resolve_trusted_final_path(reisift_raw))
+            ql_path = str(resolve_trusted_final_path(ql_raw))
+        except ValueError as exc:
+            return jsonify({"detail": str(exc)}), 400
+        payload, status = _finalize_monthly_consolidated_job(
+            reisift_path, ql_path, report_month
+        )
+        if status != 200:
+            return jsonify(payload), status
+        return jsonify(_sanitize_for_json(payload))
+
     reisift = request.files.get("reisift_file")
     ql = request.files.get("qualified_leads_file")
     report_month = (request.form.get("report_month") or "").strip() or None
@@ -90,35 +159,11 @@ def monthly_consolidated_analyze():
     reisift.save(str(reisift_path))
     ql.save(str(ql_path))
 
-    try:
-        result = analyze(str(reisift_path), str(ql_path), report_month)
-    except ValueError as exc:
-        shutil.rmtree(job_dir, ignore_errors=True)
-        return jsonify({"detail": str(exc)}), 400
-    except Exception as exc:
-        shutil.rmtree(job_dir, ignore_errors=True)
-        return jsonify({"detail": f"Analysis failed: {exc}"}), 500
-
-    metrics = result.to_dict()
-    created_at = datetime.now(timezone.utc).isoformat()
-    payload = {
-        "job_id": job_id,
-        "status": "completed",
-        "metrics": metrics,
-        "warnings": metrics.get("warnings", []),
-        "created_at": created_at,
-    }
-    _job_results[job_id] = {"metrics": metrics}
-
-    try:
-        save_monthly_consolidated_report(job_id, metrics=metrics, created_at=created_at)
-    except OSError as exc:
-        return jsonify({"detail": f"Failed to save report: {exc}"}), 500
-
-    meta_path = job_dir / "result.json"
-    with open(meta_path, "w", encoding="utf-8") as fh:
-        json.dump(_sanitize_for_json(payload), fh, indent=2)
-
+    payload, status = _finalize_monthly_consolidated_job(
+        str(reisift_path), str(ql_path), report_month
+    )
+    if status != 200:
+        return jsonify(payload), status
     return jsonify(_sanitize_for_json(payload))
 
 

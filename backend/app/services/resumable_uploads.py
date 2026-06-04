@@ -70,10 +70,13 @@ def ensure_dirs() -> None:
     _FINAL_DIR.mkdir(parents=True, exist_ok=True)
 
 
+_MCR_EXTENSIONS = (".csv", ".xlsx", ".xls")
+
+
 def _validate_kind(kind: str) -> str:
     k = (kind or "").strip().lower()
-    if k not in ("csv", "closings"):
-        raise ValueError("kind must be csv or closings")
+    if k not in ("csv", "closings", "reisift", "qualified_leads"):
+        raise ValueError("kind must be csv, closings, reisift, or qualified_leads")
     return k
 
 
@@ -84,7 +87,26 @@ def _validate_filename(kind: str, filename: str) -> str:
         raise ValueError("CSV upload filename must end with .csv")
     if kind == "closings" and not (lowered.endswith(".xlsx") or lowered.endswith(".xls")):
         raise ValueError("Closings upload filename must end with .xlsx or .xls")
+    if kind in ("reisift", "qualified_leads") and not any(
+        lowered.endswith(ext) for ext in _MCR_EXTENSIONS
+    ):
+        raise ValueError(f"{kind} upload filename must end with .csv, .xlsx, or .xls")
     return safe
+
+
+def resolve_trusted_final_path(raw_path: str) -> Path:
+    """Ensure path points to a file under the resumable final directory."""
+    if not raw_path or not str(raw_path).strip():
+        raise ValueError("path is required")
+    final_root = _FINAL_DIR.resolve()
+    candidate = Path(str(raw_path).strip()).resolve()
+    try:
+        candidate.relative_to(final_root)
+    except ValueError as exc:
+        raise ValueError("path must be a completed resumable upload") from exc
+    if not candidate.is_file():
+        raise ValueError("uploaded file not found")
+    return candidate
 
 
 def _read_manifest(upload_id: str) -> Dict[str, Any]:

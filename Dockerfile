@@ -33,4 +33,4 @@ RUN mkdir -p uploads exports reports
 # Easypanel and similar hosts often set PORT; default keeps local/docker-compose expectations.
 EXPOSE 8000
 
-CMD ["sh", "-c", "gunicorn -b 0.0.0.0:${PORT:-8000} -w 1 app.main:app"]
+CMD ["sh", "-c", "gunicorn -b 0.0.0.0:${PORT:-8000} -w 1 --timeout 600 --graceful-timeout 120 app.main:app"]

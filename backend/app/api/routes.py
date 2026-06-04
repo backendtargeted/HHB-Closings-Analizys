@@ -290,9 +290,13 @@ def upload_resumable_complete(upload_id: str):
     }
     if manifest["kind"] == "csv":
         payload["csv_path"] = final_path
-    else:
+    elif manifest["kind"] == "closings":
         payload["closings_path"] = final_path
         payload["excel_path"] = final_path
+    elif manifest["kind"] == "reisift":
+        payload["reisift_path"] = final_path
+    elif manifest["kind"] == "qualified_leads":
+        payload["qualified_leads_path"] = final_path
     return jsonify(payload)
 
 

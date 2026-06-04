@@ -3,6 +3,7 @@ import {
   analyzeMonthlyConsolidated,
   deleteMonthlyConsolidatedJob,
   downloadMonthlyConsolidatedExport,
+  getAxiosErrorMessage,
 } from '../services/api';
 import type { MonthlyConsolidatedAnalyzeResponse } from '../types/monthlyConsolidated';
 import MonthlyConsolidatedResults from './MonthlyConsolidatedResults';
@@ -21,6 +22,8 @@ const MonthlyConsolidatedWorkspace = ({
   const [reisiftFile, setReisiftFile] = useState<File | null>(null);
   const [qlFile, setQlFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [statusMessage, setStatusMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MonthlyConsolidatedAnalyzeResponse | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -32,15 +35,21 @@ const MonthlyConsolidatedWorkspace = ({
     }
     setLoading(true);
     setError(null);
+    setProgress(0);
+    setStatusMessage('');
     try {
-      const data = await analyzeMonthlyConsolidated(reisiftFile, qlFile);
+      const data = await analyzeMonthlyConsolidated(reisiftFile, qlFile, (pct, msg) => {
+        setProgress(pct);
+        setStatusMessage(msg);
+      });
       setResult(data);
       onOpenResult?.(data);
       onRunComplete?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Analysis failed');
+      setError(getAxiosErrorMessage(e, 'Analysis failed'));
     } finally {
       setLoading(false);
+      setStatusMessage('');
     }
   };
 
@@ -118,6 +127,13 @@ const MonthlyConsolidatedWorkspace = ({
           />
         </label>
       </div>
+
+      {loading && statusMessage && (
+        <p className="mt-4 text-sm text-indigo-900/90">
+          {statusMessage}
+          {progress > 0 ? ` (${progress}%)` : ''}
+        </p>
+      )}
 
       {error && (
         <p className="mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">

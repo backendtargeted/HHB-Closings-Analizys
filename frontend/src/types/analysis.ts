@@ -121,9 +121,11 @@ export interface UploadCapabilitiesResponse {
   };
 }
 
+export type ResumableUploadKind = 'csv' | 'closings' | 'reisift' | 'qualified_leads';
+
 export interface ResumableUploadInitResponse {
   upload_id: string;
-  kind: 'csv' | 'closings';
+  kind: ResumableUploadKind;
   filename: string;
   total_size: number;
   chunk_size: number;
@@ -133,7 +135,7 @@ export interface ResumableUploadInitResponse {
 
 export interface ResumableUploadStatusResponse {
   upload_id: string;
-  kind: 'csv' | 'closings';
+  kind: ResumableUploadKind;
   filename: string;
   total_size: number;
   chunk_size: number;
@@ -145,13 +147,15 @@ export interface ResumableUploadStatusResponse {
 
 export interface ResumableUploadCompleteResponse {
   upload_id: string;
-  kind: 'csv' | 'closings';
+  kind: ResumableUploadKind;
   status: 'completed';
   path: string;
   message: string;
   csv_path?: string;
   closings_path?: string;
   excel_path?: string;
+  reisift_path?: string;
+  qualified_leads_path?: string;
 }
 
 /** Body for POST /api/analyze — csv_path required and optional closings_path. */

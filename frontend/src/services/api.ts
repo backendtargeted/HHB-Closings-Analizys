@@ -6,6 +6,7 @@ import type {
   ResumableUploadInitResponse,
   ResumableUploadStatusResponse,
   ResumableUploadCompleteResponse,
+  ResumableUploadKind,
   StartAnalysisParams,
 } from '../types/analysis';
 import type { PatchUploadResponse } from '../types/patches';
@@ -19,12 +20,18 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 const UPLOAD_TOO_LARGE_MSG =
   'Upload too large for the server limit. Try fewer/smaller files or contact admin.';
 
+const GATEWAY_TIMEOUT_MSG =
+  'The server stopped responding during upload or analysis (502). Large files are uploaded in chunks automatically; if this persists, ask ops to raise EasyPanel/Traefik timeouts to 600s.';
+
 export function getAxiosErrorMessage(err: unknown, fallback: string): string {
   if (!axios.isAxiosError(err)) {
     if (err instanceof Error) return err.message;
     return fallback;
   }
   const status = err.response?.status;
+  if (status === 502 || status === 504) {
+    return GATEWAY_TIMEOUT_MSG;
+  }
   const d = err.response?.data;
   if (d && typeof d === 'object' && 'detail' in d) {
     return String((d as { detail: string }).detail);
@@ -58,7 +65,7 @@ export const getUploadCapabilities = async (): Promise<UploadCapabilitiesRespons
 };
 
 export const initResumableUpload = async (
-  kind: 'csv' | 'closings',
+  kind: ResumableUploadKind,
   filename: string,
   totalSize: number,
   chunkSize: number
@@ -220,17 +227,96 @@ export const deleteQualifiedLeadsJob = async (jobId: string): Promise<void> => {
   await api.delete(`/qualified-leads/${jobId}`);
 };
 
+export async function uploadFileResumable(
+  kind: ResumableUploadKind,
+  file: File,
+  onProgress?: (pct: number, message: string) => void
+): Promise<string> {
+  const caps = await getUploadCapabilities();
+  if (caps.resumable_upload !== true) {
+    throw new Error('Resumable uploads are not available. Check /api/upload/capabilities.');
+  }
+  const maxChunkBytes = caps.limits?.max_chunk_bytes ?? 8 * 1024 * 1024;
+  const chunkSize = Math.min(maxChunkBytes, 8 * 1024 * 1024);
+  const init = await initResumableUpload(kind, file.name, file.size, chunkSize);
+  onProgress?.(0, `Uploading ${file.name}…`);
+
+  const status = await getResumableUploadStatus(init.upload_id);
+  const uploaded = new Set<number>(status.uploaded_chunks ?? []);
+  const retryLimit = 3;
+
+  for (let idx = 0; idx < init.total_chunks; idx += 1) {
+    if (uploaded.has(idx)) {
+      continue;
+    }
+    const start = idx * init.chunk_size;
+    const end = Math.min(start + init.chunk_size, file.size);
+    const chunk = file.slice(start, end);
+
+    let attempts = 0;
+    while (attempts < retryLimit) {
+      try {
+        await uploadResumableChunk(init.upload_id, idx, chunk);
+        uploaded.add(idx);
+        const pct = Math.round((uploaded.size / init.total_chunks) * 100);
+        onProgress?.(pct, `Uploading ${file.name}…`);
+        break;
+      } catch (err) {
+        attempts += 1;
+        if (attempts >= retryLimit) {
+          throw err;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 400 * attempts));
+      }
+    }
+  }
+
+  const finalized = await completeResumableUpload(init.upload_id);
+  if (kind === 'csv' && finalized.csv_path) {
+    return finalized.csv_path;
+  }
+  if (kind === 'closings') {
+    const closingsPath = finalized.closings_path ?? finalized.excel_path;
+    if (closingsPath) return closingsPath;
+  }
+  if (kind === 'reisift' && finalized.reisift_path) {
+    return finalized.reisift_path;
+  }
+  if (kind === 'qualified_leads' && finalized.qualified_leads_path) {
+    return finalized.qualified_leads_path;
+  }
+  throw new Error(`${kind} upload did not return a file path`);
+}
+
 export const analyzeMonthlyConsolidated = async (
   reisiftFile: File,
-  qualifiedLeadsFile: File
+  qualifiedLeadsFile: File,
+  onProgress?: (pct: number, message: string) => void
 ): Promise<MonthlyConsolidatedAnalyzeResponse> => {
-  const form = new FormData();
-  form.append('reisift_file', reisiftFile);
-  form.append('qualified_leads_file', qualifiedLeadsFile);
+  onProgress?.(0, `Uploading ${reisiftFile.name}…`);
+  const reisiftPath = await uploadFileResumable('reisift', reisiftFile, (pct, msg) => {
+    onProgress?.(Math.round(pct * 0.45), msg);
+  });
+  onProgress?.(45, `Uploading ${qualifiedLeadsFile.name}…`);
+  const qlPath = await uploadFileResumable('qualified_leads', qualifiedLeadsFile, (pct, msg) => {
+    onProgress?.(45 + Math.round(pct * 0.45), msg);
+  });
+  onProgress?.(90, 'Analyzing…');
+  const result = await analyzeMonthlyConsolidatedFromPaths(reisiftPath, qlPath);
+  onProgress?.(100, 'Done');
+  return result;
+};
+
+export const analyzeMonthlyConsolidatedFromPaths = async (
+  reisiftPath: string,
+  qualifiedLeadsPath: string
+): Promise<MonthlyConsolidatedAnalyzeResponse> => {
   const response = await api.post<MonthlyConsolidatedAnalyzeResponse>(
     '/monthly-consolidated/analyze',
-    form,
-    { headers: { 'Content-Type': 'multipart/form-data' } }
+    {
+      reisift_path: reisiftPath,
+      qualified_leads_path: qualifiedLeadsPath,
+    }
   );
   return response.data;
 };
