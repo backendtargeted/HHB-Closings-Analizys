@@ -10,13 +10,14 @@ import {
 } from '../services/api';
 import type { AnalysisCompleteResponse } from '../types/analysis';
 import type { QualifiedLeadsAnalyzeResponse } from '../types/qualifiedLeads';
-import type { MonthlyConsolidatedAnalyzeResponse } from '../types/monthlyConsolidated';
+import type { MonthlyConsolidatedCompletedResponse } from '../types/monthlyConsolidated';
+import { asMonthlyConsolidatedCompleted } from '../types/monthlyConsolidated';
 import type { SavedReportItem } from '../types/reports';
 
 interface SavedReportsProps {
   onOpenAttributionReport: (data: AnalysisCompleteResponse) => void;
   onOpenQualifiedLeadsReport: (data: QualifiedLeadsAnalyzeResponse) => void;
-  onOpenMonthlyConsolidatedReport?: (data: MonthlyConsolidatedAnalyzeResponse) => void;
+  onOpenMonthlyConsolidatedReport?: (data: MonthlyConsolidatedCompletedResponse) => void;
   refreshKey?: number;
 }
 
@@ -68,7 +69,7 @@ const SavedReports = ({
         const data = await getQualifiedLeadsJob(item.job_id);
         onOpenQualifiedLeadsReport(data);
       } else if (item.report_type === 'monthly_consolidated' && onOpenMonthlyConsolidatedReport) {
-        const data = await getMonthlyConsolidatedJob(item.job_id);
+        const data = asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(item.job_id));
         onOpenMonthlyConsolidatedReport(data);
       } else if (item.report_type === 'monthly_consolidated') {
         alert('Monthly report handler not configured');

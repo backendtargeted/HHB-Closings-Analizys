@@ -5,13 +5,13 @@ import {
   downloadMonthlyConsolidatedExport,
   getAxiosErrorMessage,
 } from '../services/api';
-import type { MonthlyConsolidatedAnalyzeResponse } from '../types/monthlyConsolidated';
+import type { MonthlyConsolidatedCompletedResponse } from '../types/monthlyConsolidated';
 import MonthlyConsolidatedResults from './MonthlyConsolidatedResults';
 
 interface MonthlyConsolidatedWorkspaceProps {
   channelLabels: Record<string, string>;
   onRunComplete?: () => void;
-  onOpenResult?: (data: MonthlyConsolidatedAnalyzeResponse) => void;
+  onOpenResult?: (data: MonthlyConsolidatedCompletedResponse) => void;
 }
 
 const MonthlyConsolidatedWorkspace = ({
@@ -25,7 +25,7 @@ const MonthlyConsolidatedWorkspace = ({
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<MonthlyConsolidatedAnalyzeResponse | null>(null);
+  const [result, setResult] = useState<MonthlyConsolidatedCompletedResponse | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const handleRun = async () => {

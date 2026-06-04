@@ -20,7 +20,8 @@ import {
 import { useAnalysis } from './hooks/useAnalysis';
 import type { AnalysisCompleteResponse } from './types/analysis';
 import type { QualifiedLeadsAnalyzeResponse } from './types/qualifiedLeads';
-import type { MonthlyConsolidatedAnalyzeResponse } from './types/monthlyConsolidated';
+import type { MonthlyConsolidatedCompletedResponse } from './types/monthlyConsolidated';
+import { asMonthlyConsolidatedCompleted } from './types/monthlyConsolidated';
 
 const QL_CHANNEL_LABELS: Record<string, string> = {
   CC: 'Cold Calling',
@@ -56,7 +57,7 @@ function App() {
   const [loadedQualifiedReport, setLoadedQualifiedReport] =
     useState<QualifiedLeadsAnalyzeResponse | null>(null);
   const [loadedMonthlyReport, setLoadedMonthlyReport] =
-    useState<MonthlyConsolidatedAnalyzeResponse | null>(null);
+    useState<MonthlyConsolidatedCompletedResponse | null>(null);
   const [savedReportsRefresh, setSavedReportsRefresh] = useState(0);
   const [qlExporting, setQlExporting] = useState(false);
   const [mcrExporting, setMcrExporting] = useState(false);
@@ -112,7 +113,7 @@ function App() {
     setReportQueryParam(data.job_id, 'qualified_leads');
   };
 
-  const handleOpenMonthlyReport = (data: MonthlyConsolidatedAnalyzeResponse) => {
+  const handleOpenMonthlyReport = (data: MonthlyConsolidatedCompletedResponse) => {
     setLoadedMonthlyReport(data);
     setLoadedSavedReport(null);
     setLoadedQualifiedReport(null);
@@ -188,7 +189,7 @@ function App() {
             setWorkspace('qualifiedLeads');
           }
         } else if (reportType === 'monthly_consolidated') {
-          const data = await getMonthlyConsolidatedJob(reportId);
+          const data = asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(reportId));
           if (!isCancelled) {
             setLoadedMonthlyReport(data);
             setWorkspace('monthlyConsolidated');

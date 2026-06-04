@@ -55,6 +55,20 @@ export interface MonthlyConsolidatedAnalyzeResponse {
   message?: string;
 }
 
+/** Completed report with metrics — used when rendering results UI. */
+export type MonthlyConsolidatedCompletedResponse = MonthlyConsolidatedAnalyzeResponse & {
+  metrics: MonthlyConsolidatedMetrics;
+};
+
+export function asMonthlyConsolidatedCompleted(
+  response: MonthlyConsolidatedAnalyzeResponse
+): MonthlyConsolidatedCompletedResponse {
+  if (!response.metrics) {
+    throw new Error(response.message || 'Report metrics are not available');
+  }
+  return { ...response, metrics: response.metrics };
+}
+
 export interface MonthlyConsolidatedJobStatus {
   job_id: string;
   status: 'pending' | 'running' | 'started' | 'completed' | 'failed';

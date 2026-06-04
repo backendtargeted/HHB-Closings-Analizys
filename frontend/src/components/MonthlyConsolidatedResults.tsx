@@ -1,11 +1,11 @@
 import QualifiedLeadsResults from './QualifiedLeadsResults';
 import LifecycleSection from './LifecycleSection';
-import type { MonthlyConsolidatedAnalyzeResponse } from '../types/monthlyConsolidated';
+import type { MonthlyConsolidatedCompletedResponse } from '../types/monthlyConsolidated';
 import type { QualifiedLeadsAnalyzeResponse } from '../types/qualifiedLeads';
 import type { SummaryStats } from '../types/analysis';
 
 interface MonthlyConsolidatedResultsProps {
-  result: MonthlyConsolidatedAnalyzeResponse;
+  result: MonthlyConsolidatedCompletedResponse;
   channelLabels: Record<string, string>;
   onNewRun: () => void;
   onExport: () => void;
@@ -22,6 +22,7 @@ const MonthlyConsolidatedResults = ({
   exporting,
 }: MonthlyConsolidatedResultsProps) => {
   const m = result.metrics;
+  const warnings = result.warnings ?? m.warnings ?? [];
   const cohort = m.cohort;
 
   const qlWrapped: QualifiedLeadsAnalyzeResponse = {
@@ -68,9 +69,9 @@ const MonthlyConsolidatedResults = ({
         </div>
       </div>
 
-      {result.warnings?.length > 0 && (
+      {warnings.length > 0 && (
         <ul className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 list-disc pl-6 space-y-1">
-          {result.warnings.map((w) => (
+          {warnings.map((w) => (
             <li key={w}>{w}</li>
           ))}
         </ul>

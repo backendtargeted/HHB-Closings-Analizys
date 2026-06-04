@@ -13,8 +13,10 @@ import type { PatchUploadResponse } from '../types/patches';
 import type { QualifiedLeadsAnalyzeResponse } from '../types/qualifiedLeads';
 import type {
   MonthlyConsolidatedAnalyzeResponse,
+  MonthlyConsolidatedCompletedResponse,
   MonthlyConsolidatedJobStatus,
 } from '../types/monthlyConsolidated';
+import { asMonthlyConsolidatedCompleted } from '../types/monthlyConsolidated';
 import type { SavedReportsListResponse } from '../types/reports';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -31,13 +33,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function pollMonthlyConsolidatedJob(
   jobId: string,
   onProgress?: (pct: number, message: string) => void
-): Promise<MonthlyConsolidatedAnalyzeResponse> {
+): Promise<MonthlyConsolidatedCompletedResponse> {
   const deadline = Date.now() + 30 * 60 * 1000;
   while (Date.now() < deadline) {
     const status = await getMonthlyConsolidatedJobStatus(jobId);
     onProgress?.(90 + Math.round((status.progress ?? 0) * 0.1), status.message);
     if (status.status === 'completed') {
-      return getMonthlyConsolidatedJob(jobId);
+      return asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(jobId));
     }
     if (status.status === 'failed') {
       throw new Error(status.message || 'Analysis failed');
@@ -316,7 +318,7 @@ export const analyzeMonthlyConsolidated = async (
   reisiftFile: File,
   qualifiedLeadsFile: File,
   onProgress?: (pct: number, message: string) => void
-): Promise<MonthlyConsolidatedAnalyzeResponse> => {
+): Promise<MonthlyConsolidatedCompletedResponse> => {
   onProgress?.(0, `Uploading ${reisiftFile.name}…`);
   const reisiftPath = await uploadFileResumable('reisift', reisiftFile, (pct, msg) => {
     onProgress?.(Math.round(pct * 0.45), msg);
