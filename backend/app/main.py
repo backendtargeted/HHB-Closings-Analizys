@@ -11,6 +11,7 @@ from flask_cors import CORS
 
 from .api.routes import api_bp, load_reports_from_disk
 from .api.patches import patches_bp
+from .api.qualified_leads import qualified_leads_bp
 
 
 def _frontend_dist() -> Optional[Path]:
@@ -77,6 +78,7 @@ else:
 # Register API blueprints
 app.register_blueprint(api_bp, url_prefix="/api")
 app.register_blueprint(patches_bp, url_prefix="/api/patches")
+app.register_blueprint(qualified_leads_bp, url_prefix="/api/qualified-leads")
 
 
 @app.route("/health", methods=["GET", "HEAD"])

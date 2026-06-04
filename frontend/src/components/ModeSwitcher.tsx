@@ -1,4 +1,4 @@
-export type WorkspaceMode = 'regular' | 'pastPatches';
+export type WorkspaceMode = 'regular' | 'pastPatches' | 'qualifiedLeads';
 
 interface ModeSwitcherProps {
   mode: WorkspaceMode;
@@ -12,7 +12,7 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
         Choose workflow
       </p>
       <div
-        className="grid grid-cols-1 md:grid-cols-2 gap-4"
+        className="grid grid-cols-1 md:grid-cols-3 gap-4"
         role="tablist"
         aria-label="Analysis workflow type"
       >
@@ -71,6 +71,33 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
             </div>
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-amber-200/80 text-amber-950">
               Temporary
+            </span>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'qualifiedLeads'}
+          id="tab-qualified"
+          aria-controls="panel-workspace"
+          onClick={() => onChange('qualifiedLeads')}
+          className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:ring-offset-2 ${
+            mode === 'qualifiedLeads'
+              ? 'border-teal-600/80 bg-teal-50/90 shadow-md ring-1 ring-teal-600/20'
+              : 'border-stone-200 bg-white/80 hover:border-teal-200 hover:bg-teal-50/40'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-teal-950 tracking-tight">Qualified leads</h2>
+              <p className="text-teal-950/80 text-sm mt-2 leading-relaxed">
+                One-time Salesforce Total Qualified Leads export: counts and channel mix by Create
+                Date window. Supplements Past patches and closings attribution.
+              </p>
+            </div>
+            <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-teal-200/80 text-teal-950">
+              Consolidation
             </span>
           </div>
         </button>

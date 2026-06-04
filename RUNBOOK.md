@@ -244,6 +244,10 @@ Module: `backend/app/services/cadence_from_history.py`. `(8020)` tags are month-
 | `POST /api/patches/upload` | Multipart: `cold_csv`, `crm_csv`, `closings_xlsx`, repeated `sms_files` — returns `job_id`, `metrics`, `samples` |
 | `GET /api/patches/<job_id>/export?file=all\|property\|phone\|sf\|closings&allow_unmapped=true\|false` | Zip or single CSV |
 | `DELETE /api/patches/<job_id>` | Remove patch job working dir |
+| `POST /api/qualified-leads/analyze` | Multipart: `qualified_leads_file` (.csv/.xlsx); form `use_full_file_span`, optional `start_date` / `end_date` (`YYYY-MM-DD`) |
+| `GET /api/qualified-leads/<job_id>` | Qualified leads metrics JSON |
+| `GET /api/qualified-leads/<job_id>/export` | Row-level CSV (channel, in-window flag) |
+| `DELETE /api/qualified-leads/<job_id>` | Remove qualified-leads job dir |
 
 ---
 

@@ -5,6 +5,7 @@ import MethodologySection from './components/MethodologySection';
 import ModeSwitcher, { type WorkspaceMode } from './components/ModeSwitcher';
 import PastPatchesGuide from './components/PastPatchesGuide';
 import PastPatchesWorkspace from './components/PastPatchesWorkspace';
+import QualifiedLeadsWorkspace from './components/QualifiedLeadsWorkspace';
 import SavedReports from './components/SavedReports';
 import { getAnalysisResults } from './services/api';
 import { useAnalysis } from './hooks/useAnalysis';
@@ -119,6 +120,27 @@ function App() {
             <ModeSwitcher mode={workspace} onChange={setWorkspace} />
             {workspace === 'pastPatches' ? (
               <PastPatchesGuide />
+            ) : workspace === 'qualifiedLeads' ? (
+              <p className="text-sm text-stone-500 -mt-4 mb-6 leading-relaxed max-w-3xl">
+                Upload your Salesforce <strong>Total Qualified Leads</strong> export for channel counts
+                and mix by <strong>Create Date</strong>. This does not replace{' '}
+                <button
+                  type="button"
+                  onClick={() => setWorkspace('regular')}
+                  className="font-semibold text-navy underline decoration-navy/30 underline-offset-2"
+                >
+                  regular analysis
+                </button>{' '}
+                or{' '}
+                <button
+                  type="button"
+                  onClick={() => setWorkspace('pastPatches')}
+                  className="font-semibold text-amber-900 underline underline-offset-2"
+                >
+                  Past patches
+                </button>
+                .
+              </p>
             ) : (
               <p className="text-sm text-stone-500 -mt-4 mb-6 leading-relaxed max-w-3xl">
                 Need to build REISift import CSVs from cold calling + SMS + CRM + closings? Use{' '}
@@ -129,7 +151,15 @@ function App() {
                 >
                   Past patches
                 </button>
-                —then import into REISift and come back here for regular analysis.
+                —or{' '}
+                <button
+                  type="button"
+                  onClick={() => setWorkspace('qualifiedLeads')}
+                  className="font-semibold text-teal-800 underline underline-offset-2"
+                >
+                  Qualified leads
+                </button>{' '}
+                for a one-time SF channel mix report.
               </p>
             )}
           </>
@@ -141,7 +171,13 @@ function App() {
           <div
             id="panel-workspace"
             role="tabpanel"
-            aria-labelledby={workspace === 'regular' ? 'tab-regular' : 'tab-past'}
+            aria-labelledby={
+              workspace === 'regular'
+                ? 'tab-regular'
+                : workspace === 'pastPatches'
+                  ? 'tab-past'
+                  : 'tab-qualified'
+            }
             className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8"
           >
             <div className="lg:col-span-2 min-w-0">
@@ -157,8 +193,10 @@ function App() {
                   analysisStatus={analysisStatusProp}
                   resumableUpload={resumableUpload}
                 />
-              ) : (
+              ) : workspace === 'pastPatches' ? (
                 <PastPatchesWorkspace />
+              ) : (
+                <QualifiedLeadsWorkspace />
               )}
             </div>
             <aside className="rounded-2xl border border-stone-200/90 bg-white shadow-sm p-5 h-fit lg:sticky lg:top-6">

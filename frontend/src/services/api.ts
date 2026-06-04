@@ -9,6 +9,7 @@ import type {
   StartAnalysisParams,
 } from '../types/analysis';
 import type { PatchUploadResponse } from '../types/patches';
+import type { QualifiedLeadsAnalyzeResponse } from '../types/qualifiedLeads';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -169,4 +170,45 @@ export const downloadPatchExport = async (
 
 export const deletePatchJob = async (jobId: string): Promise<void> => {
   await api.delete(`/patches/${jobId}`);
+};
+
+export const analyzeQualifiedLeads = async (
+  file: File,
+  options: {
+    useFullFileSpan: boolean;
+    startDate?: string;
+    endDate?: string;
+  }
+): Promise<QualifiedLeadsAnalyzeResponse> => {
+  const form = new FormData();
+  form.append('qualified_leads_file', file);
+  form.append('use_full_file_span', options.useFullFileSpan ? 'true' : 'false');
+  if (!options.useFullFileSpan) {
+    if (options.startDate) form.append('start_date', options.startDate);
+    if (options.endDate) form.append('end_date', options.endDate);
+  }
+  const response = await api.post<QualifiedLeadsAnalyzeResponse>(
+    '/qualified-leads/analyze',
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return response.data;
+};
+
+export const getQualifiedLeadsJob = async (
+  jobId: string
+): Promise<QualifiedLeadsAnalyzeResponse> => {
+  const response = await api.get<QualifiedLeadsAnalyzeResponse>(`/qualified-leads/${jobId}`);
+  return response.data;
+};
+
+export const downloadQualifiedLeadsExport = async (jobId: string): Promise<Blob> => {
+  const response = await api.get(`/qualified-leads/${jobId}/export`, {
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+export const deleteQualifiedLeadsJob = async (jobId: string): Promise<void> => {
+  await api.delete(`/qualified-leads/${jobId}`);
 };
