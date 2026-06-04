@@ -20,7 +20,7 @@ Salesforce Total Qualified Leads export  →  Monthly consolidated (list + chann
 - **Mapper (this repo):** `backend/app/services/marketing_mapper.py` — used by **Past patches** in the web UI: cold-calling CSV, many SMS CSVs, CRM extract, closings `.xlsx` → the four REISift-shaped CSVs.
 - **REISift**: holds property/phone + **Tags** (comma-separated history) and **Lists** (comma-separated distress / list membership on the contacts export).
 - **This app**: runs CSV-first analysis from **Tags** (and optionally uses legacy closings workbook input); parses 8020 contact lines, list purchase, skip trace, **(SF) CRM** tags, and **closing** markers; derives **lead lifecycle** (funnel, paths, first-touch) for the UI and exports (see cheat sheet + `backend/app/services/lifecycle.py`).
-- **Monthly consolidated** (`backend/app/services/monthly_consolidated.py`): ranks REISift **Lists** by CRM signals, qualified leads, and closings for one calendar month; embeds qualified-lead channel mix and closing-cohort lifecycle in one XLSX.
+- **Consolidated list report** (`backend/app/services/monthly_consolidated.py`): ranks REISift **Lists** across the **full uploaded export** by CRM signals, qualified leads, and closings; embeds qualified-lead channel mix and closing-cohort lifecycle in one XLSX. (API path remains `/api/monthly-consolidated`.)
 
 **Report methodology (deep dive):** [docs/REPORT_METHODOLOGY.md](docs/REPORT_METHODOLOGY.md) — tag parsing, dedupe rules, matching, counting, lifecycle, exports, and experimental cadence probes.
 
@@ -45,7 +45,7 @@ Salesforce Total Qualified Leads export  →  Monthly consolidated (list + chann
    - Any columns your matching logic expects (see `backend/app/services/analysis.py`).
 
 5. **Run reports** (pick what you need each month):
-   - **Monthly consolidated (recommended for list + channel + journey):** UI → **Monthly consolidated** → upload REISift export + Salesforce **Total Qualified Leads** export → pick report month (`YYYY-MM`) → **Run monthly report** → download consolidated XLSX. See [Monthly consolidated report](#monthly-consolidated-report) below.
+   - **Consolidated list report (recommended for list + channel + journey):** UI → **Consolidated list report** → upload full REISift export + Salesforce **Total Qualified Leads** export → **Run consolidated report** → download XLSX. No month picker. See [Consolidated list report](#consolidated-list-report) below.
    - **Regular attribution:** UI → **Regular updates** → upload contacts CSV. Closed deals are derived from tags; optional legacy closings workbook upload remains supported. Optional **`as_of`** filter is still supported on **`POST /api/analyze`** (not shown in the current UI).
    - **Qualified leads only:** UI → **Qualified leads** → SF export + Create Date window (same QL rules embedded in monthly consolidated).
 
@@ -81,15 +81,15 @@ CSV-only analysis (`POST /api/analyze` with `csv_path` only) builds closed deals
 
 **Practical minimum export:** Headers at least `Tags`, `Property address`, `Property city` (or rely on `Address` when street is empty), optionally `Lead Source`; then apply the row filters above.
 
-**Monthly consolidated minimum:** All of the above plus **`Created`** (cohort filter) and **`Lists`** (comma-separated tokens). Address columns (`Property address`, city, state, zip) improve qualified-lead ↔ REISift matching.
+**Consolidated list report minimum:** **`Lists`**, **`Tags`**, and address columns for qualified-lead matching. **`Created`** is optional (shown in Summary as min–max span when present); it is **not** used to filter rows in the default UI flow.
 
 ---
 
-## Monthly consolidated report
+## Consolidated list report
 
-**When:** Ongoing **monthly** review of which REISift distress **lists** correlate with CRM activity, qualified leads, and closings — plus channel mix and closing-cohort journey in one place.
+**When:** Review which REISift distress **lists** correlate with CRM activity, qualified leads, and closings — plus channel mix and closing-cohort journey — across your **current full REISift export**.
 
-**UI:** Docker `http://localhost:3300` → **Monthly consolidated** (fourth workflow tab).
+**UI:** Docker `http://localhost:3300` → **Consolidated list report** (fourth workflow tab).
 
 **Implementation:** `backend/app/services/monthly_consolidated.py`, API prefix `/api/monthly-consolidated`.
 
@@ -97,14 +97,15 @@ CSV-only analysis (`POST /api/analyze` with `csv_path` only) builds closed deals
 
 | File | Required columns | Role |
 |------|------------------|------|
-| **REISift contacts export** | `Created`, `Lists`, `Tags`, address fields | Month cohort + list metrics + CRM/closing tags |
-| **Salesforce Total Qualified Leads** | `Lead Source`, `Create Date` (+ address for list attribution) | Same rules as **Qualified leads** workspace (`qualified_leads.py`) |
+| **REISift contacts export** | `Lists`, `Tags`, address fields | **All rows** in file → list metrics + CRM/closing tags |
+| **Salesforce Total Qualified Leads** | `Lead Source`, `Create Date` (+ address for list attribution) | Full-file Create Date span (same as QL “use full file span”) |
 
-### Report month and cohort
+### Cohort (default — no month filter)
 
-- Form field **`report_month`**: `YYYY-MM` (HTML month picker in UI).
-- **Cohort** = REISift rows whose **`Created`** date falls in that calendar month (inclusive, naive calendar date).
-- **Important:** Metrics describe properties **added to REISift in that month**, not necessarily closings or SF leads that **occurred** in that month. The UI and XLSX Summary repeat this methodology note.
+- **Cohort** = **every row** in the uploaded REISift CSV (after column validation).
+- Qualified leads use the **full Create Date span** of the uploaded Salesforce file.
+- Summary sheet may show REISift **Created** min→max as informational context only.
+- **Future:** comparing time periods (month-over-month) is out of scope for v1; optional API form field `report_month=YYYY-MM` still exists for scripts if needed later.
 
 ### Metric definitions (locked product rules)
 
@@ -135,12 +136,12 @@ Optional column **`List Stack`** (numeric) is present on many exports but is **n
 
 Exports with **500k+ rows** are supported but the analyze request is **synchronous** (expect **30–90 seconds**). Apply the same proxy timeout guidance as [Large uploads and reverse proxies](#large-uploads-and-reverse-proxies-easypanel--traefik) if the browser or edge proxy cuts off before the backend finishes.
 
-### Operator checklist (monthly)
+### Operator checklist
 
-1. Complete REISift ingest / tag updates for the period (Past patches or regular mapper flow if needed).
-2. Export full contacts CSV including **`Created`**, **`Lists`**, **`Tags`**, addresses.
-3. Export Salesforce **Total Qualified Leads** for the same calendar month (or full file — window is applied in-app).
-4. Run **Monthly consolidated** for `YYYY-MM`; review warnings (especially QL address match rate).
+1. Complete REISift ingest / tag updates as needed (Past patches or regular mapper flow).
+2. Export **full** contacts CSV including **`Lists`**, **`Tags`**, addresses (and **`Created`** if available).
+3. Export Salesforce **Total Qualified Leads** (full export you normally use).
+4. Run **Consolidated list report**; review warnings (especially QL address match rate on large files).
 5. Download consolidated XLSX; archive alongside any **Regular updates** attribution runs you still run ad hoc.
 
 ---
@@ -316,7 +317,7 @@ Module: `backend/app/services/cadence_from_history.py`. `(8020)` tags are month-
 | `GET /api/qualified-leads/<job_id>` | Qualified leads metrics JSON |
 | `GET /api/qualified-leads/<job_id>/export` | Row-level CSV (channel, in-window flag) |
 | `DELETE /api/qualified-leads/<job_id>` | Remove qualified-leads job dir |
-| `POST /api/monthly-consolidated/analyze` | Multipart: `reisift_file`, `qualified_leads_file`; form `report_month=YYYY-MM` |
+| `POST /api/monthly-consolidated/analyze` | Multipart: `reisift_file`, `qualified_leads_file`; optional form `report_month=YYYY-MM` (omit in UI = full file) |
 | `GET /api/monthly-consolidated/<job_id>` | Monthly consolidated metrics JSON |
 | `GET /api/monthly-consolidated/<job_id>/export` | Multi-sheet XLSX (Summary, lists, combinations, channels, lifecycle) |
 | `DELETE /api/monthly-consolidated/<job_id>` | Remove job dir + saved JSON |

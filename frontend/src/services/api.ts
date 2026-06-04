@@ -222,13 +222,11 @@ export const deleteQualifiedLeadsJob = async (jobId: string): Promise<void> => {
 
 export const analyzeMonthlyConsolidated = async (
   reisiftFile: File,
-  qualifiedLeadsFile: File,
-  reportMonth: string
+  qualifiedLeadsFile: File
 ): Promise<MonthlyConsolidatedAnalyzeResponse> => {
   const form = new FormData();
   form.append('reisift_file', reisiftFile);
   form.append('qualified_leads_file', qualifiedLeadsFile);
-  form.append('report_month', reportMonth);
   const response = await api.post<MonthlyConsolidatedAnalyzeResponse>(
     '/monthly-consolidated/analyze',
     form,

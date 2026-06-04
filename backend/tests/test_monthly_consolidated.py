@@ -12,6 +12,7 @@ from app.services.monthly_consolidated import (
     compute_list_metrics,
     filter_reisift_cohort,
     parse_report_month,
+    prepare_reisift_cohort,
     row_has_closing_tag,
     row_has_sf_tag,
     split_list_tokens,
@@ -62,15 +63,30 @@ def test_combinations_min_rows():
     assert any(c.lists_key == "Default Risk + High Equity" for c in combos)
 
 
-def test_analyze_integration():
+def test_prepare_reisift_full_file():
+    df = pd.read_csv(REISIFT)
+    cohort, _, scope = prepare_reisift_cohort(df)
+    assert scope == "full_file"
+    assert len(cohort) == len(df)
+
+
+def test_analyze_integration_month_optional():
     result = analyze(str(REISIFT), str(QL), "2025-03")
     assert result.cohort_rows == 4
+    assert result.cohort_scope == "calendar_month"
     assert result.closing_rows == 2
     assert result.crm_lead_rows >= 2
-    assert result.qualified_leads["posted_in_window"] >= 0
     d = result.to_dict()
     assert d["report_month"] == "2025-03"
     assert len(d["lists"]) > 0
+
+
+def test_analyze_full_file_default():
+    result = analyze(str(REISIFT), str(QL))
+    assert result.cohort_rows == 5
+    assert result.cohort_scope == "full_file"
+    assert result.report_month == "full_export"
+    assert len(result.lists) > 0
 
 
 def test_build_export_workbook():

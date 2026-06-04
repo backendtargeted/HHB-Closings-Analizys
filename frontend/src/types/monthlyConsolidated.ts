@@ -22,6 +22,7 @@ export interface ComboMetric {
 export interface MonthlyConsolidatedMetrics {
   report_type: string;
   report_month: string;
+  cohort_scope: 'full_file' | 'calendar_month';
   period: { start: string; end: string };
   inputs: { reisift_rows_ingested: number; cohort_rows: number };
   cohort: {

@@ -1,5 +1,8 @@
 """
-Monthly consolidated report: REISift cohort (Created month) + list performance + SF qualified leads.
+Consolidated list-performance report: full REISift export + SF qualified leads.
+
+Default cohort is every row in the uploaded REISift file (no month filter).
+Optional report_month (YYYY-MM) remains for API callers that need a Created-date window.
 """
 
 from __future__ import annotations
@@ -85,10 +88,25 @@ def _parse_created_series(series: pd.Series) -> pd.Series:
     return pd.to_datetime(series, errors="coerce").dt.normalize()
 
 
-def filter_reisift_cohort(df: pd.DataFrame, start: date, end: date) -> Tuple[pd.DataFrame, str]:
-    created_col = _require_column(df, CREATED_CANDIDATES, "Created")
+def prepare_reisift_cohort(
+    df: pd.DataFrame,
+    start: Optional[date] = None,
+    end: Optional[date] = None,
+) -> Tuple[pd.DataFrame, Optional[str], str]:
+    """
+    Validate REISift export and return analysis cohort.
+
+    scope is ``full_file`` (all rows) or ``calendar_month`` (Created in [start, end]).
+    """
     _require_column(df, TAGS_CANDIDATES, "Tags")
     _require_column(df, LISTS_CANDIDATES, "Lists")
+    created_col = find_column_name(df, CREATED_CANDIDATES)
+
+    if start is None or end is None:
+        return df.copy().reset_index(drop=True), created_col, "full_file"
+
+    if not created_col:
+        raise ValueError("Missing required column: Created (needed when report_month is set)")
 
     out = df.copy()
     out["_created_parsed"] = _parse_created_series(out[created_col])
@@ -98,7 +116,13 @@ def filter_reisift_cohort(df: pd.DataFrame, start: date, end: date) -> Tuple[pd.
         out["_created_parsed"] >= window_start
     ) & (out["_created_parsed"] <= window_end)
     cohort = out.loc[mask].copy().reset_index(drop=True)
-    return cohort, created_col
+    return cohort, created_col, "calendar_month"
+
+
+def filter_reisift_cohort(df: pd.DataFrame, start: date, end: date) -> Tuple[pd.DataFrame, str]:
+    """Backward-compatible wrapper for month-scoped cohort."""
+    cohort, created_col, _ = prepare_reisift_cohort(df, start, end)
+    return cohort, created_col or ""
 
 
 def row_has_sf_tag(tags_str: object) -> bool:
@@ -202,6 +226,7 @@ class ComboMetric:
 @dataclass
 class MonthlyConsolidatedResult:
     report_month: str
+    cohort_scope: str
     period_start: str
     period_end: str
     reisift_rows_ingested: int
@@ -223,6 +248,7 @@ class MonthlyConsolidatedResult:
         return {
             "report_type": REPORT_TYPE,
             "report_month": self.report_month,
+            "cohort_scope": self.cohort_scope,
             "period": {"start": self.period_start, "end": self.period_end},
             "inputs": {
                 "reisift_rows_ingested": self.reisift_rows_ingested,
@@ -428,6 +454,7 @@ def result_from_metrics_dict(m: Dict[str, Any]) -> MonthlyConsolidatedResult:
     inputs = m.get("inputs", {})
     return MonthlyConsolidatedResult(
         report_month=m.get("report_month", ""),
+        cohort_scope=m.get("cohort_scope", "full_file"),
         period_start=period.get("start", ""),
         period_end=period.get("end", ""),
         reisift_rows_ingested=inputs.get("reisift_rows_ingested", 0),
@@ -480,21 +507,48 @@ def build_lifecycle_from_cohort(cohort_df: pd.DataFrame) -> Dict[str, Any]:
     return aggregate_lifecycle_stats(rows)
 
 
+def _created_span_label(df: pd.DataFrame, created_col: Optional[str]) -> Tuple[str, str]:
+    if not created_col or created_col not in df.columns:
+        return "", ""
+    parsed = _parse_created_series(df[created_col]).dropna()
+    if parsed.empty:
+        return "", ""
+    return parsed.min().date().isoformat(), parsed.max().date().isoformat()
+
+
 def analyze(
     reisift_path: str,
     qualified_leads_path: str,
-    report_month: str,
+    report_month: Optional[str] = None,
 ) -> MonthlyConsolidatedResult:
-    start, end = parse_report_month(report_month)
     warnings: List[str] = []
+    month_text = (report_month or "").strip()
+
+    if month_text:
+        start, end = parse_report_month(month_text)
+        scope = "calendar_month"
+        label = month_text
+    else:
+        start, end = None, None
+        scope = "full_file"
+        label = "full_export"
 
     reisift_df = load_reisift_file(reisift_path)
     reisift_ingested = len(reisift_df)
-    cohort_df, _ = filter_reisift_cohort(reisift_df, start, end)
+    cohort_df, created_col, cohort_scope = prepare_reisift_cohort(reisift_df, start, end)
     cohort_rows = len(cohort_df)
 
     if cohort_rows == 0:
-        warnings.append(f"No REISift rows with Created in {report_month}.")
+        if cohort_scope == "calendar_month":
+            warnings.append(f"No REISift rows with Created in {month_text}.")
+        else:
+            warnings.append("REISift file has no data rows.")
+
+    if cohort_scope == "full_file":
+        period_start, period_end = _created_span_label(cohort_df, created_col)
+    else:
+        period_start = start.isoformat()  # type: ignore[union-attr]
+        period_end = end.isoformat()  # type: ignore[union-attr]
 
     crm_lead_rows = int(cohort_df["Tags"].apply(row_has_sf_tag).sum()) if cohort_rows else 0
     closing_rows = int(cohort_df["Tags"].apply(row_has_closing_tag).sum()) if cohort_rows else 0
@@ -505,31 +559,52 @@ def analyze(
     stacked_pct = round(100.0 * stacked_rows / cohort_rows, 2) if cohort_rows else 0.0
 
     sf_df = load_qualified_leads_file(qualified_leads_path)
-    ql_by_list, list_attr = attribute_qualified_leads_to_lists(cohort_df, sf_df, start, end)
+    from .qualified_leads import analyze_file as ql_analyze_file
+
+    if cohort_scope == "full_file":
+        ql_result = ql_analyze_file(qualified_leads_path, use_full_file_span=True)
+        ql_start = date.fromisoformat(ql_result.date_window_start)
+        ql_end = date.fromisoformat(ql_result.date_window_end)
+    else:
+        ql_start, ql_end = start, end  # type: ignore[assignment]
+        ql_result = compute_qualified_leads_metrics(sf_df, ql_start, ql_end)
+
+    ql_by_list, list_attr = attribute_qualified_leads_to_lists(
+        cohort_df, sf_df, ql_start, ql_end
+    )
     if list_attr.get("match_rate_pct", 100) < QL_MATCH_WARN_THRESHOLD * 100:
         warnings.append(
             f"Qualified lead address match rate is {list_attr.get('match_rate_pct')}%; "
             "list attribution may be understated."
         )
 
-    ql_result = compute_qualified_leads_metrics(sf_df, start, end)
     lists = compute_list_metrics(cohort_df, ql_by_list)
     combinations = compute_combinations(cohort_df, min_rows=10)
     lifecycle_raw = build_lifecycle_from_cohort(cohort_df) if closing_rows else {}
     lifecycle_stats = lifecycle_stats_for_api(lifecycle_raw)
 
-    methodology = (
-        "Cohort = REISift properties whose Created date falls in the selected calendar month. "
-        "CRM leads = cohort rows with any (SF) tag. Closings = (CLOSED) 8020 tags (existing app logic). "
-        "Qualified leads use the Salesforce export with the same Create Date window; "
-        "list credit applies to every list on a matched REISift property. "
-        "Closing rate = closings on list ÷ REISift rows carrying that list."
-    )
+    if cohort_scope == "full_file":
+        methodology = (
+            "Cohort = all rows in the uploaded REISift export. "
+            "CRM leads = rows with any (SF) tag. Closings = (CLOSED) 8020 tags (existing app logic). "
+            "Qualified leads use the full Create Date span of the uploaded Salesforce file. "
+            "List credit applies to every list on a matched REISift property. "
+            "Closing rate = closings on list ÷ REISift rows carrying that list."
+        )
+    else:
+        methodology = (
+            "Cohort = REISift properties whose Created date falls in the selected calendar month. "
+            "CRM leads = cohort rows with any (SF) tag. Closings = (CLOSED) 8020 tags (existing app logic). "
+            "Qualified leads use the Salesforce export with the same Create Date window; "
+            "list credit applies to every list on a matched REISift property. "
+            "Closing rate = closings on list ÷ REISift rows carrying that list."
+        )
 
     return MonthlyConsolidatedResult(
-        report_month=report_month,
-        period_start=start.isoformat(),
-        period_end=end.isoformat(),
+        report_month=label,
+        cohort_scope=cohort_scope,
+        period_start=period_start,
+        period_end=period_end,
         reisift_rows_ingested=reisift_ingested,
         cohort_rows=cohort_rows,
         crm_lead_rows=crm_lead_rows,
@@ -557,11 +632,12 @@ def build_export_workbook(result: MonthlyConsolidatedResult) -> bytes:
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         summary = pd.DataFrame(
             [
-                {"metric": "Report month", "value": result.report_month},
-                {"metric": "Period start", "value": result.period_start},
+                {"metric": "Cohort scope", "value": result.cohort_scope},
+                {"metric": "Report label", "value": result.report_month},
+                {"metric": "Period start (Created span or month)", "value": result.period_start},
                 {"metric": "Period end", "value": result.period_end},
                 {"metric": "REISift rows ingested", "value": result.reisift_rows_ingested},
-                {"metric": "Cohort rows (Created in month)", "value": result.cohort_rows},
+                {"metric": "Cohort rows analyzed", "value": result.cohort_rows},
                 {"metric": "CRM lead rows ((SF) tag)", "value": result.crm_lead_rows},
                 {"metric": "Closing rows", "value": result.closing_rows},
                 {"metric": "Stacked rows (multi-list)", "value": result.stacked_rows},

@@ -39,10 +39,14 @@ const MonthlyConsolidatedResults = ({
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-indigo-950">Monthly consolidated — {m.report_month}</h2>
+          <h2 className="text-2xl font-bold text-indigo-950">Consolidated list report</h2>
           <p className="text-sm text-stone-600 mt-1">
-            Period {m.period.start} → {m.period.end} · {m.inputs.reisift_rows_ingested.toLocaleString()}{' '}
-            rows ingested
+            {m.cohort_scope === 'full_file' ? 'Full REISift export' : `Month ${m.report_month}`}
+            {m.period.start && m.period.end ? (
+              <> · Created span {m.period.start} → {m.period.end}</>
+            ) : null}
+            {' · '}
+            {m.inputs.reisift_rows_ingested.toLocaleString()} rows ingested
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -77,7 +81,7 @@ const MonthlyConsolidatedResults = ({
       </p>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Stat label="Cohort (Created in month)" value={cohort.total_rows} />
+        <Stat label="REISift rows analyzed" value={cohort.total_rows} />
         <Stat label="CRM leads ((SF) tag)" value={cohort.crm_lead_rows} />
         <Stat label="Closings" value={cohort.closing_rows} />
         <Stat label="Stacked (multi-list)" value={cohort.stacked_rows} sub={`${cohort.stacked_pct}%`} />

@@ -117,14 +117,14 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-bold text-indigo-950 tracking-tight">Monthly consolidated</h2>
+              <h2 className="text-lg font-bold text-indigo-950 tracking-tight">Consolidated list report</h2>
               <p className="text-indigo-950/80 text-sm mt-2 leading-relaxed">
-                REISift list + stacked distress performance, CRM tags, qualified leads, and closing
-                journey for one Created month — single XLSX download.
+                Full REISift export: list + stacked distress performance, CRM tags, qualified leads,
+                and closing journey — single XLSX download. No month filter.
               </p>
             </div>
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-indigo-200/80 text-indigo-950">
-              Monthly
+              Lists
             </span>
           </div>
         </button>

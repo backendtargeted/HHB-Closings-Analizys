@@ -66,17 +66,18 @@ def _sanitize_for_json(obj: Any) -> Any:
 def monthly_consolidated_analyze():
     reisift = request.files.get("reisift_file")
     ql = request.files.get("qualified_leads_file")
-    report_month = (request.form.get("report_month") or "").strip()
+    report_month = (request.form.get("report_month") or "").strip() or None
 
     if not reisift or not reisift.filename:
         return jsonify({"detail": "reisift_file is required"}), 400
     if not ql or not ql.filename:
         return jsonify({"detail": "qualified_leads_file is required"}), 400
 
-    try:
-        parse_report_month(report_month)
-    except ValueError as exc:
-        return jsonify({"detail": str(exc)}), 400
+    if report_month:
+        try:
+            parse_report_month(report_month)
+        except ValueError as exc:
+            return jsonify({"detail": str(exc)}), 400
 
     job_id = str(uuid.uuid4())
     job_dir = MCR_ROOT / job_id

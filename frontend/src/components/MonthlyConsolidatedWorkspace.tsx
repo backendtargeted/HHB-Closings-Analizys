@@ -7,14 +7,6 @@ import {
 import type { MonthlyConsolidatedAnalyzeResponse } from '../types/monthlyConsolidated';
 import MonthlyConsolidatedResults from './MonthlyConsolidatedResults';
 
-const defaultMonth = () => {
-  const d = new Date();
-  d.setMonth(d.getMonth() - 1);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}`;
-};
-
 interface MonthlyConsolidatedWorkspaceProps {
   channelLabels: Record<string, string>;
   onRunComplete?: () => void;
@@ -28,7 +20,6 @@ const MonthlyConsolidatedWorkspace = ({
 }: MonthlyConsolidatedWorkspaceProps) => {
   const [reisiftFile, setReisiftFile] = useState<File | null>(null);
   const [qlFile, setQlFile] = useState<File | null>(null);
-  const [reportMonth, setReportMonth] = useState(defaultMonth);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MonthlyConsolidatedAnalyzeResponse | null>(null);
@@ -42,7 +33,7 @@ const MonthlyConsolidatedWorkspace = ({
     setLoading(true);
     setError(null);
     try {
-      const data = await analyzeMonthlyConsolidated(reisiftFile, qlFile, reportMonth);
+      const data = await analyzeMonthlyConsolidated(reisiftFile, qlFile);
       setResult(data);
       onOpenResult?.(data);
       onRunComplete?.();
@@ -74,7 +65,7 @@ const MonthlyConsolidatedWorkspace = ({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `monthly_consolidated_${result.metrics.report_month}_${result.job_id}.xlsx`;
+      a.download = `consolidated_report_${result.job_id}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -98,24 +89,16 @@ const MonthlyConsolidatedWorkspace = ({
 
   return (
     <div className="rounded-2xl border border-indigo-200/90 bg-indigo-50/40 p-6 shadow-sm">
-      <h2 className="text-xl font-bold text-indigo-950">Monthly consolidated report</h2>
+      <h2 className="text-xl font-bold text-indigo-950">Consolidated list report</h2>
       <p className="text-sm text-indigo-950/80 mt-2 leading-relaxed max-w-2xl">
-        Combine REISift list performance (distress lists, stacked leads, combinations), CRM
-        signals from <code className="text-xs bg-white/80 px-1 rounded">(SF)</code> tags, qualified
-        leads by channel, and closing lifecycle for one calendar month. Cohort is filtered by
-        REISift <strong>Created</strong> date.
+        Upload your full REISift contacts export (large file is fine) plus Salesforce Total
+        Qualified Leads. The report ranks distress <strong>Lists</strong>, stacked combinations,
+        CRM <code className="text-xs bg-white/80 px-1 rounded">(SF)</code> tags, qualified-lead
+        channels, and closing journey across <strong>every row in the file</strong> — no month
+        picker.
       </p>
 
       <div className="mt-6 grid gap-4 max-w-md">
-        <label className="block text-sm font-medium text-indigo-950">
-          Report month
-          <input
-            type="month"
-            value={reportMonth}
-            onChange={(e) => setReportMonth(e.target.value)}
-            className="mt-1 block w-full rounded-lg border border-indigo-200 px-3 py-2 text-stone-800"
-          />
-        </label>
         <label className="block text-sm font-medium text-indigo-950">
           REISift contacts export (.csv)
           <input
@@ -148,7 +131,7 @@ const MonthlyConsolidatedWorkspace = ({
         disabled={loading}
         className="mt-6 px-5 py-2.5 rounded-lg bg-indigo-800 text-white font-medium hover:bg-indigo-900 disabled:opacity-50"
       >
-        {loading ? 'Analyzing…' : 'Run monthly report'}
+        {loading ? 'Analyzing… (large files may take a minute)' : 'Run consolidated report'}
       </button>
     </div>
   );
