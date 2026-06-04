@@ -267,3 +267,14 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 | REISift CSV export | `backend/app/services/marketing_mapper.py` — `export_outputs` |
 | Cadence probes | `backend/app/services/cadence_from_history.py` |
 | Dedupe tests | `backend/tests/test_parse_tags_dedupe.py` |
+| Monthly consolidated (Gate 2) | `backend/app/services/monthly_consolidated.py` |
+| Open pipeline / stuck-at-stage | `lifecycle.py` — `compute_stage_funnel_open`, `aggregate_stuck_at_stage` |
+| Tag-derived lead source | `monthly_consolidated.py` — `derive_tag_lead_source` |
+
+---
+
+## 16. Gate 2 consolidated report additions
+
+**Tag-derived lead source:** For each REISift cohort row, parse `Tags` chronologically. First `(8020) CC/SMS/DM` contact wins; if none, `LIST` when a `List Purchased 8020` tag exists; otherwise `NONE`. This is separate from Salesforce `Lead Source` on the qualified-leads export.
+
+**Open pipeline (non-closing rows):** Cohort rows without `(CLOSED) 8020` tags are evaluated with the same lifecycle stage model, using events on or before the row `Created` date (or cohort period end). Highest stage reached is aggregated into **stuck-at-stage** counts (e.g. ENGAGED but not CONVERTED). Closing-cohort lifecycle and Top Paths remain closing-only.

@@ -322,8 +322,17 @@ Module: `backend/app/services/cadence_from_history.py`. `(8020)` tags are month-
 | `GET /api/monthly-consolidated/<job_id>/export` | Multi-sheet XLSX (Summary, lists, combinations, channels, lifecycle) |
 | `DELETE /api/monthly-consolidated/<job_id>` | Remove job dir + saved JSON |
 | `GET /api/reports` | All saved reports (attribution + qualified leads + monthly consolidated) |
+| `GET /api/reports/diagnostics` | Storage health: resolved path, writable flag, report counts by type |
 
 **Report persistence:** Attribution → `{REPORTS_DIR}/{job_id}.json` or `snapshots/{as_of}/`. Qualified leads → `{REPORTS_DIR}/qualified_leads/{job_id}.json`. Monthly consolidated → `{REPORTS_DIR}/monthly_consolidated/{job_id}.json`. Upload working copies → `{UPLOAD_STORAGE_DIR}/monthly_consolidated/{job_id}/`. Docker Compose mounts `./data/reports:/app/reports` (host folder survives image rebuilds; avoid `docker compose down -v` on upload volumes if you need those too).
+
+### Report persistence troubleshooting
+
+1. **Before first `docker compose up`:** create the host folder: `mkdir -p data/reports` (Windows: `mkdir data\reports`).
+2. **Verify storage after deploy:** `curl -s http://localhost:8000/api/reports/diagnostics` — expect `"writable": true` and `"resolved_path": "/app/reports"` (or your `REPORTS_DIR`).
+3. **Easypanel / single-service image:** mount a persistent volume at `/app/reports` and set `REPORTS_DIR=/app/reports`. Without a volume, reports live inside the container filesystem and are lost on every image rebuild.
+4. **Startup logs:** backend logs `Reports storage: path=... writable=...` on boot. In production (`ENV=production`), startup fails if the reports path is not writable.
+5. **Do not use `docker compose down -v`** if you need upload session history; the `uploads` named volume is removed. The `./data/reports` bind mount survives unless you delete the host folder.
 
 ---
 
@@ -332,6 +341,8 @@ Module: `backend/app/services/cadence_from_history.py`. `(8020)` tags are month-
 | Variable | Role |
 |----------|------|
 | `REPORTS_DIR` | Persisted JSON (default `/app/reports` in Docker; compose bind-mounts `./data/reports` so rebuilds keep reports) |
+| `ENV` | Set to `production` to fail startup when `REPORTS_DIR` is not writable |
+| `ALLOW_EPHEMERAL_REPORTS` | Set to `1` in dev/CI to allow temp-dir fallback when no writable path exists |
 | `VITE_API_URL` | Frontend API base at build time (dev default `http://localhost:8000/api`) |
 | `UPLOAD_STORAGE_DIR` | Root directory for resumable upload files/chunks/manifests |
 | `UPLOAD_MAX_CHUNK_MB` | Per-chunk limit for resumable uploads |

@@ -82,8 +82,6 @@ def patches_upload():
         return jsonify({"detail": "cold_csv is required"}), 400
     if not crm or not crm.filename:
         return jsonify({"detail": "crm_csv is required"}), 400
-    if not closings or not closings.filename:
-        return jsonify({"detail": "closings_xlsx is required"}), 400
     if not sms_list or not any(f.filename for f in sms_list):
         return jsonify({"detail": "At least one sms_files CSV is required"}), 400
 
@@ -100,12 +98,15 @@ def patches_upload():
     crm_path = raw_dir / "crm_updates.csv"
     crm.save(str(crm_path))
 
-    clos_name = Path(closings.filename.replace("\\", "/")).name
-    if not clos_name.lower().endswith((".xlsx", ".xls")):
-        shutil.rmtree(job_dir, ignore_errors=True)
-        return jsonify({"detail": "closings_xlsx must be .xlsx or .xls"}), 400
-    clos_path = raw_dir / clos_name
-    closings.save(str(clos_path))
+    clos_path: str | None = None
+    if closings and closings.filename:
+        clos_name = Path(closings.filename.replace("\\", "/")).name
+        if not clos_name.lower().endswith((".xlsx", ".xls")):
+            shutil.rmtree(job_dir, ignore_errors=True)
+            return jsonify({"detail": "closings_xlsx must be .xlsx or .xls"}), 400
+        clos_dest = raw_dir / clos_name
+        closings.save(str(clos_dest))
+        clos_path = str(clos_dest)
 
     sms_entries: List[Tuple[str, str]] = []
     for f in sms_list:
@@ -132,7 +133,7 @@ def patches_upload():
             str(cold_path),
             sms_entries,
             str(crm_path),
-            str(clos_path),
+            clos_path,
         )
     except Exception as exc:
         shutil.rmtree(job_dir, ignore_errors=True)

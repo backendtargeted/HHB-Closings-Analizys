@@ -1,57 +1,29 @@
 export type WorkspaceMode = 'regular' | 'pastPatches' | 'qualifiedLeads' | 'monthlyConsolidated';
 
+/** Primary two-gate modes shown in the workflow picker. */
+export type GateMode = 'pastPatches' | 'monthlyConsolidated';
+
 interface ModeSwitcherProps {
-  mode: WorkspaceMode;
-  onChange: (mode: WorkspaceMode) => void;
+  mode: GateMode;
+  onChange: (mode: GateMode) => void;
 }
 
 const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
   return (
     <div className="mb-8">
       <p className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
-        Choose workflow
+        Monthly workflow
       </p>
       <div
-        className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4"
+        className="grid grid-cols-1 md:grid-cols-2 gap-4"
         role="tablist"
-        aria-label="Analysis workflow type"
+        aria-label="Monthly workflow gates"
       >
         <button
           type="button"
           role="tab"
-          aria-selected={mode === 'regular'}
-          id="tab-regular"
-          aria-controls="panel-workspace"
-          onClick={() => onChange('regular')}
-          className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-2 ${
-            mode === 'regular'
-              ? 'border-navy bg-white shadow-md ring-1 ring-navy/10'
-              : 'border-stone-200 bg-white/80 hover:border-stone-300 hover:bg-white'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-navy tracking-tight">Regular updates</h2>
-              <p className="text-stone-600 text-sm mt-2 leading-relaxed">
-                Your recurring run: current REISift contact-history export. Closed deals are derived from
-                tags in CSV; optional closings workbook upload is legacy-only.
-              </p>
-            </div>
-            <span
-              className={`shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md ${
-                mode === 'regular' ? 'bg-gold/25 text-navy' : 'bg-stone-100 text-stone-500'
-              }`}
-            >
-              Default
-            </span>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          role="tab"
           aria-selected={mode === 'pastPatches'}
-          id="tab-past"
+          id="tab-gate1"
           aria-controls="panel-workspace"
           onClick={() => onChange('pastPatches')}
           className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2 ${
@@ -62,42 +34,15 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-bold text-amber-950 tracking-tight">Past patches</h2>
+              <p className="text-xs font-bold uppercase tracking-wider text-amber-800 mb-1">Gate 1</p>
+              <h2 className="text-lg font-bold text-amber-950 tracking-tight">Monthly ingestion</h2>
               <p className="text-amber-950/80 text-sm mt-2 leading-relaxed">
-                Build REISift bulk-import CSVs from cold calling + SMS logs + CRM + closings so tags
-                and statuses line up before you run regular attribution. Kept separate from monthly
-                analysis.
+                Upload cold calling, SMS, and CRM (closings optional) → download REISift import bundle.
+                Import into REISift before running Gate 2.
               </p>
             </div>
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-amber-200/80 text-amber-950">
-              Temporary
-            </span>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'qualifiedLeads'}
-          id="tab-qualified"
-          aria-controls="panel-workspace"
-          onClick={() => onChange('qualifiedLeads')}
-          className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:ring-offset-2 ${
-            mode === 'qualifiedLeads'
-              ? 'border-teal-600/80 bg-teal-50/90 shadow-md ring-1 ring-teal-600/20'
-              : 'border-stone-200 bg-white/80 hover:border-teal-200 hover:bg-teal-50/40'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-teal-950 tracking-tight">Qualified leads</h2>
-              <p className="text-teal-950/80 text-sm mt-2 leading-relaxed">
-                One-time Salesforce Total Qualified Leads export: counts and channel mix by Create
-                Date window. Supplements Past patches and closings attribution.
-              </p>
-            </div>
-            <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-teal-200/80 text-teal-950">
-              Consolidation
+              Ingest
             </span>
           </div>
         </button>
@@ -106,7 +51,7 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
           type="button"
           role="tab"
           aria-selected={mode === 'monthlyConsolidated'}
-          id="tab-monthly"
+          id="tab-gate2"
           aria-controls="panel-workspace"
           onClick={() => onChange('monthlyConsolidated')}
           className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700 focus-visible:ring-offset-2 ${
@@ -117,14 +62,21 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-bold text-indigo-950 tracking-tight">Consolidated list report</h2>
+              <p className="text-xs font-bold uppercase tracking-wider text-indigo-800 mb-1">Gate 2</p>
+              <h2 className="text-lg font-bold text-indigo-950 tracking-tight">Run report</h2>
               <p className="text-indigo-950/80 text-sm mt-2 leading-relaxed">
-                Full REISift export: list + stacked distress performance, CRM tags, qualified leads,
-                and closing journey — single XLSX download. No month filter.
+                Upload REISift export + Salesforce Total Qualified Leads → consolidated analysis
+                with list performance, channels, and lead journey.
               </p>
             </div>
-            <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-indigo-200/80 text-indigo-950">
-              Lists
+            <span
+              className={`shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md ${
+                mode === 'monthlyConsolidated'
+                  ? 'bg-indigo-200/80 text-indigo-950'
+                  : 'bg-stone-100 text-stone-500'
+              }`}
+            >
+              Default
             </span>
           </div>
         </button>

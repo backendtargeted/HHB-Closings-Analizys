@@ -16,6 +16,7 @@ from flask import Blueprint, jsonify, request, send_file
 
 from ..services.qualified_leads import analyze_file, parse_ymd_param, rows_to_export_csv
 from ..services.report_store import (
+    REPORTS_DIR,
     delete_report_file,
     load_qualified_leads_report,
     save_qualified_leads_report,
@@ -32,9 +33,7 @@ _job_results: Dict[str, Dict[str, Any]] = {}
 
 def load_qualified_leads_from_disk() -> None:
     """Restore in-memory cache from persisted reports/qualified_leads/*.json."""
-    from ..services.report_store import get_reports_dir
-
-    ql_dir = get_reports_dir() / "qualified_leads"
+    ql_dir = REPORTS_DIR / "qualified_leads"
     if not ql_dir.is_dir():
         return
     for path in ql_dir.glob("*.json"):

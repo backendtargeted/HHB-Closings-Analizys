@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { copyReportShareUrl } from '../utils/reportShareUrl';
 import {
   Bar,
   BarChart,
@@ -33,6 +34,7 @@ const QualifiedLeadsResults = ({
   exporting,
   embedded = false,
 }: QualifiedLeadsResultsProps) => {
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
   const m = result.metrics;
 
   const chartData = useMemo(() => {
@@ -77,6 +79,19 @@ const QualifiedLeadsResults = ({
               </button>
               <button
                 type="button"
+                onClick={async () => {
+                  setShareStatus(null);
+                  const mode = await copyReportShareUrl(result.job_id, 'qualified_leads');
+                  setShareStatus(
+                    mode === 'copied' ? 'Report link copied.' : 'Copy the report link from the prompt.'
+                  );
+                }}
+                className="px-4 py-2 rounded-lg border border-stone-300 text-teal-900 text-sm font-medium hover:bg-stone-50"
+              >
+                Copy Link
+              </button>
+              <button
+                type="button"
                 onClick={onNewRun}
                 className="px-4 py-2 rounded-lg bg-teal-800 text-white text-sm font-medium hover:bg-teal-900"
               >
@@ -84,6 +99,7 @@ const QualifiedLeadsResults = ({
               </button>
             </div>
           </div>
+          {shareStatus ? <p className="text-xs text-stone-500">{shareStatus}</p> : null}
 
           <p className="text-sm text-stone-600 bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 leading-relaxed">
             {m.qualified_rate_window_note}

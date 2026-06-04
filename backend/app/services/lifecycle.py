@@ -148,6 +148,18 @@ def events_before_close(events: List[Event], closed_date: pd.Timestamp) -> List[
     return out
 
 
+def events_on_or_before(events: List[Event], reference_end: pd.Timestamp) -> List[Event]:
+    out: List[Event] = []
+    end_dt = reference_end.to_pydatetime()
+    for e in events:
+        try:
+            if _parse_iso(e.date_iso) <= end_dt:
+                out.append(e)
+        except ValueError:
+            continue
+    return out
+
+
 def compute_stage_funnel(
     events: List[Event], closed_date: pd.Timestamp
 ) -> Dict[str, Dict[str, Any]]:
@@ -201,6 +213,69 @@ def get_highest_stage(stages: Dict[str, Dict[str, Any]]) -> str:
         if stages.get(name, {}).get("reached"):
             highest = name
     return highest
+
+
+def compute_stage_funnel_open(
+    events: List[Event], reference_end: pd.Timestamp
+) -> Dict[str, Dict[str, Any]]:
+    """Lifecycle stages for non-closing leads using events up to reference_end."""
+    before = events_on_or_before(events, reference_end)
+
+    def first_date(predicate) -> Optional[str]:
+        for e in before:
+            if predicate(e):
+                return e.date_iso
+        return None
+
+    def _sf_label_norm(e: Event) -> str:
+        return normalize_status(e.label) if e.label else ""
+
+    stages = {
+        "ACQUIRED": {"reached": first_date(lambda e: e.type == "list_purchase") is not None, "date": first_date(lambda e: e.type == "list_purchase")},
+        "RESEARCHED": {"reached": first_date(lambda e: e.type == "skip_trace") is not None, "date": first_date(lambda e: e.type == "skip_trace")},
+        "FIRST_CONTACTED": {"reached": first_date(lambda e: e.type == "contact") is not None, "date": first_date(lambda e: e.type == "contact")},
+        "ENGAGED": {
+            "reached": first_date(
+                lambda e: e.type in ("sf_updated", "sf_status") and _sf_label_norm(e) in ENGAGED_LABELS
+            )
+            is not None,
+            "date": first_date(
+                lambda e: e.type in ("sf_updated", "sf_status") and _sf_label_norm(e) in ENGAGED_LABELS
+            ),
+        },
+        "CONVERTED": {
+            "reached": first_date(
+                lambda e: e.type in ("sf_updated", "sf_status") and _sf_label_norm(e) in CONVERTED_LABELS
+            )
+            is not None,
+            "date": first_date(
+                lambda e: e.type in ("sf_updated", "sf_status") and _sf_label_norm(e) in CONVERTED_LABELS
+            ),
+        },
+        "CLOSED": {"reached": False, "date": None},
+    }
+    return stages
+
+
+def aggregate_stuck_at_stage(highest_stages: List[str]) -> Dict[str, Any]:
+    """Count open-lead rows by highest lifecycle stage reached."""
+    if not highest_stages:
+        return {"open_rows": 0, "stuck_at_stage": []}
+
+    counts: Dict[str, int] = {}
+    for stage in highest_stages:
+        counts[stage] = counts.get(stage, 0) + 1
+
+    total = len(highest_stages)
+    stuck = [
+        {
+            "stage": stage,
+            "count": cnt,
+            "share_pct": round(100.0 * cnt / total, 1),
+        }
+        for stage, cnt in sorted(counts.items(), key=lambda x: (-x[1], x[0]))
+    ]
+    return {"open_rows": total, "stuck_at_stage": stuck}
 
 
 def compute_ordered_path(events: List[Event], closed_date: pd.Timestamp) -> str:

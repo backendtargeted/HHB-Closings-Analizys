@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
-import FileUpload from './components/FileUpload';
 import AnalysisResults from './components/AnalysisResults';
 import MethodologySection from './components/MethodologySection';
-import ModeSwitcher, { type WorkspaceMode } from './components/ModeSwitcher';
+import ModeSwitcher, { type GateMode } from './components/ModeSwitcher';
 import PastPatchesGuide from './components/PastPatchesGuide';
 import PastPatchesWorkspace from './components/PastPatchesWorkspace';
-import QualifiedLeadsWorkspace from './components/QualifiedLeadsWorkspace';
 import QualifiedLeadsResults from './components/QualifiedLeadsResults';
 import MonthlyConsolidatedWorkspace from './components/MonthlyConsolidatedWorkspace';
 import MonthlyConsolidatedResults from './components/MonthlyConsolidatedResults';
@@ -17,7 +15,6 @@ import {
   getQualifiedLeadsJob,
   getMonthlyConsolidatedJob,
 } from './services/api';
-import { useAnalysis } from './hooks/useAnalysis';
 import type { AnalysisCompleteResponse } from './types/analysis';
 import type { QualifiedLeadsAnalyzeResponse } from './types/qualifiedLeads';
 import type { MonthlyConsolidatedCompletedResponse } from './types/monthlyConsolidated';
@@ -51,8 +48,7 @@ function App() {
     window.history.replaceState({}, '', url.toString());
   };
 
-  const [workspace, setWorkspace] = useState<WorkspaceMode>('regular');
-  const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [gate, setGate] = useState<GateMode>('monthlyConsolidated');
   const [loadedSavedReport, setLoadedSavedReport] = useState<AnalysisCompleteResponse | null>(null);
   const [loadedQualifiedReport, setLoadedQualifiedReport] =
     useState<QualifiedLeadsAnalyzeResponse | null>(null);
@@ -61,38 +57,16 @@ function App() {
   const [savedReportsRefresh, setSavedReportsRefresh] = useState(0);
   const [qlExporting, setQlExporting] = useState(false);
   const [mcrExporting, setMcrExporting] = useState(false);
-  const {
-    runAnalysis,
-    progress,
-    statusMessage,
-    analysisResults,
-    analysisStatus,
-    resumableUpload,
-    isLoading,
-    isError,
-    error,
-  } = useAnalysis();
 
-  const resultsWithStatus = analysisResults as AnalysisCompleteResponse | undefined;
-  const analysisStatusProp = analysisStatus?.status ?? resultsWithStatus?.status;
-  const displayResults = analysisResults ?? loadedSavedReport ?? null;
   const showQualifiedResults = loadedQualifiedReport !== null;
   const showMonthlyResults = loadedMonthlyReport !== null;
+  const showLegacyAttribution = loadedSavedReport !== null;
 
-  const handleAnalysisComplete = () => {
-    setAnalysisComplete(true);
-    setLoadedSavedReport(null);
-    if (analysisResults?.job_id) {
-      setReportQueryParam(analysisResults.job_id);
-    }
-  };
-
-  const handleNewAnalysis = () => {
-    setAnalysisComplete(false);
+  const handleNewRun = () => {
     setLoadedSavedReport(null);
     setLoadedQualifiedReport(null);
     setLoadedMonthlyReport(null);
-    setWorkspace('regular');
+    setGate('monthlyConsolidated');
     setReportQueryParam(null);
   };
 
@@ -100,7 +74,6 @@ function App() {
     setLoadedSavedReport(data);
     setLoadedQualifiedReport(null);
     setLoadedMonthlyReport(null);
-    setAnalysisComplete(true);
     setReportQueryParam(data.job_id, 'attribution');
   };
 
@@ -108,8 +81,6 @@ function App() {
     setLoadedQualifiedReport(data);
     setLoadedSavedReport(null);
     setLoadedMonthlyReport(null);
-    setAnalysisComplete(false);
-    setWorkspace('qualifiedLeads');
     setReportQueryParam(data.job_id, 'qualified_leads');
   };
 
@@ -117,8 +88,7 @@ function App() {
     setLoadedMonthlyReport(data);
     setLoadedSavedReport(null);
     setLoadedQualifiedReport(null);
-    setAnalysisComplete(false);
-    setWorkspace('monthlyConsolidated');
+    setGate('monthlyConsolidated');
     setReportQueryParam(data.job_id, 'monthly_consolidated');
   };
 
@@ -143,10 +113,6 @@ function App() {
     }
   };
 
-  const handleQualifiedRunComplete = () => {
-    setSavedReportsRefresh((k) => k + 1);
-  };
-
   const handleExportQualifiedRows = async (jobId: string) => {
     setQlExporting(true);
     try {
@@ -164,15 +130,6 @@ function App() {
     }
   };
 
-  // Auto-show results when analysis completes
-  useEffect(() => {
-    if (analysisResults?.status === 'completed') {
-      setAnalysisComplete(true);
-      setLoadedSavedReport(null);
-      setReportQueryParam(analysisResults.job_id);
-    }
-  }, [analysisResults]);
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const reportId = params.get('report');
@@ -186,23 +143,21 @@ function App() {
           const data = await getQualifiedLeadsJob(reportId);
           if (!isCancelled) {
             setLoadedQualifiedReport(data);
-            setWorkspace('qualifiedLeads');
           }
         } else if (reportType === 'monthly_consolidated') {
           const data = asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(reportId));
           if (!isCancelled) {
             setLoadedMonthlyReport(data);
-            setWorkspace('monthlyConsolidated');
+            setGate('monthlyConsolidated');
           }
         } else {
           const data = await getAnalysisResults(reportId);
           if (!isCancelled) {
             setLoadedSavedReport(data);
-            setAnalysisComplete(true);
           }
         }
       } catch {
-        // Invalid/missing report IDs are ignored so the regular landing flow still works.
+        // Invalid/missing report IDs are ignored so the landing flow still works.
       }
     };
     loadSharedReport();
@@ -211,6 +166,9 @@ function App() {
       isCancelled = true;
     };
   }, []);
+
+  const showWorkflowPicker =
+    !showMonthlyResults && !showQualifiedResults && !showLegacyAttribution;
 
   return (
     <div className="min-h-screen bg-surface">
@@ -225,61 +183,18 @@ function App() {
               />
             </div>
             <div className="min-w-0">
-              <h1 className="text-3xl font-bold text-white drop-shadow-sm">Contact Attribution Analysis</h1>
-              <p className="text-gray-200 mt-1">Analyze contact history for closed deals</p>
+              <h1 className="text-3xl font-bold text-white drop-shadow-sm">HHB Marketing Reports</h1>
+              <p className="text-gray-200 mt-1">Gate 1: ingest monthly data · Gate 2: run consolidated report</p>
             </div>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-7xl">
-        {!analysisComplete && !displayResults && !showQualifiedResults && !showMonthlyResults && (
+        {showWorkflowPicker && (
           <>
-            <ModeSwitcher mode={workspace} onChange={setWorkspace} />
-            {workspace === 'pastPatches' ? (
-              <PastPatchesGuide />
-            ) : workspace === 'qualifiedLeads' ? (
-              <p className="text-sm text-stone-500 -mt-4 mb-6 leading-relaxed max-w-3xl">
-                Upload your Salesforce <strong>Total Qualified Leads</strong> export for channel counts
-                and mix by <strong>Create Date</strong>. This does not replace{' '}
-                <button
-                  type="button"
-                  onClick={() => setWorkspace('regular')}
-                  className="font-semibold text-navy underline decoration-navy/30 underline-offset-2"
-                >
-                  regular analysis
-                </button>{' '}
-                or{' '}
-                <button
-                  type="button"
-                  onClick={() => setWorkspace('pastPatches')}
-                  className="font-semibold text-amber-900 underline underline-offset-2"
-                >
-                  Past patches
-                </button>
-                .
-              </p>
-            ) : (
-              <p className="text-sm text-stone-500 -mt-4 mb-6 leading-relaxed max-w-3xl">
-                Need to build REISift import CSVs from cold calling + SMS + CRM + closings? Use{' '}
-                <button
-                  type="button"
-                  onClick={() => setWorkspace('pastPatches')}
-                  className="font-semibold text-navy underline decoration-navy/30 underline-offset-2 hover:decoration-navy"
-                >
-                  Past patches
-                </button>
-                —or{' '}
-                <button
-                  type="button"
-                  onClick={() => setWorkspace('qualifiedLeads')}
-                  className="font-semibold text-teal-800 underline underline-offset-2"
-                >
-                  Qualified leads
-                </button>{' '}
-                for a one-time SF channel mix report.
-              </p>
-            )}
+            <ModeSwitcher mode={gate} onChange={setGate} />
+            {gate === 'pastPatches' ? <PastPatchesGuide /> : null}
           </>
         )}
         <div className="mb-6">
@@ -291,10 +206,7 @@ function App() {
               <MonthlyConsolidatedResults
                 result={loadedMonthlyReport}
                 channelLabels={QL_CHANNEL_LABELS}
-                onNewRun={() => {
-                  setLoadedMonthlyReport(null);
-                  setReportQueryParam(null);
-                }}
+                onNewRun={handleNewRun}
                 onExport={() => handleExportMonthly(loadedMonthlyReport.job_id)}
                 exporting={mcrExporting}
               />
@@ -311,13 +223,11 @@ function App() {
         ) : showQualifiedResults && loadedQualifiedReport ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
             <div className="lg:col-span-2 min-w-0">
+              <p className="text-xs text-stone-500 mb-3 uppercase tracking-wide">Legacy saved report</p>
               <QualifiedLeadsResults
                 result={loadedQualifiedReport}
                 channelLabels={QL_CHANNEL_LABELS}
-                onNewRun={() => {
-                  setLoadedQualifiedReport(null);
-                  setReportQueryParam(null);
-                }}
+                onNewRun={handleNewRun}
                 onExportRows={() => handleExportQualifiedRows(loadedQualifiedReport.job_id)}
                 exporting={qlExporting}
               />
@@ -331,48 +241,11 @@ function App() {
               />
             </aside>
           </div>
-        ) : !analysisComplete && !displayResults ? (
-          <div
-            id="panel-workspace"
-            role="tabpanel"
-            aria-labelledby={
-              workspace === 'regular'
-                ? 'tab-regular'
-                : workspace === 'pastPatches'
-                  ? 'tab-past'
-                  : workspace === 'qualifiedLeads'
-                    ? 'tab-qualified'
-                    : 'tab-monthly'
-            }
-            className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8"
-          >
+        ) : showLegacyAttribution && loadedSavedReport ? (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
             <div className="lg:col-span-2 min-w-0">
-              {workspace === 'regular' ? (
-                <FileUpload
-                  onUpload={runAnalysis}
-                  isLoading={isLoading}
-                  progress={progress}
-                  statusMessage={statusMessage}
-                  isError={isError}
-                  error={error}
-                  onComplete={handleAnalysisComplete}
-                  analysisStatus={analysisStatusProp}
-                  resumableUpload={resumableUpload}
-                />
-              ) : workspace === 'pastPatches' ? (
-                <PastPatchesWorkspace />
-              ) : workspace === 'qualifiedLeads' ? (
-                <QualifiedLeadsWorkspace
-                  onRunComplete={handleQualifiedRunComplete}
-                  onOpenResult={handleOpenQualifiedReport}
-                />
-              ) : (
-                <MonthlyConsolidatedWorkspace
-                  channelLabels={QL_CHANNEL_LABELS}
-                  onRunComplete={handleMonthlyRunComplete}
-                  onOpenResult={handleOpenMonthlyReport}
-                />
-              )}
+              <p className="text-xs text-stone-500 mb-3 uppercase tracking-wide">Legacy saved report</p>
+              <AnalysisResults results={loadedSavedReport} onNewAnalysis={handleNewRun} />
             </div>
             <aside className="rounded-2xl border border-stone-200/90 bg-white shadow-sm p-5 h-fit lg:sticky lg:top-6">
               <SavedReports
@@ -383,27 +256,25 @@ function App() {
               />
             </aside>
           </div>
-        ) : displayResults ? (
-          <AnalysisResults
-            results={displayResults}
-            onNewAnalysis={handleNewAnalysis}
-          />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+          <div
+            id="panel-workspace"
+            role="tabpanel"
+            aria-labelledby={gate === 'pastPatches' ? 'tab-gate1' : 'tab-gate2'}
+            className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8"
+          >
             <div className="lg:col-span-2 min-w-0">
-              <FileUpload
-                onUpload={runAnalysis}
-                isLoading={isLoading}
-                progress={progress}
-                statusMessage={statusMessage}
-                isError={isError}
-                error={error}
-                onComplete={handleAnalysisComplete}
-                analysisStatus={analysisStatusProp}
-                resumableUpload={resumableUpload}
-              />
+              {gate === 'pastPatches' ? (
+                <PastPatchesWorkspace />
+              ) : (
+                <MonthlyConsolidatedWorkspace
+                  channelLabels={QL_CHANNEL_LABELS}
+                  onRunComplete={handleMonthlyRunComplete}
+                  onOpenResult={handleOpenMonthlyReport}
+                />
+              )}
             </div>
-            <aside className="rounded-2xl border border-stone-200/90 bg-white shadow-sm p-5 h-fit">
+            <aside className="rounded-2xl border border-stone-200/90 bg-white shadow-sm p-5 h-fit lg:sticky lg:top-6">
               <SavedReports
                 onOpenAttributionReport={handleOpenSavedReport}
                 onOpenQualifiedLeadsReport={handleOpenQualifiedReport}

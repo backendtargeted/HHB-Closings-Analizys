@@ -126,3 +126,37 @@ def test_build_export_workbook():
     result = analyze(str(REISIFT), str(QL), "2025-03")
     data = build_export_workbook(result)
     assert len(data) > 1000
+
+
+def test_derive_tag_lead_source_from_contact():
+    from app.services.monthly_consolidated import derive_tag_lead_source
+
+    assert derive_tag_lead_source("(8020) CC - 1/2025") == "CC"
+    assert derive_tag_lead_source("(8020) SMS - 2/2025") == "SMS"
+
+
+def test_derive_tag_lead_source_list_fallback():
+    from app.services.monthly_consolidated import derive_tag_lead_source
+
+    assert derive_tag_lead_source("List Purchased 8020 1/2025") == "LIST"
+    assert derive_tag_lead_source("") == "NONE"
+
+
+def test_open_pipeline_stuck_at_stage():
+    from app.services.monthly_consolidated import build_open_pipeline_lifecycle
+
+    df = pd.DataFrame(
+        [
+            {"Tags": "(SF) STATUS - follow up - 2025-01-01", "Created": "2025-01-15"},
+            {"Tags": "(CLOSED) 8020 - 6/2025", "Created": "2025-03-01"},
+        ]
+    )
+    out = build_open_pipeline_lifecycle(df, "Created", pd.Timestamp("2025-06-01"))
+    assert out["open_rows"] == 1
+    assert out["stuck_at_stage"][0]["count"] == 1
+
+
+def test_analyze_includes_tag_lead_source_and_open_pipeline():
+    result = analyze(str(REISIFT), str(QL))
+    assert len(result.tag_lead_source_counts) > 0
+    assert result.open_pipeline_lifecycle.get("open_rows", 0) >= 0

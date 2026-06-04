@@ -2,9 +2,12 @@
 Flask application main file
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from flask import Flask, abort, request, send_from_directory
 from flask_cors import CORS
@@ -16,6 +19,7 @@ from .api.monthly_consolidated import (
     monthly_consolidated_bp,
 )
 from .api.qualified_leads import load_qualified_leads_from_disk, qualified_leads_bp
+from .services.report_store import REPORTS_DIR, _is_production_env, _probe_writable
 
 
 def _frontend_dist() -> Optional[Path]:
@@ -53,6 +57,21 @@ try:
 except ValueError:
     _max_upload_mb = 2048
 app.config["MAX_CONTENT_LENGTH"] = _max_upload_mb * 1024 * 1024
+
+# Log resolved reports storage at startup
+_writable, _write_err = _probe_writable(REPORTS_DIR)
+logger.info(
+    "Reports storage: path=%s writable=%s env_REPORTS_DIR=%r",
+    REPORTS_DIR,
+    _writable,
+    os.environ.get("REPORTS_DIR", "").strip() or None,
+)
+if not _writable:
+    logger.error("Reports directory is not writable: %s", _write_err)
+    if _is_production_env():
+        raise RuntimeError(
+            f"REPORTS_DIR is not writable in production: {REPORTS_DIR} ({_write_err})"
+        )
 
 # Load persisted reports from volume into memory
 load_reports_from_disk()

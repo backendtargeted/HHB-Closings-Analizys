@@ -8,15 +8,38 @@ import json
 import logging
 import math
 import os
+import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 REPORT_TYPE_ATTRIBUTION = "attribution"
 REPORT_TYPE_QUALIFIED_LEADS = "qualified_leads"
 REPORT_TYPE_MONTHLY_CONSOLIDATED = "monthly_consolidated"
+
+
+class ReportsDirectoryError(RuntimeError):
+    """Raised when no writable reports directory can be resolved in production."""
+
+
+@dataclass
+class ReportsDirProbeResult:
+    path: str
+    writable: bool
+    error: Optional[str] = None
+
+
+def _is_production_env() -> bool:
+    return os.environ.get("ENV", "").strip().lower() == "production"
+
+
+def _allow_temp_fallback() -> bool:
+    if os.environ.get("ALLOW_EPHEMERAL_REPORTS", "").strip().lower() in ("1", "true", "yes"):
+        return True
+    return not _is_production_env()
 
 
 def _candidate_reports_dirs() -> List[Path]:
@@ -31,19 +54,121 @@ def _candidate_reports_dirs() -> List[Path]:
             Path.cwd() / "reports",
         ]
     )
+    if _allow_temp_fallback():
+        candidates.append(Path(tempfile.gettempdir()) / "hhb-reports")
     return candidates
 
 
-def get_reports_dir() -> Path:
-    for candidate in _candidate_reports_dirs():
-        try:
-            candidate.mkdir(parents=True, exist_ok=True)
+def _probe_writable(candidate: Path) -> Tuple[bool, Optional[str]]:
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        probe = candidate / ".write_probe"
+        with open(probe, "w", encoding="utf-8") as fh:
+            fh.write("ok")
+        probe.unlink(missing_ok=True)
+        return True, None
+    except OSError as exc:
+        return False, str(exc)
+
+
+def resolve_reports_dir(*, allow_temp_fallback: Optional[bool] = None) -> Path:
+    """
+    Resolve a writable reports directory. In production, fail fast when no
+    configured path is writable (no silent temp fallback unless explicitly allowed).
+    """
+    allow_temp = _allow_temp_fallback() if allow_temp_fallback is None else allow_temp_fallback
+    env_raw = os.environ.get("REPORTS_DIR", "").strip()
+    candidates = _candidate_reports_dirs()
+    if not allow_temp:
+        candidates = [c for c in candidates if c != Path(tempfile.gettempdir()) / "hhb-reports"]
+
+    last_error: Optional[str] = None
+    for candidate in candidates:
+        writable, err = _probe_writable(candidate)
+        if writable:
+            logger.info("Using reports directory: %s", candidate)
             return candidate
-        except OSError:
-            continue
-    fallback = Path(__file__).resolve().parent.parent.parent / "reports"
-    fallback.mkdir(parents=True, exist_ok=True)
-    return fallback
+        last_error = err
+        logger.warning("Reports directory unavailable (%s): %s", candidate, err)
+
+    if allow_temp:
+        fallback = Path(tempfile.mkdtemp(prefix="hhb-reports-"))
+        logger.error(
+            "All configured reports directories failed; using emergency temp path: %s",
+            fallback,
+        )
+        return fallback
+
+    msg = (
+        f"No writable reports directory found (last error: {last_error}). "
+        f"Set REPORTS_DIR to a persistent, writable path (e.g. /app/reports with a volume mount)."
+    )
+    if env_raw:
+        msg += f" REPORTS_DIR={env_raw!r} is not writable."
+    raise ReportsDirectoryError(msg)
+
+
+def get_reports_dir() -> Path:
+    return resolve_reports_dir()
+
+
+def reports_dir_diagnostics() -> Dict[str, Any]:
+    """Storage diagnostics for /api/reports/diagnostics."""
+    env_raw = os.environ.get("REPORTS_DIR", "").strip()
+    candidate_results: List[Dict[str, Any]] = []
+    resolved: Optional[Path] = None
+    using_temp_fallback = False
+
+    try:
+        resolved = get_reports_dir()
+        temp_root = Path(tempfile.gettempdir())
+        using_temp_fallback = (
+            str(resolved).startswith(str(temp_root))
+            and resolved.name.startswith("hhb-reports")
+        )
+    except ReportsDirectoryError:
+        resolved = None
+
+    for candidate in _candidate_reports_dirs():
+        writable, err = _probe_writable(candidate)
+        candidate_results.append(
+            ReportsDirProbeResult(path=str(candidate), writable=writable, error=err).__dict__
+        )
+
+    counts = {
+        REPORT_TYPE_ATTRIBUTION: 0,
+        REPORT_TYPE_QUALIFIED_LEADS: 0,
+        REPORT_TYPE_MONTHLY_CONSOLIDATED: 0,
+    }
+    if resolved is not None:
+        for item in list_report_index(resolved):
+            rtype = item.get("report_type", REPORT_TYPE_ATTRIBUTION)
+            if rtype in counts:
+                counts[rtype] += 1
+
+    writable = False
+    if resolved is not None:
+        writable, _ = _probe_writable(resolved)
+
+    status = "healthy"
+    if resolved is None or not writable:
+        status = "degraded"
+    elif using_temp_fallback:
+        status = "degraded"
+
+    return {
+        "status": status,
+        "resolved_path": str(resolved) if resolved else None,
+        "env_reports_dir": env_raw or None,
+        "writable": writable,
+        "using_temp_fallback": using_temp_fallback,
+        "candidate_results": candidate_results,
+        "report_counts": counts,
+    }
+
+
+# Module-level singleton — all consumers should import this or get_reports_dir().
+REPORTS_DIR = resolve_reports_dir()
 
 
 def _sanitize_for_json(obj: Any) -> Any:

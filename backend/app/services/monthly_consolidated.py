@@ -22,7 +22,13 @@ from .analysis import (
     parse_tags,
     _dedupe_parsed_tag_events,
 )
-from .lifecycle import aggregate_lifecycle_stats
+from .lifecycle import (
+    aggregate_lifecycle_stats,
+    aggregate_stuck_at_stage,
+    build_events,
+    compute_stage_funnel_open,
+    get_highest_stage,
+)
 from .marketing_mapper import find_column_name, make_address_key, smart_read_csv
 from .qualified_leads import (
     compute_qualified_leads_metrics,
@@ -262,6 +268,8 @@ class MonthlyConsolidatedResult:
     list_attribution: Dict[str, Any]
     lifecycle: Dict[str, Any]
     lifecycle_stats: Dict[str, Any] = field(default_factory=dict)
+    open_pipeline_lifecycle: Dict[str, Any] = field(default_factory=dict)
+    tag_lead_source_counts: List[Dict[str, Any]] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     methodology_note: str = ""
 
@@ -288,6 +296,8 @@ class MonthlyConsolidatedResult:
             "list_attribution": self.list_attribution,
             "lifecycle": self.lifecycle,
             "lifecycle_stats": self.lifecycle_stats,
+            "open_pipeline_lifecycle": self.open_pipeline_lifecycle,
+            "tag_lead_source_counts": self.tag_lead_source_counts,
             "warnings": self.warnings,
             "methodology_note": self.methodology_note,
         }
@@ -489,9 +499,90 @@ def result_from_metrics_dict(m: Dict[str, Any]) -> MonthlyConsolidatedResult:
         qualified_leads=m.get("qualified_leads", {}),
         list_attribution=m.get("list_attribution", {}),
         lifecycle=m.get("lifecycle", {}),
+        lifecycle_stats=m.get("lifecycle_stats", {}),
+        open_pipeline_lifecycle=m.get("open_pipeline_lifecycle", {}),
+        tag_lead_source_counts=m.get("tag_lead_source_counts", []),
         warnings=m.get("warnings", []),
         methodology_note=m.get("methodology_note", ""),
     )
+
+
+def _row_reference_end(row: pd.Series, created_col: Optional[str], default_end: pd.Timestamp) -> pd.Timestamp:
+    if created_col and created_col in row.index:
+        parsed = pd.to_datetime(row.get(created_col), errors="coerce")
+        if pd.notna(parsed):
+            return pd.Timestamp(parsed)
+    return default_end
+
+
+def derive_tag_lead_source(tags_str: object) -> str:
+    """Tag-derived lead source: first 8020 channel, else LIST, else NONE."""
+    if pd.isna(tags_str) or not str(tags_str).strip():
+        return "NONE"
+    parsed = _dedupe_parsed_tag_events(parse_tags(tags_str))
+    if not parsed:
+        return "NONE"
+
+    def _sort_key(p: Dict[str, Any]) -> Tuple[int, str]:
+        d = p.get("date")
+        if d is None:
+            return (0, "")
+        try:
+            return (1, pd.Timestamp(d).isoformat())
+        except (ValueError, TypeError):
+            return (0, str(d))
+
+    ordered = sorted(parsed, key=_sort_key)
+    first_contact: Optional[str] = None
+    has_list = False
+    for p in ordered:
+        if p.get("type") == "list_purchase":
+            has_list = True
+        if p.get("type") == "contact" and first_contact is None:
+            first_contact = str(p.get("channel") or p.get("label") or "CONTACT")
+    if first_contact:
+        return first_contact
+    if has_list:
+        return "LIST"
+    return "NONE"
+
+
+def build_tag_lead_source_counts(cohort_df: pd.DataFrame) -> List[Dict[str, Any]]:
+    counts: Dict[str, int] = {}
+    for _, row in cohort_df.iterrows():
+        src = derive_tag_lead_source(row.get("Tags"))
+        counts[src] = counts.get(src, 0) + 1
+    total = sum(counts.values()) or 1
+    return [
+        {
+            "source": src,
+            "count": cnt,
+            "share_pct": round(100.0 * cnt / total, 1),
+        }
+        for src, cnt in sorted(counts.items(), key=lambda x: (-x[1], x[0]))
+    ]
+
+
+def build_open_pipeline_lifecycle(
+    cohort_df: pd.DataFrame,
+    created_col: Optional[str],
+    default_end: pd.Timestamp,
+) -> Dict[str, Any]:
+    """Stuck-at-stage summary for cohort rows without a closing tag."""
+    open_mask = ~cohort_df["Tags"].apply(row_has_closing_tag)
+    open_df = cohort_df[open_mask]
+    if open_df.empty:
+        return {"open_rows": 0, "stuck_at_stage": []}
+
+    highest_stages: List[str] = []
+    for _, row in open_df.iterrows():
+        contacts = parse_tags(row.get("Tags", ""))
+        events = build_events(contacts)
+        ref_end = _row_reference_end(row, created_col, default_end)
+        stages = compute_stage_funnel_open(events, ref_end)
+        highest_stages.append(get_highest_stage(stages))
+
+    return aggregate_stuck_at_stage(highest_stages)
 
 
 def build_lifecycle_from_cohort(cohort_df: pd.DataFrame) -> Dict[str, Any]:
@@ -606,6 +697,17 @@ def analyze(
     lifecycle_raw = build_lifecycle_from_cohort(cohort_df) if closing_rows else {}
     lifecycle_stats = lifecycle_stats_for_api(lifecycle_raw)
 
+    if period_end:
+        try:
+            default_ref = pd.Timestamp(period_end)
+        except (ValueError, TypeError):
+            default_ref = pd.Timestamp.now()
+    else:
+        default_ref = pd.Timestamp.now()
+
+    open_pipeline = build_open_pipeline_lifecycle(cohort_df, created_col, default_ref)
+    tag_lead_sources = build_tag_lead_source_counts(cohort_df) if cohort_rows else []
+
     excluded_label = "8020 Source List and PODIO (SOURCE)"
     list_scope = (
         f"List metrics exclude {excluded_label} (source/import lists). "
@@ -644,6 +746,8 @@ def analyze(
         list_attribution=list_attr,
         lifecycle=lifecycle_raw,
         lifecycle_stats=lifecycle_stats,
+        open_pipeline_lifecycle=open_pipeline,
+        tag_lead_source_counts=tag_lead_sources,
         warnings=warnings,
         methodology_note=methodology,
     )
@@ -711,6 +815,16 @@ def build_export_workbook(result: MonthlyConsolidatedResult) -> bytes:
             pd.DataFrame([{"note": "No closings in cohort"}]).to_excel(
                 writer, sheet_name="Lifecycle", index=False
             )
+
+        if result.tag_lead_source_counts:
+            pd.DataFrame(result.tag_lead_source_counts).to_excel(
+                writer, sheet_name="Lead Source Tags", index=False
+            )
+
+        open_pipe = result.open_pipeline_lifecycle or {}
+        stuck = open_pipe.get("stuck_at_stage") or []
+        if stuck:
+            pd.DataFrame(stuck).to_excel(writer, sheet_name="Open Pipeline", index=False)
 
     buf.seek(0)
     return buf.getvalue()

@@ -127,7 +127,7 @@ const PastPatchesWorkspace = () => {
     e.target.value = '';
   };
 
-  const canPreview = coldFile && crmFile && closingsFile && smsFiles.length > 0;
+  const canPreview = coldFile && crmFile && smsFiles.length > 0;
 
   const runPreview = async () => {
     if (!canPreview) return;
@@ -137,7 +137,9 @@ const PastPatchesWorkspace = () => {
       const fd = new FormData();
       fd.append('cold_csv', coldFile);
       fd.append('crm_csv', crmFile);
-      fd.append('closings_xlsx', closingsFile);
+      if (closingsFile) {
+        fd.append('closings_xlsx', closingsFile);
+      }
       smsFiles.forEach((f) => fd.append('sms_files', f, f.name));
       const data = await uploadPatches(fd);
       setJobId(data.job_id);
@@ -210,10 +212,10 @@ const PastPatchesWorkspace = () => {
     <div className="w-full rounded-2xl border border-amber-200/90 bg-white ring-1 ring-amber-100/40 shadow-sm p-6 sm:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-amber-950 tracking-tight">Past patches — REISift imports</h2>
+          <h2 className="text-2xl font-bold text-amber-950 tracking-tight">Gate 1 — Monthly ingestion</h2>
           <p className="text-sm text-stone-600 mt-1 max-w-2xl">
-            Step 1: attach your four sources. Step 2: review mapping coverage. Step 3: download CSVs
-            (or a zip) for bulk import into REISift.
+            Upload cold calling, SMS, and CRM (closings optional). Preview mapping, then download
+            REISift import CSVs for bulk import before Gate 2.
           </p>
         </div>
         <div className="flex gap-2 text-xs font-semibold">
@@ -269,7 +271,9 @@ const PastPatchesWorkspace = () => {
           </div>
         </div>
         <div>
-          <label className="block text-sm font-semibold text-stone-700 mb-2">Closings Excel (.xlsx)</label>
+          <label className="block text-sm font-semibold text-stone-700 mb-2">
+            Closings Excel (.xlsx) <span className="font-normal text-stone-500">(optional)</span>
+          </label>
           <div
             {...closingsDrop.getRootProps()}
             className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors ${
@@ -280,7 +284,7 @@ const PastPatchesWorkspace = () => {
             {closingsFile ? (
               <p className="text-sm text-emerald-700 font-medium">✓ {closingsFile.name}</p>
             ) : (
-              <p className="text-sm text-stone-600">Drop or click — Date Closed + Address</p>
+              <p className="text-sm text-stone-600">Optional — Date Closed + Address for closing tags</p>
             )}
           </div>
         </div>

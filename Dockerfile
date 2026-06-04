@@ -28,6 +28,7 @@ COPY --from=frontend-build /fe/dist ./static
 
 ENV FRONTEND_DIST=/app/static
 
+# Mount a persistent volume at /app/reports in production (Easypanel); otherwise reports are lost on rebuild.
 RUN mkdir -p uploads exports reports
 
 # Easypanel and similar hosts often set PORT; default keeps local/docker-compose expectations.

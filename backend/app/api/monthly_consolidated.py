@@ -23,6 +23,7 @@ from ..services.monthly_consolidated import (
     parse_report_month,
 )
 from ..services.report_store import (
+    REPORTS_DIR,
     delete_report_file,
     load_monthly_consolidated_report,
     save_monthly_consolidated_report,
@@ -57,9 +58,7 @@ def _job_snapshot(job_id: str) -> Dict[str, Any] | None:
 
 
 def load_monthly_consolidated_from_disk() -> None:
-    from ..services.report_store import get_reports_dir
-
-    mcr_dir = get_reports_dir() / "monthly_consolidated"
+    mcr_dir = REPORTS_DIR / "monthly_consolidated"
     if not mcr_dir.is_dir():
         return
     for path in mcr_dir.glob("*.json"):

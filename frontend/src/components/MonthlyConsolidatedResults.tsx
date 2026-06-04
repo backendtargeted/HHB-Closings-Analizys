@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import QualifiedLeadsResults from './QualifiedLeadsResults';
 import LifecycleSection from './LifecycleSection';
+import { copyReportShareUrl } from '../utils/reportShareUrl';
 import type { MonthlyConsolidatedCompletedResponse } from '../types/monthlyConsolidated';
 import type { QualifiedLeadsAnalyzeResponse } from '../types/qualifiedLeads';
 import type { SummaryStats } from '../types/analysis';
@@ -21,6 +23,7 @@ const MonthlyConsolidatedResults = ({
   onExport,
   exporting,
 }: MonthlyConsolidatedResultsProps) => {
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
   const m = result.metrics;
   const warnings = result.warnings ?? m.warnings ?? [];
   const cohort = m.cohort;
@@ -36,11 +39,20 @@ const MonthlyConsolidatedResults = ({
     lifecycleStats.Funnel_Acquired_Count != null ||
     (lifecycleStats.Top_Paths_Json && lifecycleStats.Top_Paths_Json.length > 2);
 
+  const openPipeline = m.open_pipeline_lifecycle;
+  const tagLeadSource = m.tag_lead_source_counts ?? [];
+
+  const handleShare = async () => {
+    setShareStatus(null);
+    const mode = await copyReportShareUrl(result.job_id, 'monthly_consolidated');
+    setShareStatus(mode === 'copied' ? 'Report link copied.' : 'Copy the report link from the prompt.');
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-indigo-950">Consolidated list report</h2>
+          <h2 className="text-2xl font-bold text-indigo-950">Gate 2 — Consolidated report</h2>
           <p className="text-sm text-stone-600 mt-1">
             {m.cohort_scope === 'full_file' ? 'Full REISift export' : `Month ${m.report_month}`}
             {m.period.start && m.period.end ? (
@@ -61,6 +73,13 @@ const MonthlyConsolidatedResults = ({
           </button>
           <button
             type="button"
+            onClick={handleShare}
+            className="px-4 py-2 rounded-lg border border-stone-300 text-indigo-900 text-sm font-medium hover:bg-stone-50"
+          >
+            Copy Link
+          </button>
+          <button
+            type="button"
             onClick={onNewRun}
             className="px-4 py-2 rounded-lg bg-indigo-800 text-white text-sm font-medium hover:bg-indigo-900"
           >
@@ -68,6 +87,7 @@ const MonthlyConsolidatedResults = ({
           </button>
         </div>
       </div>
+      {shareStatus ? <p className="text-xs text-stone-500 -mt-4">{shareStatus}</p> : null}
 
       {warnings.length > 0 && (
         <ul className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 list-disc pl-6 space-y-1">
@@ -158,6 +178,33 @@ const MonthlyConsolidatedResults = ({
         </table>
       </section>
 
+      {tagLeadSource.length > 0 && (
+        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+          <h3 className="text-lg font-semibold text-stone-800 mb-2">Lead source (from tags)</h3>
+          <p className="text-xs text-stone-500 mb-4">
+            Derived from REISift tag history — first 8020 channel or list purchase.
+          </p>
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="text-left text-stone-500 border-b">
+                <th className="py-2 pr-4">Source</th>
+                <th className="py-2 pr-4 text-right">Properties</th>
+                <th className="py-2 text-right">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tagLeadSource.map((row) => (
+                <tr key={row.source} className="border-b border-stone-100">
+                  <td className="py-2 pr-4 font-medium text-stone-800">{row.source}</td>
+                  <td className="py-2 pr-4 text-right tabular-nums">{row.count.toLocaleString()}</td>
+                  <td className="py-2 text-right tabular-nums">{row.share_pct.toFixed(1)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
       <section>
         <h3 className="text-lg font-semibold text-teal-950 mb-3">Channel effectiveness (qualified leads)</h3>
         <QualifiedLeadsResults
@@ -174,6 +221,33 @@ const MonthlyConsolidatedResults = ({
         <section>
           <h3 className="text-lg font-semibold text-navy mb-3">Lead journey (closing cohort)</h3>
           <LifecycleSection stats={lifecycleStats} />
+        </section>
+      )}
+
+      {openPipeline && (openPipeline.stuck_at_stage?.length ?? 0) > 0 && (
+        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm overflow-x-auto">
+          <h3 className="text-lg font-semibold text-navy mb-2">Open pipeline — where leads are stuck</h3>
+          <p className="text-xs text-stone-500 mb-4">
+            Non-closing cohort rows ranked by highest lifecycle stage reached (tag-derived).
+          </p>
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="text-left text-stone-500 border-b">
+                <th className="py-2 pr-4">Highest stage</th>
+                <th className="py-2 pr-4 text-right">Properties</th>
+                <th className="py-2 text-right">Share of open</th>
+              </tr>
+            </thead>
+            <tbody>
+              {openPipeline.stuck_at_stage.map((row) => (
+                <tr key={row.stage} className="border-b border-stone-100">
+                  <td className="py-2 pr-4 font-medium text-stone-800">{row.stage}</td>
+                  <td className="py-2 pr-4 text-right tabular-nums">{row.count.toLocaleString()}</td>
+                  <td className="py-2 text-right tabular-nums">{row.share_pct.toFixed(1)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </section>
       )}
     </div>

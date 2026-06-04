@@ -42,6 +42,11 @@ export interface MonthlyConsolidatedMetrics {
     match_rate_pct: number;
   };
   lifecycle_stats: SummaryStats;
+  open_pipeline_lifecycle?: {
+    open_rows: number;
+    stuck_at_stage: Array<{ stage: string; count: number; share_pct: number }>;
+  };
+  tag_lead_source_counts?: Array<{ source: string; count: number; share_pct: number }>;
   warnings: string[];
   methodology_note: string;
 }

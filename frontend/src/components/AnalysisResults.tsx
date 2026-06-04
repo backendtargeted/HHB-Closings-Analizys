@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AnalysisCompleteResponse } from '../types/analysis';
+import { copyReportShareUrl } from '../utils/reportShareUrl';
 import ContactDistribution from './Charts/ContactDistribution';
 import ChannelBreakdown from './Charts/ChannelBreakdown';
 import FilterPanel from './Filters/FilterPanel';
@@ -109,21 +110,9 @@ const AnalysisResults = ({ results, onNewAnalysis }: AnalysisResultsProps) => {
   }
 
   const handleShare = async () => {
-    const reportUrl = `${window.location.origin}${window.location.pathname}?report=${encodeURIComponent(results.job_id)}`;
-
     setShareStatus(null);
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(reportUrl);
-        setShareStatus('Report link copied.');
-        return;
-      }
-      window.prompt('Copy this report link:', reportUrl);
-      setShareStatus('Copy the report link from the prompt.');
-    } catch {
-      window.prompt('Copy this report link:', reportUrl);
-      setShareStatus('Copy the report link from the prompt.');
-    }
+    const mode = await copyReportShareUrl(results.job_id, 'attribution');
+    setShareStatus(mode === 'copied' ? 'Report link copied.' : 'Copy the report link from the prompt.');
   };
 
   return (

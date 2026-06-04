@@ -7,20 +7,20 @@ import math
 import uuid
 import threading
 import logging
-import tempfile
 from datetime import datetime, timezone, date
 from typing import Dict, List, Any, Optional
 from flask import Blueprint, request, jsonify, send_file
 import pandas as pd
-import os
 from pathlib import Path
 
 from ..services.analysis import perform_analysis
 from ..services import resumable_uploads
 from ..services.report_store import (
     REPORT_TYPE_ATTRIBUTION,
+    REPORTS_DIR,
     delete_report_file,
     list_report_index,
+    reports_dir_diagnostics,
     save_attribution_report,
 )
 from ..utils.file_handler import EXPORT_DIR
@@ -45,42 +45,6 @@ def api_health():
     return jsonify({"status": "healthy"})
 
 
-def _candidate_reports_dirs() -> List[Path]:
-    raw = os.environ.get("REPORTS_DIR", "").strip()
-    candidates: List[Path] = []
-    if raw:
-        candidates.append(Path(raw))
-    candidates.extend(
-        [
-            Path("/app/reports"),
-            Path.cwd() / "reports",
-            Path(tempfile.gettempdir()) / "hhb-reports",
-        ]
-    )
-    return candidates
-
-
-def _resolve_reports_dir() -> Path:
-    for candidate in _candidate_reports_dirs():
-        try:
-            candidate.mkdir(parents=True, exist_ok=True)
-            probe = candidate / ".write_probe"
-            with open(probe, "w", encoding="utf-8") as f:
-                f.write("ok")
-            probe.unlink(missing_ok=True)
-            logger.info("Using reports directory: %s", candidate)
-            return candidate
-        except OSError as exc:
-            logger.warning("Reports directory unavailable (%s): %s", candidate, exc)
-
-    fallback = Path(tempfile.mkdtemp(prefix="hhb-reports-"))
-    logger.error("All configured reports directories failed; using emergency temp path: %s", fallback)
-    return fallback
-
-
-# Reports directory (persisted when configured and writable).
-REPORTS_DIR = _resolve_reports_dir()
-
 # In-memory storage for analysis jobs; populated from disk at startup
 analysis_jobs: Dict[str, Dict] = {}
 analysis_results: Dict[str, Dict] = {}
@@ -104,11 +68,8 @@ def _sanitize_for_json(obj: Any) -> Any:
 
 def save_report_to_disk(job_id: str, result: Dict, created_at: str) -> None:
     """Persist analysis result to reports/{job_id}.json or reports/snapshots/{as_of}/{job_id}.json."""
-    try:
-        _ensure_reports_dir()
-        save_attribution_report(job_id, result, created_at, REPORTS_DIR)
-    except OSError as exc:
-        logger.exception("Failed to persist report %s to %s: %s", job_id, REPORTS_DIR, exc)
+    _ensure_reports_dir()
+    save_attribution_report(job_id, result, created_at, REPORTS_DIR)
 
 
 def load_reports_from_disk() -> None:
@@ -177,7 +138,13 @@ def run_analysis_sync(
         analysis_jobs[job_id]["progress"] = 100
         analysis_jobs[job_id]["message"] = "Analysis complete"
         analysis_jobs[job_id]["created_at"] = created_at
-        save_report_to_disk(job_id, result, created_at)
+        try:
+            save_report_to_disk(job_id, result, created_at)
+        except OSError as exc:
+            analysis_jobs[job_id]["status"] = "failed"
+            analysis_jobs[job_id]["progress"] = 0
+            analysis_jobs[job_id]["message"] = f"Report completed but failed to save: {exc}"
+            logger.exception("Failed to persist report %s to %s", job_id, REPORTS_DIR)
 
     except Exception as e:
         analysis_jobs[job_id]["status"] = "failed"
@@ -676,6 +643,14 @@ def list_analyses():
     ]
     analyses.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return jsonify({"analyses": analyses})
+
+
+@api_bp.route("/reports/diagnostics", methods=["GET"])
+def reports_diagnostics():
+    """Report storage health: resolved path, writability, counts by type."""
+    payload = reports_dir_diagnostics()
+    status_code = 200 if payload.get("status") == "healthy" else 503
+    return jsonify(payload), status_code
 
 
 @api_bp.route("/reports", methods=["GET"])
