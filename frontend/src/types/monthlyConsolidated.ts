@@ -17,6 +17,7 @@ export interface ComboMetric {
   row_count: number;
   closing_count: number;
   closing_rate: number;
+  combo_group?: string;
 }
 
 export interface MonthlyConsolidatedMetrics {
@@ -34,6 +35,7 @@ export interface MonthlyConsolidatedMetrics {
   };
   lists: ListMetric[];
   combinations: ComboMetric[];
+  combo_min_rows?: number;
   qualified_leads: QualifiedLeadsMetrics;
   list_attribution: {
     matched_to_reisift: number;

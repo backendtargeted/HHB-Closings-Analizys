@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import calendar
 import re
+import statistics
 from dataclasses import dataclass, field
 from datetime import date
 from io import BytesIO
@@ -57,6 +58,8 @@ SF_ADDR = {
 }
 
 COMBO_EXPORT_CAP = 100
+COMBO_MIN_ROWS_FLOOR = 5
+COMBO_MIN_ROWS_DEFAULT = 10
 QL_MATCH_WARN_THRESHOLD = 0.5
 
 # REISift source/import lists — excluded from list ranking, combinations, and QL attribution.
@@ -64,6 +67,14 @@ EXCLUDED_LIST_TOKENS: frozenset[str] = frozenset(
     {
         "8020 source list",
         "podio (source)",
+    }
+)
+
+# Operational / hygiene lists — still appear in List Performance, but not in stacking or combos.
+NON_STACK_LIST_TOKENS: frozenset[str] = frozenset(
+    {
+        "dnc + dead deals",
+        "closings app mlsli tbd",
     }
 )
 
@@ -76,9 +87,18 @@ def is_excluded_list_token(token: str) -> bool:
     return _normalize_list_token(token) in EXCLUDED_LIST_TOKENS
 
 
+def is_non_stack_list_token(token: str) -> bool:
+    return _normalize_list_token(token) in NON_STACK_LIST_TOKENS
+
+
 def analysis_list_tokens(lists_str: object) -> List[str]:
     """Distress lists used for ranking; omits source/import lists."""
     return [t for t in split_list_tokens(lists_str) if not is_excluded_list_token(t)]
+
+
+def stackable_list_tokens(lists_str: object) -> List[str]:
+    """Lists that count toward stacked rows and list combinations."""
+    return [t for t in analysis_list_tokens(lists_str) if not is_non_stack_list_token(t)]
 
 
 def parse_report_month(value: str) -> Tuple[date, date]:
@@ -239,6 +259,7 @@ class ComboMetric:
     row_count: int
     closing_count: int
     closing_rate: float
+    combo_group: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -247,6 +268,7 @@ class ComboMetric:
             "row_count": self.row_count,
             "closing_count": self.closing_count,
             "closing_rate": self.closing_rate,
+            "combo_group": self.combo_group,
         }
 
 
@@ -270,6 +292,7 @@ class MonthlyConsolidatedResult:
     lifecycle_stats: Dict[str, Any] = field(default_factory=dict)
     open_pipeline_lifecycle: Dict[str, Any] = field(default_factory=dict)
     tag_lead_source_counts: List[Dict[str, Any]] = field(default_factory=list)
+    combo_min_rows: int = COMBO_MIN_ROWS_DEFAULT
     warnings: List[str] = field(default_factory=list)
     methodology_note: str = ""
 
@@ -292,6 +315,7 @@ class MonthlyConsolidatedResult:
             },
             "lists": [m.to_dict() for m in self.lists],
             "combinations": [c.to_dict() for c in self.combinations],
+            "combo_min_rows": self.combo_min_rows,
             "qualified_leads": self.qualified_leads,
             "list_attribution": self.list_attribution,
             "lifecycle": self.lifecycle,
@@ -311,9 +335,10 @@ def compute_list_metrics(cohort_df: pd.DataFrame, ql_by_list: Dict[str, int]) ->
 
     for _, row in cohort_df.iterrows():
         tokens = analysis_list_tokens(row.get("Lists"))
+        stackable = stackable_list_tokens(row.get("Lists"))
         if not tokens:
             continue
-        is_stacked = len(tokens) > 1
+        is_stacked = len(stackable) > 1
         has_sf = row_has_sf_tag(row.get("Tags"))
         has_close = row_has_closing_tag(row.get("Tags"))
         for t in tokens:
@@ -344,13 +369,49 @@ def compute_list_metrics(cohort_df: pd.DataFrame, ql_by_list: Dict[str, int]) ->
     return metrics
 
 
+def resolve_combo_min_rows(multi_list_counts: List[int]) -> int:
+    """
+    Dynamic floor for combination visibility: median row count among multi-list
+    stackable combos, bounded below by COMBO_MIN_ROWS_FLOOR.
+    """
+    if not multi_list_counts:
+        return COMBO_MIN_ROWS_DEFAULT
+    if len(multi_list_counts) == 1:
+        return max(COMBO_MIN_ROWS_FLOOR, multi_list_counts[0])
+    med = statistics.median(multi_list_counts)
+    return max(COMBO_MIN_ROWS_FLOOR, int(round(med)))
+
+
+def _combo_group_for_lists(
+    lists: List[str],
+    list_closing_by_token: Dict[str, int],
+    list_rows_by_token: Dict[str, int],
+) -> str:
+    """Group label = stackable list in the combo with the most closings (then rows)."""
+    if not lists:
+        return ""
+    if len(lists) == 1:
+        return lists[0]
+
+    def sort_key(token: str) -> Tuple[int, int, str]:
+        return (
+            -list_closing_by_token.get(token, 0),
+            -list_rows_by_token.get(token, 0),
+            token.lower(),
+        )
+
+    return sorted(lists, key=sort_key)[0]
+
+
 def compute_combinations(
-    cohort_df: pd.DataFrame, min_rows: int = 10
-) -> List[ComboMetric]:
+    cohort_df: pd.DataFrame,
+    min_rows: Optional[int] = None,
+    list_metrics: Optional[List[ListMetric]] = None,
+) -> Tuple[List[ComboMetric], int]:
     groups: Dict[str, Dict[str, Any]] = {}
     for _, row in cohort_df.iterrows():
-        tokens = analysis_list_tokens(row.get("Lists"))
-        if not tokens:
+        tokens = stackable_list_tokens(row.get("Lists"))
+        if len(tokens) < 2:
             continue
         key_tuple = tuple(sorted(tokens))
         key = " + ".join(key_tuple)
@@ -360,23 +421,44 @@ def compute_combinations(
         if row_has_closing_tag(row.get("Tags")):
             groups[key]["closing_count"] += 1
 
+    multi_counts = [g["row_count"] for g in groups.values()]
+    threshold = min_rows if min_rows is not None else resolve_combo_min_rows(multi_counts)
+
+    list_closing_by_token: Dict[str, int] = {}
+    list_rows_by_token: Dict[str, int] = {}
+    if list_metrics:
+        for m in list_metrics:
+            list_closing_by_token[m.token] = m.closing_count
+            list_rows_by_token[m.token] = m.row_count
+
     combos: List[ComboMetric] = []
     for key, g in groups.items():
-        if g["row_count"] < min_rows:
+        if g["row_count"] < threshold:
             continue
         rc = g["row_count"]
         cc = g["closing_count"]
+        combo_lists = g["lists"]
         combos.append(
             ComboMetric(
-                lists=g["lists"],
+                lists=combo_lists,
                 lists_key=key,
                 row_count=rc,
                 closing_count=cc,
                 closing_rate=round(cc / rc, 6) if rc else 0.0,
+                combo_group=_combo_group_for_lists(
+                    combo_lists, list_closing_by_token, list_rows_by_token
+                ),
             )
         )
-    combos.sort(key=lambda c: (-c.closing_count, -c.closing_rate, -c.row_count))
-    return combos[:COMBO_EXPORT_CAP]
+    combos.sort(
+        key=lambda c: (
+            c.combo_group.lower(),
+            -c.closing_count,
+            -c.closing_rate,
+            -c.row_count,
+        )
+    )
+    return combos[:COMBO_EXPORT_CAP], threshold
 
 
 def attribute_qualified_leads_to_lists(
@@ -477,6 +559,7 @@ def result_from_metrics_dict(m: Dict[str, Any]) -> MonthlyConsolidatedResult:
             row_count=x["row_count"],
             closing_count=x["closing_count"],
             closing_rate=x["closing_rate"],
+            combo_group=x.get("combo_group", ""),
         )
         for x in m.get("combinations", [])
     ]
@@ -496,6 +579,7 @@ def result_from_metrics_dict(m: Dict[str, Any]) -> MonthlyConsolidatedResult:
         stacked_pct=cohort.get("stacked_pct", 0.0),
         lists=lists,
         combinations=combos,
+        combo_min_rows=int(m.get("combo_min_rows", COMBO_MIN_ROWS_DEFAULT)),
         qualified_leads=m.get("qualified_leads", {}),
         list_attribution=m.get("list_attribution", {}),
         lifecycle=m.get("lifecycle", {}),
@@ -668,7 +752,7 @@ def analyze(
     stacked_rows = 0
     if cohort_rows:
         stacked_rows = int(
-            cohort_df["Lists"].apply(lambda x: len(analysis_list_tokens(x)) > 1).sum()
+            cohort_df["Lists"].apply(lambda x: len(stackable_list_tokens(x)) > 1).sum()
         )
     stacked_pct = round(100.0 * stacked_rows / cohort_rows, 2) if cohort_rows else 0.0
 
@@ -693,7 +777,7 @@ def analyze(
         )
 
     lists = compute_list_metrics(cohort_df, ql_by_list)
-    combinations = compute_combinations(cohort_df, min_rows=10)
+    combinations, combo_min_rows = compute_combinations(cohort_df, list_metrics=lists)
     lifecycle_raw = build_lifecycle_from_cohort(cohort_df) if closing_rows else {}
     lifecycle_stats = lifecycle_stats_for_api(lifecycle_raw)
 
@@ -709,8 +793,12 @@ def analyze(
     tag_lead_sources = build_tag_lead_source_counts(cohort_df) if cohort_rows else []
 
     excluded_label = "8020 Source List and PODIO (SOURCE)"
+    non_stack_label = "DNC + Dead Deals and Closings App MLSLI TBD"
     list_scope = (
         f"List metrics exclude {excluded_label} (source/import lists). "
+        f"Stacking and list combinations use distress lists only — excluding {non_stack_label}. "
+        f"Combinations require ≥2 stackable lists and ≥{combo_min_rows} cohort rows "
+        f"(dynamic median threshold, floor {COMBO_MIN_ROWS_FLOOR}). "
         "List credit applies to every remaining list on a matched REISift property. "
         "Closing rate = closings on list ÷ REISift rows carrying that list."
     )
@@ -742,6 +830,7 @@ def analyze(
         stacked_pct=stacked_pct,
         lists=lists,
         combinations=combinations,
+        combo_min_rows=combo_min_rows,
         qualified_leads=ql_result.to_dict(),
         list_attribution=list_attr,
         lifecycle=lifecycle_raw,
@@ -773,6 +862,7 @@ def build_export_workbook(result: MonthlyConsolidatedResult) -> bytes:
                 {"metric": "Closing rows", "value": result.closing_rows},
                 {"metric": "Stacked rows (multi-list)", "value": result.stacked_rows},
                 {"metric": "Stacked %", "value": result.stacked_pct},
+                {"metric": "Combo min rows (median threshold)", "value": result.combo_min_rows},
             ]
         )
         summary.to_excel(writer, sheet_name="Summary", index=False)

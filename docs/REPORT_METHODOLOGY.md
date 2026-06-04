@@ -278,3 +278,5 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 **Tag-derived lead source:** For each REISift cohort row, parse `Tags` chronologically. First `(8020) CC/SMS/DM` contact wins; if none, `LIST` when a `List Purchased 8020` tag exists; otherwise `NONE`. This is separate from Salesforce `Lead Source` on the qualified-leads export.
 
 **Open pipeline (non-closing rows):** Cohort rows without `(CLOSED) 8020` tags are evaluated with the same lifecycle stage model, using events on or before the row `Created` date (or cohort period end). Highest stage reached is aggregated into **stuck-at-stage** counts (e.g. ENGAGED but not CONVERTED). Closing-cohort lifecycle and Top Paths remain closing-only.
+
+**List combinations:** Only **stackable distress lists** participate (excludes source/import lists and hygiene lists: DNC + Dead Deals, Closings App MLSLI TBD). A combination requires **≥2** stackable lists on the same row. Minimum row count = **median** of multi-list combo sizes in the cohort (floor 5). Results are grouped under the combo's **primary list** (highest closings within that stack).

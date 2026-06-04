@@ -13,11 +13,14 @@ from app.services.monthly_consolidated import (
     compute_list_metrics,
     filter_reisift_cohort,
     is_excluded_list_token,
+    is_non_stack_list_token,
     parse_report_month,
     prepare_reisift_cohort,
+    resolve_combo_min_rows,
     row_has_closing_tag,
     row_has_sf_tag,
     split_list_tokens,
+    stackable_list_tokens,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -90,8 +93,40 @@ def test_compute_list_metrics():
 def test_combinations_min_rows():
     df = pd.read_csv(REISIFT)
     cohort, _ = filter_reisift_cohort(df, date(2025, 3, 1), date(2025, 3, 31))
-    combos = compute_combinations(cohort, min_rows=2)
+    combos, threshold = compute_combinations(cohort, min_rows=2)
+    assert threshold == 2
     assert any(c.lists_key == "Default Risk + High Equity" for c in combos)
+
+
+def test_non_stack_lists_excluded_from_combos():
+    assert is_non_stack_list_token("DNC + Dead Deals")
+    assert is_non_stack_list_token("Closings App MLSLI TBD")
+    df = pd.DataFrame(
+        [
+            {
+                "Lists": "High Equity, DNC + Dead Deals",
+                "Tags": "(8020) CC - 1/2025",
+            },
+            {
+                "Lists": "High Equity, Default Risk, DNC + Dead Deals",
+                "Tags": "(CLOSED) 8020 - 6/2025",
+            },
+            {
+                "Lists": "High Equity, Default Risk, DNC + Dead Deals",
+                "Tags": "(8020) SMS - 2/2025",
+            },
+        ]
+    )
+    assert stackable_list_tokens(df.iloc[0]["Lists"]) == ["High Equity"]
+    combos, _ = compute_combinations(df, min_rows=2)
+    assert all("DNC + Dead Deals" not in c.lists_key for c in combos)
+    assert any(c.lists_key == "Default Risk + High Equity" for c in combos)
+
+
+def test_resolve_combo_min_rows_median():
+    assert resolve_combo_min_rows([4, 10, 20, 100]) == 15
+    assert resolve_combo_min_rows([3]) == 5  # floor
+    assert resolve_combo_min_rows([]) == 10
 
 
 def test_prepare_reisift_full_file():

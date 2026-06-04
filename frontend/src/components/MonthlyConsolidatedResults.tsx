@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import QualifiedLeadsResults from './QualifiedLeadsResults';
 import LifecycleSection from './LifecycleSection';
 import { copyReportShareUrl } from '../utils/reportShareUrl';
@@ -41,6 +41,18 @@ const MonthlyConsolidatedResults = ({
 
   const openPipeline = m.open_pipeline_lifecycle;
   const tagLeadSource = m.tag_lead_source_counts ?? [];
+  const comboMinRows = m.combo_min_rows ?? 10;
+
+  const comboGroups = useMemo(() => {
+    const grouped = new Map<string, typeof m.combinations>();
+    for (const combo of m.combinations) {
+      const group = combo.combo_group || combo.lists[0] || 'Other';
+      const bucket = grouped.get(group) ?? [];
+      bucket.push(combo);
+      grouped.set(group, bucket);
+    }
+    return Array.from(grouped.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [m.combinations]);
 
   const handleShare = async () => {
     setShareStatus(null);
@@ -146,36 +158,50 @@ const MonthlyConsolidatedResults = ({
       </section>
 
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm overflow-x-auto">
-        <h3 className="text-lg font-semibold text-stone-800 mb-2">List combinations (≥10 properties)</h3>
-        <p className="text-xs text-stone-500 mb-4">Ranked by closing count — stacked distress sets.</p>
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="text-left text-stone-500 border-b">
-              <th className="py-2 pr-4">Combination</th>
-              <th className="py-2 pr-4 text-right">Rows</th>
-              <th className="py-2 pr-4 text-right">Closings</th>
-              <th className="py-2 text-right">Close rate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {m.combinations.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="py-4 text-stone-500">
-                  No combinations met the minimum row threshold for this month.
-                </td>
-              </tr>
-            ) : (
-              m.combinations.map((c) => (
-                <tr key={c.lists_key} className="border-b border-stone-100">
-                  <td className="py-2 pr-4 text-stone-800">{c.lists_key}</td>
-                  <td className="py-2 pr-4 text-right tabular-nums">{c.row_count.toLocaleString()}</td>
-                  <td className="py-2 pr-4 text-right tabular-nums">{c.closing_count.toLocaleString()}</td>
-                  <td className="py-2 text-right tabular-nums">{pct(c.closing_rate)}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+        <h3 className="text-lg font-semibold text-stone-800 mb-2">
+          List combinations (≥{comboMinRows.toLocaleString()} properties)
+        </h3>
+        <p className="text-xs text-stone-500 mb-4">
+          Distress-only stacks (excludes DNC + Dead Deals, Closings App MLSLI TBD). Threshold =
+          median multi-list combo size for this cohort. Grouped by primary distress list.
+        </p>
+        {m.combinations.length === 0 ? (
+          <p className="text-sm text-stone-500 py-4">
+            No combinations met the minimum row threshold for this cohort.
+          </p>
+        ) : (
+          <div className="space-y-6">
+            {comboGroups.map(([group, combos]) => (
+              <div key={group}>
+                <h4 className="text-sm font-semibold text-indigo-900 mb-2">{group}</h4>
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-stone-500 border-b">
+                      <th className="py-2 pr-4">Combination</th>
+                      <th className="py-2 pr-4 text-right">Rows</th>
+                      <th className="py-2 pr-4 text-right">Closings</th>
+                      <th className="py-2 text-right">Close rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {combos.map((c) => (
+                      <tr key={c.lists_key} className="border-b border-stone-100">
+                        <td className="py-2 pr-4 text-stone-800">{c.lists_key}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums">
+                          {c.row_count.toLocaleString()}
+                        </td>
+                        <td className="py-2 pr-4 text-right tabular-nums">
+                          {c.closing_count.toLocaleString()}
+                        </td>
+                        <td className="py-2 text-right tabular-nums">{pct(c.closing_rate)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {tagLeadSource.length > 0 && (
