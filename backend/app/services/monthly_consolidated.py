@@ -53,6 +53,27 @@ SF_ADDR = {
 COMBO_EXPORT_CAP = 100
 QL_MATCH_WARN_THRESHOLD = 0.5
 
+# REISift source/import lists — excluded from list ranking, combinations, and QL attribution.
+EXCLUDED_LIST_TOKENS: frozenset[str] = frozenset(
+    {
+        "8020 source list",
+        "podio (source)",
+    }
+)
+
+
+def _normalize_list_token(token: str) -> str:
+    return " ".join(str(token or "").strip().lower().split())
+
+
+def is_excluded_list_token(token: str) -> bool:
+    return _normalize_list_token(token) in EXCLUDED_LIST_TOKENS
+
+
+def analysis_list_tokens(lists_str: object) -> List[str]:
+    """Distress lists used for ranking; omits source/import lists."""
+    return [t for t in split_list_tokens(lists_str) if not is_excluded_list_token(t)]
+
 
 def parse_report_month(value: str) -> Tuple[date, date]:
     """YYYY-MM -> (first day, last day) inclusive."""
@@ -279,7 +300,7 @@ def compute_list_metrics(cohort_df: pd.DataFrame, ql_by_list: Dict[str, int]) ->
     token_stacked: Dict[str, int] = {}
 
     for _, row in cohort_df.iterrows():
-        tokens = split_list_tokens(row.get("Lists"))
+        tokens = analysis_list_tokens(row.get("Lists"))
         if not tokens:
             continue
         is_stacked = len(tokens) > 1
@@ -318,7 +339,7 @@ def compute_combinations(
 ) -> List[ComboMetric]:
     groups: Dict[str, Dict[str, Any]] = {}
     for _, row in cohort_df.iterrows():
-        tokens = split_list_tokens(row.get("Lists"))
+        tokens = analysis_list_tokens(row.get("Lists"))
         if not tokens:
             continue
         key_tuple = tuple(sorted(tokens))
@@ -374,7 +395,7 @@ def attribute_qualified_leads_to_lists(
         key = _reisift_address_key(row)
         if not key or key == "|||":
             continue
-        tokens = split_list_tokens(row.get("Lists"))
+        tokens = analysis_list_tokens(row.get("Lists"))
         if not tokens:
             continue
         cohort_keys.setdefault(key, [])
@@ -555,7 +576,9 @@ def analyze(
 
     stacked_rows = 0
     if cohort_rows:
-        stacked_rows = int(cohort_df["Lists"].apply(lambda x: len(split_list_tokens(x)) > 1).sum())
+        stacked_rows = int(
+            cohort_df["Lists"].apply(lambda x: len(analysis_list_tokens(x)) > 1).sum()
+        )
     stacked_pct = round(100.0 * stacked_rows / cohort_rows, 2) if cohort_rows else 0.0
 
     sf_df = load_qualified_leads_file(qualified_leads_path)
@@ -583,21 +606,25 @@ def analyze(
     lifecycle_raw = build_lifecycle_from_cohort(cohort_df) if closing_rows else {}
     lifecycle_stats = lifecycle_stats_for_api(lifecycle_raw)
 
+    excluded_label = "8020 Source List and PODIO (SOURCE)"
+    list_scope = (
+        f"List metrics exclude {excluded_label} (source/import lists). "
+        "List credit applies to every remaining list on a matched REISift property. "
+        "Closing rate = closings on list ÷ REISift rows carrying that list."
+    )
     if cohort_scope == "full_file":
         methodology = (
             "Cohort = all rows in the uploaded REISift export. "
             "CRM leads = rows with any (SF) tag. Closings = (CLOSED) 8020 tags (existing app logic). "
             "Qualified leads use the full Create Date span of the uploaded Salesforce file. "
-            "List credit applies to every list on a matched REISift property. "
-            "Closing rate = closings on list ÷ REISift rows carrying that list."
+            + list_scope
         )
     else:
         methodology = (
             "Cohort = REISift properties whose Created date falls in the selected calendar month. "
             "CRM leads = cohort rows with any (SF) tag. Closings = (CLOSED) 8020 tags (existing app logic). "
             "Qualified leads use the Salesforce export with the same Create Date window; "
-            "list credit applies to every list on a matched REISift property. "
-            "Closing rate = closings on list ÷ REISift rows carrying that list."
+            + list_scope
         )
 
     return MonthlyConsolidatedResult(

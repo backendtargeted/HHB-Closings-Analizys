@@ -8,9 +8,11 @@ import pytest
 
 from app.services.monthly_consolidated import (
     analyze,
+    analysis_list_tokens,
     compute_combinations,
     compute_list_metrics,
     filter_reisift_cohort,
+    is_excluded_list_token,
     parse_report_month,
     prepare_reisift_cohort,
     row_has_closing_tag,
@@ -31,6 +33,35 @@ def test_parse_report_month():
 
 def test_split_list_tokens_dedupes():
     assert split_list_tokens("A, B, A") == ["A", "B"]
+
+
+def test_analysis_list_tokens_excludes_source_lists():
+    raw = "8020 Source List, High Equity, PODIO (SOURCE), Default Risk"
+    assert analysis_list_tokens(raw) == ["High Equity", "Default Risk"]
+    assert is_excluded_list_token("8020 Source List")
+    assert is_excluded_list_token("podio (source)")
+    assert not is_excluded_list_token("High Equity")
+
+
+def test_compute_list_metrics_ignores_excluded_lists():
+    df = pd.DataFrame(
+        [
+            {
+                "Lists": "8020 Source List, High Equity",
+                "Tags": "(CLOSED) 8020 - 6/2025",
+            },
+            {
+                "Lists": "PODIO (SOURCE)",
+                "Tags": "(CLOSED) 8020 - 5/2025",
+            },
+        ]
+    )
+    metrics = compute_list_metrics(df, {})
+    tokens = {m.token for m in metrics}
+    assert "8020 Source List" not in tokens
+    assert "PODIO (SOURCE)" not in tokens
+    assert tokens == {"High Equity"}
+    assert metrics[0].closing_count == 1
 
 
 def test_row_has_sf_and_closing():
