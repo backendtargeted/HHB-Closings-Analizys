@@ -22,4 +22,4 @@ EXPOSE 8000
 
 # Run with Gunicorn
 # Large multipart uploads can take longer than the default 30s timeout.
-CMD ["gunicorn", "-b", "0.0.0.0:8000", "-w", "1", "--timeout", "600", "--graceful-timeout", "120", "app.main:app"]
+CMD ["gunicorn", "-b", "0.0.0.0:8000", "-w", "1", "-k", "gthread", "--threads", "8", "--timeout", "600", "--graceful-timeout", "120", "app.main:app"]

@@ -15,7 +15,7 @@ services:
       - MAX_UPLOAD_MB=2048
       # Resumable uploads — mirror these on the Easypanel API service too.
       - UPLOAD_STORAGE_DIR=/app/uploads
-      - UPLOAD_MAX_CHUNK_MB=2
+      - UPLOAD_MAX_CHUNK_MB=8
       - UPLOAD_MAX_TOTAL_MB=2048
       - UPLOAD_SESSION_TTL_HOURS=24
       - REPORTS_DIR=/app/reports

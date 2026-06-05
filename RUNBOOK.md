@@ -160,7 +160,7 @@ Large upload flows can fail when the **UI** nginx container or front proxy timeo
 
 **Backend:** Ensure the API image is rebuilt so Gunicorn runs with high `--timeout` (see `backend/Dockerfile`).
 
-**Resumable uploads:** The UI now sends large files in resumable chunks to the API (`/api/upload/resumable/...`) and the backend assembles them under local upload storage before analysis. This avoids single-request timeout failures for very large CSVs.
+**Upload path:** Gate 2 sends **both whole files in one multipart POST** to `POST /api/monthly-consolidated/analyze` (same as qualified-leads). The backend saves the files and runs analysis — **not row-by-row**. If the edge proxy drops that request (502/timeout), the UI automatically falls back to **binary file chunks** (`/api/upload/resumable/...`) and then starts analysis from assembled paths.
 
 ---
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import math
+import multiprocessing
 import shutil
 import threading
 import uuid
@@ -41,6 +42,14 @@ _jobs: Dict[str, Dict[str, Any]] = {}
 
 
 def _job_snapshot(job_id: str) -> Dict[str, Any] | None:
+    live = _jobs.get(job_id)
+    if live:
+        if live.get("status") == "running":
+            progress = _read_job_progress(MCR_ROOT / job_id)
+            if progress:
+                live = {**live, **progress}
+        return live
+    _sync_job_from_disk(job_id)
     live = _jobs.get(job_id)
     if live:
         return live
@@ -84,26 +93,65 @@ def _sanitize_for_json(obj: Any) -> Any:
     return obj
 
 
-def _run_monthly_consolidated_job(
+def _progress_path(job_dir: Path) -> Path:
+    return job_dir / "progress.json"
+
+
+def _write_job_progress(job_dir: Path, payload: Dict[str, Any]) -> None:
+    job_dir.mkdir(parents=True, exist_ok=True)
+    with open(_progress_path(job_dir), "w", encoding="utf-8") as fh:
+        json.dump(_sanitize_for_json(payload), fh)
+
+
+def _read_job_progress(job_dir: Path) -> Dict[str, Any] | None:
+    path = _progress_path(job_dir)
+    if not path.is_file():
+        return None
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _analyze_in_subprocess(
     job_id: str,
     reisift_path: str,
     ql_path: str,
     report_month: str | None,
+    job_dir_str: str,
 ) -> None:
-    job_dir = MCR_ROOT / job_id
+    """Runs in a child process so long scans do not block the API worker."""
+    job_dir = Path(job_dir_str)
+
+    def on_progress(progress: int, message: str) -> None:
+        _write_job_progress(
+            job_dir,
+            {
+                "job_id": job_id,
+                "status": "running",
+                "progress": progress,
+                "message": message,
+            },
+        )
+
     try:
-        _jobs[job_id]["status"] = "running"
-        _jobs[job_id]["progress"] = 10
-        _jobs[job_id]["message"] = "Starting analysis…"
-
-        def on_progress(progress: int, message: str) -> None:
-            _jobs[job_id]["progress"] = progress
-            _jobs[job_id]["message"] = message
-
+        _write_job_progress(
+            job_dir,
+            {
+                "job_id": job_id,
+                "status": "running",
+                "progress": 10,
+                "message": "Starting analysis…",
+            },
+        )
         result = analyze(reisift_path, ql_path, report_month, on_progress=on_progress)
-
-        _jobs[job_id]["progress"] = 90
-        _jobs[job_id]["message"] = "Saving report…"
+        _write_job_progress(
+            job_dir,
+            {
+                "job_id": job_id,
+                "status": "running",
+                "progress": 90,
+                "message": "Saving report…",
+            },
+        )
 
         metrics = result.to_dict()
         created_at = datetime.now(timezone.utc).isoformat()
@@ -114,33 +162,129 @@ def _run_monthly_consolidated_job(
             "warnings": metrics.get("warnings", []),
             "created_at": created_at,
         }
-        _job_results[job_id] = {"metrics": metrics, "created_at": created_at}
         save_monthly_consolidated_report(job_id, metrics=metrics, created_at=created_at)
-
-        meta_path = job_dir / "result.json"
-        with open(meta_path, "w", encoding="utf-8") as fh:
+        with open(job_dir / "result.json", "w", encoding="utf-8") as fh:
             json.dump(_sanitize_for_json(payload), fh, indent=2)
-
-        _jobs[job_id].update(
+        _write_job_progress(
+            job_dir,
             {
+                "job_id": job_id,
                 "status": "completed",
                 "progress": 100,
                 "message": "Analysis complete",
-                "metrics": metrics,
-                "warnings": metrics.get("warnings", []),
                 "created_at": created_at,
-            }
+            },
         )
     except ValueError as exc:
-        shutil.rmtree(job_dir, ignore_errors=True)
-        _jobs[job_id].update(
-            {"status": "failed", "progress": 0, "message": str(exc)}
+        _write_job_progress(
+            job_dir,
+            {"job_id": job_id, "status": "failed", "progress": 0, "message": str(exc)},
         )
     except Exception as exc:
-        shutil.rmtree(job_dir, ignore_errors=True)
-        _jobs[job_id].update(
-            {"status": "failed", "progress": 0, "message": f"Analysis failed: {exc}"}
+        _write_job_progress(
+            job_dir,
+            {
+                "job_id": job_id,
+                "status": "failed",
+                "progress": 0,
+                "message": f"Analysis failed: {exc}",
+            },
         )
+
+
+def _sync_job_from_disk(job_id: str) -> None:
+    """Promote completed/failed on-disk job state into in-memory caches."""
+    job_dir = MCR_ROOT / job_id
+    progress = _read_job_progress(job_dir)
+    if not progress:
+        return
+    status = progress.get("status")
+    if status == "running":
+        _jobs[job_id] = {
+            "job_id": job_id,
+            "status": "running",
+            "progress": progress.get("progress", 0),
+            "message": progress.get("message", ""),
+            "metrics": None,
+            "warnings": [],
+            "created_at": progress.get("created_at"),
+        }
+        return
+    if status == "failed":
+        _jobs[job_id] = {
+            "job_id": job_id,
+            "status": "failed",
+            "progress": 0,
+            "message": progress.get("message", "Analysis failed"),
+            "metrics": None,
+            "warnings": [],
+            "created_at": None,
+        }
+        return
+    if status == "completed":
+        meta_path = job_dir / "result.json"
+        if meta_path.is_file():
+            with open(meta_path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            metrics = data.get("metrics")
+            created_at = data.get("created_at")
+            if metrics:
+                _job_results[job_id] = {"metrics": metrics, "created_at": created_at}
+                _jobs[job_id] = {
+                    "job_id": job_id,
+                    "status": "completed",
+                    "progress": 100,
+                    "message": "Analysis complete",
+                    "metrics": metrics,
+                    "warnings": metrics.get("warnings", []),
+                    "created_at": created_at,
+                }
+
+
+def _watch_analysis_process(job_id: str, proc: multiprocessing.Process) -> None:
+    proc.join()
+    _sync_job_from_disk(job_id)
+    live = _jobs.get(job_id, {})
+    if live.get("status") == "running":
+        _jobs[job_id].update(
+            {
+                "status": "failed",
+                "progress": 0,
+                "message": "Analysis process exited unexpectedly",
+            }
+        )
+
+
+def _run_monthly_consolidated_job(
+    job_id: str,
+    reisift_path: str,
+    ql_path: str,
+    report_month: str | None,
+) -> None:
+    job_dir = MCR_ROOT / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    _jobs[job_id]["status"] = "running"
+    _jobs[job_id]["progress"] = 10
+    _jobs[job_id]["message"] = "Starting analysis…"
+    _write_job_progress(
+        job_dir,
+        {
+            "job_id": job_id,
+            "status": "running",
+            "progress": 10,
+            "message": "Starting analysis…",
+        },
+    )
+
+    proc = multiprocessing.Process(
+        target=_analyze_in_subprocess,
+        args=(job_id, reisift_path, ql_path, report_month, str(job_dir)),
+        daemon=True,
+    )
+    proc.start()
+    threading.Thread(
+        target=_watch_analysis_process, args=(job_id, proc), daemon=True
+    ).start()
 
 
 def _start_monthly_consolidated_job(
@@ -240,6 +384,7 @@ def monthly_consolidated_analyze():
 
 @monthly_consolidated_bp.route("/<job_id>/status", methods=["GET"])
 def monthly_consolidated_status(job_id: str):
+    _sync_job_from_disk(job_id)
     snap = _job_snapshot(job_id)
     if not snap:
         meta_path = MCR_ROOT / job_id / "result.json"

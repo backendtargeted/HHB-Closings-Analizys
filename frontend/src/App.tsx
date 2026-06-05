@@ -138,23 +138,42 @@ function App() {
     const reportType = params.get('type');
     let isCancelled = false;
     const loadSharedReport = async () => {
-      try {
+      const tryLoad = async () => {
         if (reportType === 'qualified_leads') {
-          const data = await getQualifiedLeadsJob(reportId);
-          if (!isCancelled) {
-            setLoadedQualifiedReport(data);
+          return { kind: 'qualified_leads' as const, data: await getQualifiedLeadsJob(reportId) };
+        }
+        if (reportType === 'monthly_consolidated') {
+          return {
+            kind: 'monthly_consolidated' as const,
+            data: asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(reportId)),
+          };
+        }
+        if (reportType === 'attribution') {
+          return { kind: 'attribution' as const, data: await getAnalysisResults(reportId) };
+        }
+        try {
+          return {
+            kind: 'monthly_consolidated' as const,
+            data: asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(reportId)),
+          };
+        } catch {
+          try {
+            return { kind: 'qualified_leads' as const, data: await getQualifiedLeadsJob(reportId) };
+          } catch {
+            return { kind: 'attribution' as const, data: await getAnalysisResults(reportId) };
           }
-        } else if (reportType === 'monthly_consolidated') {
-          const data = asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(reportId));
-          if (!isCancelled) {
-            setLoadedMonthlyReport(data);
-            setGate('monthlyConsolidated');
-          }
+        }
+      };
+      try {
+        const loaded = await tryLoad();
+        if (isCancelled) return;
+        if (loaded.kind === 'qualified_leads') {
+          setLoadedQualifiedReport(loaded.data);
+        } else if (loaded.kind === 'monthly_consolidated') {
+          setLoadedMonthlyReport(loaded.data);
+          setGate('monthlyConsolidated');
         } else {
-          const data = await getAnalysisResults(reportId);
-          if (!isCancelled) {
-            setLoadedSavedReport(data);
-          }
+          setLoadedSavedReport(loaded.data);
         }
       } catch {
         // Invalid/missing report IDs are ignored so the landing flow still works.
