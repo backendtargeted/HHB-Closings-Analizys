@@ -18,6 +18,11 @@ import type {
 } from '../types/monthlyConsolidated';
 import { asMonthlyConsolidatedCompleted } from '../types/monthlyConsolidated';
 import type { SavedReportsListResponse } from '../types/reports';
+import type {
+  MarketingRampAnalyzeResponse,
+  MarketingRampCompletedResponse,
+} from '../types/marketingRamp';
+import { asMarketingRampCompleted } from '../types/marketingRamp';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -488,4 +493,79 @@ export const downloadMonthlyConsolidatedExport = async (jobId: string): Promise<
 
 export const deleteMonthlyConsolidatedJob = async (jobId: string): Promise<void> => {
   await api.delete(`/monthly-consolidated/${jobId}`);
+};
+
+export async function pollMarketingRampJob(
+  jobId: string,
+  onProgress?: (message: string) => void
+): Promise<MarketingRampCompletedResponse> {
+  const deadline = Date.now() + 30 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const response = await getMarketingRampJob(jobId);
+    if (response.status === 'completed' && response.metrics) {
+      return asMarketingRampCompleted(response);
+    }
+    if (response.status === 'failed') {
+      throw new Error(response.message || 'Analysis failed');
+    }
+    onProgress?.(response.message || 'Analyzing…');
+    await sleep(1000);
+  }
+  throw new Error('Analysis timed out after 30 minutes');
+}
+
+export const analyzeMarketingRamp = async (
+  qualifiedLeadsFile: File,
+  reisiftFile: File,
+  closingsFile: File,
+  options: {
+    useFullFileSpan: boolean;
+    startDate?: string;
+    endDate?: string;
+  },
+  onProgress?: (message: string) => void
+): Promise<MarketingRampCompletedResponse> => {
+  const form = new FormData();
+  form.append('qualified_leads_file', qualifiedLeadsFile);
+  form.append('reisift_file', reisiftFile);
+  form.append('closings_file', closingsFile);
+  form.append('use_full_file_span', options.useFullFileSpan ? 'true' : 'false');
+  if (!options.useFullFileSpan) {
+    if (options.startDate) form.append('start_date', options.startDate);
+    if (options.endDate) form.append('end_date', options.endDate);
+  }
+
+  const response = await api.post<MarketingRampAnalyzeResponse>(
+    '/marketing-ramp/analyze',
+    form,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: DIRECT_UPLOAD_TIMEOUT_MS,
+    }
+  );
+
+  if (response.data.status === 'completed' && response.data.metrics) {
+    return asMarketingRampCompleted(response.data);
+  }
+
+  onProgress?.('Files received — analyzing…');
+  return pollMarketingRampJob(response.data.job_id, onProgress);
+};
+
+export const getMarketingRampJob = async (
+  jobId: string
+): Promise<MarketingRampAnalyzeResponse> => {
+  const response = await api.get<MarketingRampAnalyzeResponse>(`/marketing-ramp/${jobId}`);
+  return response.data;
+};
+
+export const downloadMarketingRampExport = async (jobId: string): Promise<Blob> => {
+  const response = await api.get(`/marketing-ramp/${jobId}/export`, {
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+export const deleteMarketingRampJob = async (jobId: string): Promise<void> => {
+  await api.delete(`/marketing-ramp/${jobId}`);
 };

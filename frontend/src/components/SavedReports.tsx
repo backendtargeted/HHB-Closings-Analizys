@@ -4,20 +4,25 @@ import {
   getAnalysisResults,
   getQualifiedLeadsJob,
   getMonthlyConsolidatedJob,
+  getMarketingRampJob,
   deleteAnalysis,
   deleteQualifiedLeadsJob,
   deleteMonthlyConsolidatedJob,
+  deleteMarketingRampJob,
 } from '../services/api';
 import type { AnalysisCompleteResponse } from '../types/analysis';
 import type { QualifiedLeadsAnalyzeResponse } from '../types/qualifiedLeads';
 import type { MonthlyConsolidatedCompletedResponse } from '../types/monthlyConsolidated';
 import { asMonthlyConsolidatedCompleted } from '../types/monthlyConsolidated';
+import type { MarketingRampCompletedResponse } from '../types/marketingRamp';
+import { asMarketingRampCompleted } from '../types/marketingRamp';
 import type { SavedReportItem } from '../types/reports';
 
 interface SavedReportsProps {
   onOpenAttributionReport: (data: AnalysisCompleteResponse) => void;
   onOpenQualifiedLeadsReport: (data: QualifiedLeadsAnalyzeResponse) => void;
   onOpenMonthlyConsolidatedReport?: (data: MonthlyConsolidatedCompletedResponse) => void;
+  onOpenMarketingRampReport?: (data: MarketingRampCompletedResponse) => void;
   refreshKey?: number;
 }
 
@@ -36,6 +41,7 @@ const formatDate = (iso: string) => {
 const typeLabel = (t: SavedReportItem['report_type']) => {
   if (t === 'qualified_leads') return 'Qualified leads (legacy)';
   if (t === 'monthly_consolidated') return 'Monthly report';
+  if (t === 'marketing_ramp') return 'Marketing ramp';
   return 'Attribution (legacy)';
 };
 
@@ -43,6 +49,7 @@ const SavedReports = ({
   onOpenAttributionReport,
   onOpenQualifiedLeadsReport,
   onOpenMonthlyConsolidatedReport,
+  onOpenMarketingRampReport,
   refreshKey = 0,
 }: SavedReportsProps) => {
   const [reports, setReports] = useState<SavedReportItem[]>([]);
@@ -69,9 +76,13 @@ const SavedReports = ({
   const filteredReports = useMemo(() => {
     if (filter === 'all') return reports;
     if (filter === 'monthly') {
-      return reports.filter((r) => r.report_type === 'monthly_consolidated');
+      return reports.filter(
+        (r) => r.report_type === 'monthly_consolidated' || r.report_type === 'marketing_ramp'
+      );
     }
-    return reports.filter((r) => r.report_type !== 'monthly_consolidated');
+    return reports.filter(
+      (r) => r.report_type !== 'monthly_consolidated' && r.report_type !== 'marketing_ramp'
+    );
   }, [reports, filter]);
 
   const handleOpen = async (item: SavedReportItem) => {
@@ -79,6 +90,11 @@ const SavedReports = ({
       if (item.report_type === 'qualified_leads') {
         const data = await getQualifiedLeadsJob(item.job_id);
         onOpenQualifiedLeadsReport(data);
+      } else if (item.report_type === 'marketing_ramp' && onOpenMarketingRampReport) {
+        const data = asMarketingRampCompleted(await getMarketingRampJob(item.job_id));
+        onOpenMarketingRampReport(data);
+      } else if (item.report_type === 'marketing_ramp') {
+        alert('Marketing ramp report handler not configured');
       } else if (item.report_type === 'monthly_consolidated' && onOpenMonthlyConsolidatedReport) {
         const data = asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(item.job_id));
         onOpenMonthlyConsolidatedReport(data);
@@ -99,6 +115,8 @@ const SavedReports = ({
     try {
       if (item.report_type === 'qualified_leads') {
         await deleteQualifiedLeadsJob(item.job_id);
+      } else if (item.report_type === 'marketing_ramp') {
+        await deleteMarketingRampJob(item.job_id);
       } else if (item.report_type === 'monthly_consolidated') {
         await deleteMonthlyConsolidatedJob(item.job_id);
       } else {
@@ -141,7 +159,7 @@ const SavedReports = ({
       {filteredReports.length === 0 ? (
         <div className="text-stone-500 text-sm">
           {filter === 'monthly'
-            ? 'No monthly reports yet. Run Gate 2 to save one.'
+            ? 'No monthly workflow reports yet. Run Gate 2 or Gate 3 to save one.'
             : 'No reports in this filter.'}
         </div>
       ) : (
@@ -157,6 +175,9 @@ const SavedReports = ({
                 <p className="text-[10px] text-stone-500 uppercase tracking-wide">
                   {typeLabel(r.report_type)}
                   {r.report_type === 'qualified_leads' && r.date_window_start
+                    ? ` · ${r.date_window_start} – ${r.date_window_end}`
+                    : ''}
+                  {r.report_type === 'marketing_ramp' && r.date_window_start
                     ? ` · ${r.date_window_start} – ${r.date_window_end}`
                     : ''}
                   {r.report_type === 'attribution' && r.as_of ? ` · as-of ${r.as_of}` : ''}

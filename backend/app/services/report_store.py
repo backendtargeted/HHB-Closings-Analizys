@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 REPORT_TYPE_ATTRIBUTION = "attribution"
 REPORT_TYPE_QUALIFIED_LEADS = "qualified_leads"
 REPORT_TYPE_MONTHLY_CONSOLIDATED = "monthly_consolidated"
+REPORT_TYPE_MARKETING_RAMP = "marketing_ramp"
 
 
 class ReportsDirectoryError(RuntimeError):
@@ -139,6 +140,7 @@ def reports_dir_diagnostics() -> Dict[str, Any]:
         REPORT_TYPE_ATTRIBUTION: 0,
         REPORT_TYPE_QUALIFIED_LEADS: 0,
         REPORT_TYPE_MONTHLY_CONSOLIDATED: 0,
+        REPORT_TYPE_MARKETING_RAMP: 0,
     }
     if resolved is not None:
         for item in list_report_index(resolved):
@@ -294,6 +296,13 @@ def _summary_for_monthly(metrics: Dict[str, Any]) -> str:
     return f"{month} · {cohort:,} cohort · {closings:,} closings"
 
 
+def _summary_for_marketing_ramp(metrics: Dict[str, Any]) -> str:
+    pop = metrics.get("population_counts", {})
+    rows = pop.get("population_rows", 0)
+    matched = metrics.get("reisift_match", {}).get("matched", 0)
+    return f"{rows:,} population · {matched:,} REISift matched"
+
+
 def list_report_index(reports_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
     """Scan REPORTS_DIR for all saved report JSON files."""
     root = reports_dir or get_reports_dir()
@@ -346,6 +355,22 @@ def list_report_index(reports_dir: Optional[Path] = None) -> List[Dict[str, Any]
                     "closing_rows": cohort.get("closing_rows", 0),
                 }
             )
+        elif rtype == REPORT_TYPE_MARKETING_RAMP:
+            metrics = data.get("metrics") or {}
+            pop = metrics.get("population_counts", {})
+            items.append(
+                {
+                    "job_id": job_id,
+                    "report_type": rtype,
+                    "status": "completed",
+                    "created_at": created_at,
+                    "summary": _summary_for_marketing_ramp(metrics),
+                    "date_window_start": metrics.get("date_window_start"),
+                    "date_window_end": metrics.get("date_window_end"),
+                    "population_rows": pop.get("population_rows", 0),
+                    "reisift_matched": metrics.get("reisift_match", {}).get("matched", 0),
+                }
+            )
         elif _is_attribution_payload(data):
             matched = int(data.get("matched_count", 0) or 0)
             total = int(data.get("total_deals", 0) or 0)
@@ -364,6 +389,47 @@ def list_report_index(reports_dir: Optional[Path] = None) -> List[Dict[str, Any]
 
     items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return items
+
+
+def save_marketing_ramp_report(
+    job_id: str,
+    metrics: Dict[str, Any],
+    use_full_file_span: bool,
+    rows: List[Dict[str, Any]],
+    created_at: Optional[str] = None,
+    reports_dir: Optional[Path] = None,
+) -> Path:
+    root = reports_dir or get_reports_dir()
+    path = root / "marketing_ramp" / f"{job_id}.json"
+    ts = created_at or datetime.now(timezone.utc).isoformat()
+    payload = {
+        "report_type": REPORT_TYPE_MARKETING_RAMP,
+        "job_id": job_id,
+        "created_at": ts,
+        "metrics": metrics,
+        "use_full_file_span": use_full_file_span,
+        "rows": rows,
+    }
+    _write_json(path, payload)
+    return path
+
+
+def load_marketing_ramp_report(
+    job_id: str, reports_dir: Optional[Path] = None
+) -> Optional[Dict[str, Any]]:
+    root = reports_dir or get_reports_dir()
+    path = root / "marketing_ramp" / f"{job_id}.json"
+    if not path.is_file():
+        return None
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    return {
+        "job_id": job_id,
+        "metrics": data.get("metrics", {}),
+        "use_full_file_span": data.get("use_full_file_span", False),
+        "rows": data.get("rows", []),
+        "created_at": data.get("created_at"),
+    }
 
 
 def load_qualified_leads_report(

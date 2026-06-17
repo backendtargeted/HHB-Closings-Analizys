@@ -1,4 +1,4 @@
-export type ReportShareType = 'attribution' | 'qualified_leads' | 'monthly_consolidated';
+export type ReportShareType = 'attribution' | 'qualified_leads' | 'monthly_consolidated' | 'marketing_ramp';
 
 export function buildReportShareUrl(
   jobId: string,

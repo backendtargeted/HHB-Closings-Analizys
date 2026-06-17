@@ -1,7 +1,7 @@
 export type WorkspaceMode = 'regular' | 'pastPatches' | 'qualifiedLeads' | 'monthlyConsolidated';
 
-/** Primary two-gate modes shown in the workflow picker. */
-export type GateMode = 'pastPatches' | 'monthlyConsolidated';
+/** Primary three-gate modes shown in the workflow picker. */
+export type GateMode = 'pastPatches' | 'monthlyConsolidated' | 'marketingRamp';
 
 interface ModeSwitcherProps {
   mode: GateMode;
@@ -15,7 +15,7 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
         Monthly workflow
       </p>
       <div
-        className="grid grid-cols-1 md:grid-cols-2 gap-4"
+        className="grid grid-cols-1 md:grid-cols-3 gap-4"
         role="tablist"
         aria-label="Monthly workflow gates"
       >
@@ -76,7 +76,35 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
                   : 'bg-stone-100 text-stone-500'
               }`}
             >
-              Default
+              Gate 2
+            </span>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'marketingRamp'}
+          id="tab-gate3"
+          aria-controls="panel-workspace"
+          onClick={() => onChange('marketingRamp')}
+          className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2 ${
+            mode === 'marketingRamp'
+              ? 'border-emerald-600/80 bg-emerald-50/90 shadow-md ring-1 ring-emerald-600/20'
+              : 'border-stone-200 bg-white/80 hover:border-emerald-200 hover:bg-emerald-50/40'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-emerald-800 mb-1">Gate 3</p>
+              <h2 className="text-lg font-bold text-emerald-950 tracking-tight">Marketing ramp report</h2>
+              <p className="text-emerald-950/80 text-sm mt-2 leading-relaxed">
+                Upload qualified leads, REISift export, and closings → row-level lead journey
+                timing with channel touches and opportunity progression.
+              </p>
+            </div>
+            <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-emerald-200/80 text-emerald-950">
+              Ramp
             </span>
           </div>
         </button>
