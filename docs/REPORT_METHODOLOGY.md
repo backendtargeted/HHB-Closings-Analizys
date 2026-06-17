@@ -280,3 +280,17 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 **Open pipeline (non-closing rows):** Cohort rows without `(CLOSED) 8020` tags are evaluated with the same lifecycle stage model, using events on or before the row `Created` date (or cohort period end). Highest stage reached is aggregated into **stuck-at-stage** counts (e.g. ENGAGED but not CONVERTED). Closing-cohort lifecycle and Top Paths remain closing-only.
 
 **List combinations:** Only **stackable distress lists** participate (excludes source/import and hygiene lists: 8020 Source List, PODIO, Appraiva, DNC, Dead Deals, Closings App, MLSLI, TBD, Buyers (Investorbase), etc.). A combination requires **≥2** stackable lists on the same row. Minimum row count = **median** of multi-list combo sizes in the cohort (floor 5). Results are grouped under the combo's **primary list** (highest closings within that stack).
+
+---
+
+## 17. Gate 3 marketing ramp (unified monthly report)
+
+**Population:** Union of qualified leads (Create Date in window) and closings (Date Closed in window, Closed Lost excluded), deduplicated by normalized address. Closing-only rows use **No Clear Source** for Salesforce channel attribution.
+
+**REISift enrichment:** Full export indexed by address; `has_reisift_match` false when no row matches.
+
+**Total touch counts:** Summary metric `total_touch_counts` sums every `(8020) CC`, `(8020) SMS`, and `(8020) DM` tag on each population row's matched REISift tags. This is distinct from `touch_counts`, which counts population rows by **first-touch** channel only.
+
+**Parallel consolidated report:** Gate 3 analyze also runs Gate 2 (`monthly_consolidated.analyze`) on the same REISift + QL files. Consolidated cohort remains the **full REISift export** (not filtered to the ramp date window). Results are embedded in the Gate 3 API response and persisted with the marketing ramp report.
+
+**Export:** Unified XLSX reuses Gate 2 workbook sheets and appends a **Marketing Ramp** sheet with per-address journey columns.

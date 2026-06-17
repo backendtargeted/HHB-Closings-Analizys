@@ -398,6 +398,7 @@ def save_marketing_ramp_report(
     rows: List[Dict[str, Any]],
     created_at: Optional[str] = None,
     reports_dir: Optional[Path] = None,
+    consolidated: Optional[Dict[str, Any]] = None,
 ) -> Path:
     root = reports_dir or get_reports_dir()
     path = root / "marketing_ramp" / f"{job_id}.json"
@@ -410,6 +411,8 @@ def save_marketing_ramp_report(
         "use_full_file_span": use_full_file_span,
         "rows": rows,
     }
+    if consolidated is not None:
+        payload["consolidated"] = consolidated
     _write_json(path, payload)
     return path
 
@@ -423,13 +426,16 @@ def load_marketing_ramp_report(
         return None
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
-    return {
+    out = {
         "job_id": job_id,
         "metrics": data.get("metrics", {}),
         "use_full_file_span": data.get("use_full_file_span", False),
         "rows": data.get("rows", []),
         "created_at": data.get("created_at"),
     }
+    if "consolidated" in data:
+        out["consolidated"] = data["consolidated"]
+    return out
 
 
 def load_qualified_leads_report(

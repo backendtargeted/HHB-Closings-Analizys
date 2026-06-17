@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import ConsolidatedReportSections from './ConsolidatedReportSections';
 import { copyReportShareUrl } from '../utils/reportShareUrl';
 import type { MarketingRampCompletedResponse, MarketingRampRow } from '../types/marketingRamp';
 
@@ -11,6 +12,7 @@ interface MarketingRampResultsProps {
 }
 
 const ROW_PREVIEW_LIMIT = 25;
+const TOUCH_CHANNEL_ORDER = ['CC', 'SMS', 'DM'] as const;
 
 function formatCell(value: string | number | boolean | null | undefined): string {
   if (value === null || value === undefined || value === '') return '—';
@@ -21,6 +23,14 @@ function formatCell(value: string | number | boolean | null | undefined): string
 
 function humanizeKey(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function sumTouchCountsFromRows(
+  rows: MarketingRampRow[],
+  channel: string
+): number {
+  const key = `${channel.toLowerCase()}_touch_count`;
+  return rows.reduce((sum, row) => sum + (Number(row[key]) || 0), 0);
 }
 
 const MarketingRampResults = ({
@@ -34,6 +44,7 @@ const MarketingRampResults = ({
   const m = result.metrics;
   const warnings = m.warnings ?? [];
   const rows = result.rows ?? [];
+  const consolidated = result.consolidated;
 
   const channelEntries = useMemo(
     () =>
@@ -43,13 +54,13 @@ const MarketingRampResults = ({
     [m.channel_counts]
   );
 
-  const touchEntries = useMemo(
-    () =>
-      Object.entries(m.touch_counts)
-        .filter(([, v]) => v > 0)
-        .sort((a, b) => b[1] - a[1]),
-    [m.touch_counts]
-  );
+  const totalTouchEntries = useMemo((): [string, number][] => {
+    const fromMetrics = m.total_touch_counts;
+    if (fromMetrics) {
+      return TOUCH_CHANNEL_ORDER.map((ch) => [ch, fromMetrics[ch] ?? 0]);
+    }
+    return TOUCH_CHANNEL_ORDER.map((ch) => [ch, sumTouchCountsFromRows(rows, ch)]);
+  }, [m.total_touch_counts, rows]);
 
   const opportunityEntries = useMemo(
     () =>
@@ -77,6 +88,7 @@ const MarketingRampResults = ({
   }, [rows]);
 
   const previewRows = rows.slice(0, ROW_PREVIEW_LIMIT);
+  const consolidatedWarnings = consolidated?.warnings ?? [];
 
   const handleShare = async () => {
     setShareStatus(null);
@@ -88,10 +100,11 @@ const MarketingRampResults = ({
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-emerald-950">Gate 3 — Marketing ramp report</h2>
+          <h2 className="text-2xl font-bold text-emerald-950">Gate 3 — Monthly report</h2>
           <p className="text-sm text-stone-600 mt-1">
             Window: {m.date_window_start} → {m.date_window_end}
             {rows.length > 0 ? ` · ${rows.length.toLocaleString()} journey rows` : ''}
+            {consolidated ? ' · includes consolidated list analysis' : ''}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -101,7 +114,7 @@ const MarketingRampResults = ({
             disabled={exporting}
             className="px-4 py-2 rounded-lg border border-emerald-700 text-emerald-900 text-sm font-medium hover:bg-emerald-50 disabled:opacity-50"
           >
-            {exporting ? 'Exporting…' : 'Download CSV'}
+            {exporting ? 'Exporting…' : consolidated ? 'Download full XLSX' : 'Download CSV'}
           </button>
           <button
             type="button"
@@ -121,9 +134,9 @@ const MarketingRampResults = ({
       </div>
       {shareStatus ? <p className="text-xs text-stone-500 -mt-4">{shareStatus}</p> : null}
 
-      {warnings.length > 0 && (
+      {[...warnings, ...consolidatedWarnings].length > 0 && (
         <ul className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 list-disc pl-6 space-y-1">
-          {warnings.map((w) => (
+          {[...warnings, ...consolidatedWarnings].map((w) => (
             <li key={w}>{w}</li>
           ))}
         </ul>
@@ -133,53 +146,94 @@ const MarketingRampResults = ({
         {m.methodology_note}
       </p>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {populationEntries.map(([key, value]) => (
-          <Stat key={key} label={humanizeKey(key)} value={value ?? 0} />
-        ))}
-        <Stat
-          label="REISift match rate"
-          value={`${m.reisift_match.match_rate_pct}%`}
-          sub={`${m.reisift_match.matched.toLocaleString()} matched · ${m.reisift_match.unmatched.toLocaleString()} unmatched`}
-        />
-      </div>
+      <section className="space-y-6">
+        <h3 className="text-xl font-semibold text-emerald-950">Marketing ramp</h3>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <CountPanel title="Channel counts" entries={channelEntries} channelLabels={channelLabels} />
-        <CountPanel title="Touch counts" entries={touchEntries} />
-        <CountPanel title="Opportunity counts" entries={opportunityEntries} />
-      </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {populationEntries.map(([key, value]) => (
+            <Stat key={key} label={humanizeKey(key)} value={value ?? 0} />
+          ))}
+          <Stat
+            label="REISift match rate"
+            value={`${m.reisift_match.match_rate_pct}%`}
+            sub={`${m.reisift_match.matched.toLocaleString()} matched · ${m.reisift_match.unmatched.toLocaleString()} unmatched`}
+          />
+        </div>
 
-      {rows.length > 0 && rowColumns.length > 0 && (
-        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm overflow-x-auto">
-          <h3 className="text-lg font-semibold text-stone-800 mb-2">Lead journey rows</h3>
-          <p className="text-xs text-stone-500 mb-4">
-            Showing first {Math.min(ROW_PREVIEW_LIMIT, rows.length).toLocaleString()} of{' '}
-            {rows.length.toLocaleString()} rows. Download CSV for the full export.
-          </p>
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="text-left text-stone-500 border-b">
-                {rowColumns.map((col) => (
-                  <th key={col} className="py-2 pr-4 whitespace-nowrap">
-                    {humanizeKey(col)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {previewRows.map((row: MarketingRampRow, idx) => (
-                <tr key={idx} className="border-b border-stone-100">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <CountPanel title="Channel counts" entries={channelEntries} channelLabels={channelLabels} />
+          <CountPanel
+            title="Total touches by channel"
+            subtitle="Sum of all (8020) CC / SMS / DM contact tags in REISift"
+            entries={totalTouchEntries}
+            channelLabels={channelLabels}
+            showAllEntries
+          />
+          <CountPanel title="Opportunity counts" entries={opportunityEntries} />
+        </div>
+
+        {rows.length > 0 && rowColumns.length > 0 && (
+          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm overflow-x-auto">
+            <h4 className="text-lg font-semibold text-stone-800 mb-2">Lead journey rows</h4>
+            <p className="text-xs text-stone-500 mb-4">
+              Showing first {Math.min(ROW_PREVIEW_LIMIT, rows.length).toLocaleString()} of{' '}
+              {rows.length.toLocaleString()} rows. Download export for the full dataset.
+            </p>
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-left text-stone-500 border-b">
                   {rowColumns.map((col) => (
-                    <td key={col} className="py-2 pr-4 text-stone-800 whitespace-nowrap tabular-nums">
-                      {formatCell(row[col])}
-                    </td>
+                    <th key={col} className="py-2 pr-4 whitespace-nowrap">
+                      {humanizeKey(col)}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {previewRows.map((row: MarketingRampRow, idx) => (
+                  <tr key={idx} className="border-b border-stone-100">
+                    {rowColumns.map((col) => (
+                      <td key={col} className="py-2 pr-4 text-stone-800 whitespace-nowrap tabular-nums">
+                        {formatCell(row[col])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+      </section>
+
+      {consolidated ? (
+        <section className="space-y-6 pt-4 border-t border-stone-200">
+          <div>
+            <h3 className="text-xl font-semibold text-indigo-950">Consolidated list report</h3>
+            <p className="text-sm text-stone-600 mt-1">
+              {consolidated.metrics.cohort_scope === 'full_file'
+                ? 'Full REISift export'
+                : `Month ${consolidated.metrics.report_month}`}
+              {consolidated.metrics.period.start && consolidated.metrics.period.end ? (
+                <> · Created span {consolidated.metrics.period.start} → {consolidated.metrics.period.end}</>
+              ) : null}
+            </p>
+          </div>
+          <p className="text-sm text-stone-600 bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 leading-relaxed">
+            {consolidated.metrics.methodology_note}
+          </p>
+          <ConsolidatedReportSections
+            metrics={consolidated.metrics}
+            jobId={result.job_id}
+            channelLabels={channelLabels}
+            onNewRun={onNewRun}
+            accent="emerald"
+          />
         </section>
+      ) : (
+        <p className="text-sm text-stone-500 italic">
+          Consolidated list sections are unavailable for this saved report. Re-run Gate 3 to include
+          list performance and channel analysis.
+        </p>
       )}
     </div>
   );
@@ -207,17 +261,24 @@ function Stat({
 
 function CountPanel({
   title,
+  subtitle,
   entries,
   channelLabels,
+  showAllEntries = false,
 }: {
   title: string;
+  subtitle?: string;
   entries: [string, number][];
   channelLabels?: Record<string, string>;
+  showAllEntries?: boolean;
 }) {
+  const displayEntries = showAllEntries ? entries : entries.filter(([, v]) => v > 0);
+
   return (
     <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-      <h3 className="text-lg font-semibold text-stone-800 mb-4">{title}</h3>
-      {entries.length === 0 ? (
+      <h3 className="text-lg font-semibold text-stone-800 mb-1">{title}</h3>
+      {subtitle ? <p className="text-xs text-stone-500 mb-4">{subtitle}</p> : <div className="mb-3" />}
+      {displayEntries.length === 0 ? (
         <p className="text-sm text-stone-500">No data in this category.</p>
       ) : (
         <table className="min-w-full text-sm">
@@ -228,7 +289,7 @@ function CountPanel({
             </tr>
           </thead>
           <tbody>
-            {entries.map(([key, count]) => (
+            {displayEntries.map(([key, count]) => (
               <tr key={key} className="border-b border-stone-100">
                 <td className="py-2 pr-4 font-medium text-stone-800">
                   {channelLabels?.[key] ?? humanizeKey(key)}

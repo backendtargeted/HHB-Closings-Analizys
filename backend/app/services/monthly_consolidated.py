@@ -366,6 +366,48 @@ class MonthlyConsolidatedResult:
         }
 
 
+def result_from_metrics_dict(d: Dict[str, Any]) -> MonthlyConsolidatedResult:
+    """Rebuild MonthlyConsolidatedResult from to_dict() metrics (for export / reload)."""
+    period = d.get("period") or {}
+    cohort = d.get("cohort") or {}
+    inputs = d.get("inputs") or {}
+    lists = [ListMetric(**m) for m in d.get("lists", [])]
+    combinations = [
+        ComboMetric(
+            lists=c.get("lists", []),
+            lists_key=c.get("lists_key", ""),
+            row_count=int(c.get("row_count", 0)),
+            closing_count=int(c.get("closing_count", 0)),
+            closing_rate=float(c.get("closing_rate", 0)),
+            combo_group=c.get("combo_group", ""),
+        )
+        for c in d.get("combinations", [])
+    ]
+    return MonthlyConsolidatedResult(
+        report_month=str(d.get("report_month", "")),
+        cohort_scope=str(d.get("cohort_scope", "full_file")),
+        period_start=str(period.get("start", "")),
+        period_end=str(period.get("end", "")),
+        reisift_rows_ingested=int(inputs.get("reisift_rows_ingested", 0)),
+        cohort_rows=int(cohort.get("total_rows", inputs.get("cohort_rows", 0))),
+        crm_lead_rows=int(cohort.get("crm_lead_rows", 0)),
+        closing_rows=int(cohort.get("closing_rows", 0)),
+        stacked_rows=int(cohort.get("stacked_rows", 0)),
+        stacked_pct=float(cohort.get("stacked_pct", 0)),
+        lists=lists,
+        combinations=combinations,
+        qualified_leads=d.get("qualified_leads") or {},
+        list_attribution=d.get("list_attribution") or {},
+        lifecycle=d.get("lifecycle") or {},
+        lifecycle_stats=d.get("lifecycle_stats") or {},
+        open_pipeline_lifecycle=d.get("open_pipeline_lifecycle") or {},
+        tag_lead_source_counts=d.get("tag_lead_source_counts") or [],
+        combo_min_rows=int(d.get("combo_min_rows", COMBO_MIN_ROWS_DEFAULT)),
+        warnings=d.get("warnings") or [],
+        methodology_note=str(d.get("methodology_note", "")),
+    )
+
+
 def list_metrics_from_scan(
     scan: CohortScanResult, ql_by_list: Dict[str, int]
 ) -> List[ListMetric]:
@@ -1028,7 +1070,10 @@ def analyze(
     )
 
 
-def build_export_workbook(result: MonthlyConsolidatedResult) -> bytes:
+def build_export_workbook(
+    result: MonthlyConsolidatedResult,
+    ramp_rows: Optional[List[Dict[str, Any]]] = None,
+) -> bytes:
     try:
         import openpyxl  # noqa: F401
     except ImportError as exc:
@@ -1101,6 +1146,9 @@ def build_export_workbook(result: MonthlyConsolidatedResult) -> bytes:
         stuck = open_pipe.get("stuck_at_stage") or []
         if stuck:
             pd.DataFrame(stuck).to_excel(writer, sheet_name="Open Pipeline", index=False)
+
+        if ramp_rows:
+            pd.DataFrame(ramp_rows).to_excel(writer, sheet_name="Marketing Ramp", index=False)
 
     buf.seek(0)
     return buf.getvalue()

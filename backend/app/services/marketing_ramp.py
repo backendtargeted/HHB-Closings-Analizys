@@ -435,6 +435,10 @@ def analyze(
     reisift_unmatched = population_total - reisift_matched
     match_rate = round(100.0 * reisift_matched / population_total, 2) if population_total else 0.0
 
+    total_touch_counts = {
+        ch: sum(int(r[f"{ch.lower()}_touch_count"]) for r in rows) for ch in TOUCH_CHANNELS
+    }
+
     metrics = {
         "report_type": REPORT_TYPE,
         "date_window_start": _date_to_ymd(start_date),
@@ -457,13 +461,15 @@ def analyze(
         },
         "channel_counts": channel_counts,
         "touch_counts": touch_counts,
+        "total_touch_counts": total_touch_counts,
         "opportunity_counts": opportunity_counts,
         "warnings": warnings,
         "methodology_note": (
             "Population is the union of qualified leads (Create Date in window) and closings "
             "(Date Closed in window, Closed Lost excluded), merged by normalized address. "
-            "REISift tags are indexed from the full export. Touches are (8020) CC/SMS/DM contact "
-            "tags only. Under contract uses SF converted/under contract labels only. "
+            "REISift tags are indexed from the full export. Total touches sum all (8020) CC/SMS/DM "
+            "contact tags per address; touch_counts is first-touch distribution per population row. "
+            "Under contract uses SF converted/under contract labels only. "
             "Close date prefers closings workbook Date Closed, then (CLOSED) tag. "
             "Recency anchor is earliest List Purchased 8020 tag; report_anchor_date is window end."
         ),

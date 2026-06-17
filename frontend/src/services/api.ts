@@ -559,8 +559,13 @@ export const getMarketingRampJob = async (
   return response.data;
 };
 
-export const downloadMarketingRampExport = async (jobId: string): Promise<Blob> => {
+export const downloadMarketingRampExport = async (
+  jobId: string,
+  options?: { format?: 'xlsx' | 'csv' }
+): Promise<Blob> => {
+  const format = options?.format ?? 'xlsx';
   const response = await api.get(`/marketing-ramp/${jobId}/export`, {
+    params: { format },
     responseType: 'blob',
   });
   return response.data;

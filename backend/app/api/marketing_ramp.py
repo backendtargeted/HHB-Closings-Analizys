@@ -10,11 +10,13 @@ import shutil
 import uuid
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from flask import Blueprint, jsonify, request, send_file
 
-from ..services.marketing_ramp import analyze_files, rows_to_export_csv
+from ..services.monthly_consolidated import result_from_metrics_dict
+from ..services.monthly_unified import analyze_unified, build_unified_export_workbook
+from ..services.marketing_ramp import rows_to_export_csv
 from ..services.qualified_leads import parse_ymd_param
 from ..services.report_store import (
     REPORTS_DIR,
@@ -42,11 +44,14 @@ def load_marketing_ramp_from_disk() -> None:
             job_id = path.stem
             loaded = load_marketing_ramp_report(job_id)
             if loaded:
-                _job_results[job_id] = {
+                entry: Dict[str, Any] = {
                     "metrics": loaded["metrics"],
                     "rows": loaded.get("rows", []),
                     "use_full_file_span": loaded.get("use_full_file_span", False),
                 }
+                if loaded.get("consolidated"):
+                    entry["consolidated"] = loaded["consolidated"]
+                _job_results[job_id] = entry
         except (json.JSONDecodeError, OSError):
             continue
 
@@ -59,6 +64,19 @@ def _sanitize_for_json(obj: Any) -> Any:
     if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
         return None
     return obj
+
+
+def _job_response(job_id: str, cached: Dict[str, Any]) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "job_id": job_id,
+        "status": "completed",
+        "metrics": cached["metrics"],
+        "rows": cached.get("rows", []),
+        "use_full_file_span": cached.get("use_full_file_span", False),
+    }
+    if cached.get("consolidated"):
+        payload["consolidated"] = cached["consolidated"]
+    return payload
 
 
 @marketing_ramp_bp.route("/analyze", methods=["POST"])
@@ -107,7 +125,7 @@ def marketing_ramp_analyze():
 
     try:
         if use_full:
-            result = analyze_files(
+            unified = analyze_unified(
                 ql_path,
                 reisift_path,
                 closings_path,
@@ -116,7 +134,7 @@ def marketing_ramp_analyze():
         else:
             start_date = parse_ymd_param(start_raw, "start_date")
             end_date = parse_ymd_param(end_raw, "end_date")
-            result = analyze_files(
+            unified = analyze_unified(
                 ql_path,
                 reisift_path,
                 closings_path,
@@ -131,18 +149,24 @@ def marketing_ramp_analyze():
         shutil.rmtree(job_dir, ignore_errors=True)
         return jsonify({"detail": f"Analysis failed: {exc}"}), 500
 
-    metrics = result.metrics
+    api_data = unified.to_api_dict()
+    metrics = api_data["metrics"]
+    rows = api_data["rows"]
+    consolidated = api_data["consolidated"]
+
     payload = {
         "job_id": job_id,
         "status": "completed",
         "metrics": metrics,
-        "rows": result.rows,
+        "rows": rows,
         "use_full_file_span": use_full,
+        "consolidated": consolidated,
     }
     _job_results[job_id] = {
         "metrics": metrics,
-        "rows": result.rows,
+        "rows": rows,
         "use_full_file_span": use_full,
+        "consolidated": consolidated,
     }
 
     try:
@@ -150,7 +174,8 @@ def marketing_ramp_analyze():
             job_id,
             metrics=metrics,
             use_full_file_span=use_full,
-            rows=result.rows,
+            rows=rows,
+            consolidated=consolidated,
         )
     except OSError as exc:
         return jsonify({"detail": f"Failed to save report: {exc}"}), 500
@@ -166,35 +191,18 @@ def marketing_ramp_analyze():
 def marketing_ramp_get(job_id: str):
     cached = _job_results.get(job_id)
     if cached:
-        return jsonify(
-            _sanitize_for_json(
-                {
-                    "job_id": job_id,
-                    "status": "completed",
-                    "metrics": cached["metrics"],
-                    "rows": cached.get("rows", []),
-                    "use_full_file_span": cached.get("use_full_file_span", False),
-                }
-            )
-        )
+        return jsonify(_sanitize_for_json(_job_response(job_id, cached)))
     loaded = load_marketing_ramp_report(job_id)
     if loaded:
-        _job_results[job_id] = {
+        entry: Dict[str, Any] = {
             "metrics": loaded["metrics"],
             "rows": loaded.get("rows", []),
             "use_full_file_span": loaded.get("use_full_file_span", False),
         }
-        return jsonify(
-            _sanitize_for_json(
-                {
-                    "job_id": job_id,
-                    "status": "completed",
-                    "metrics": loaded["metrics"],
-                    "rows": loaded.get("rows", []),
-                    "use_full_file_span": loaded.get("use_full_file_span", False),
-                }
-            )
-        )
+        if loaded.get("consolidated"):
+            entry["consolidated"] = loaded["consolidated"]
+        _job_results[job_id] = entry
+        return jsonify(_sanitize_for_json(_job_response(job_id, entry)))
     meta_path = MR_ROOT / job_id / "result.json"
     if not meta_path.is_file():
         return jsonify({"detail": "Job not found"}), 404
@@ -213,20 +221,42 @@ def marketing_ramp_export(job_id: str):
                 "metrics": loaded["metrics"],
                 "rows": loaded.get("rows", []),
             }
+            if loaded.get("consolidated"):
+                cached["consolidated"] = loaded["consolidated"]
             _job_results[job_id] = cached
     if not cached:
         return jsonify({"detail": "Job not found"}), 404
     if not cached.get("rows"):
         return jsonify({"detail": "Row export unavailable; re-run analysis to regenerate rows"}), 404
 
-    csv_text = rows_to_export_csv(cached["rows"])
-    buf = BytesIO(csv_text.encode("utf-8"))
+    export_format = (request.args.get("format") or "xlsx").strip().lower()
+    consolidated_block = cached.get("consolidated") or {}
+    consolidated_metrics = consolidated_block.get("metrics")
+
+    if export_format == "csv" or not consolidated_metrics:
+        csv_text = rows_to_export_csv(cached["rows"])
+        buf = BytesIO(csv_text.encode("utf-8"))
+        buf.seek(0)
+        return send_file(
+            buf,
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name=f"marketing_ramp_{job_id}.csv",
+        )
+
+    try:
+        consolidated_result = result_from_metrics_dict(consolidated_metrics)
+        xlsx_bytes = build_unified_export_workbook(consolidated_result, cached["rows"])
+    except (ValueError, KeyError) as exc:
+        return jsonify({"detail": f"Export failed: {exc}"}), 500
+
+    buf = BytesIO(xlsx_bytes)
     buf.seek(0)
     return send_file(
         buf,
-        mimetype="text/csv",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
-        download_name=f"marketing_ramp_{job_id}.csv",
+        download_name=f"monthly_report_{job_id}.xlsx",
     )
 
 

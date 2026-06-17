@@ -1,3 +1,5 @@
+import type { MonthlyConsolidatedMetrics } from './monthlyConsolidated';
+
 export interface MarketingRampPopulationCounts {
   qualified_leads_in_window?: number;
   qualified_leads_total?: number;
@@ -22,6 +24,7 @@ export interface MarketingRampMetrics {
   reisift_match: MarketingRampReisiftMatch;
   channel_counts: Record<string, number>;
   touch_counts: Record<string, number>;
+  total_touch_counts?: Record<string, number>;
   opportunity_counts: Record<string, number>;
   warnings: string[];
   methodology_note: string;
@@ -29,11 +32,17 @@ export interface MarketingRampMetrics {
 
 export type MarketingRampRow = Record<string, string | number | boolean | null | undefined>;
 
+export interface MarketingRampConsolidatedBlock {
+  metrics: MonthlyConsolidatedMetrics;
+  warnings?: string[];
+}
+
 export interface MarketingRampAnalyzeResponse {
   job_id: string;
   status: string;
   metrics?: MarketingRampMetrics;
   rows?: MarketingRampRow[];
+  consolidated?: MarketingRampConsolidatedBlock;
   message?: string;
   created_at?: string;
 }

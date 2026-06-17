@@ -146,6 +146,51 @@ Exports with **500k+ rows** are supported but the analyze request is **synchrono
 
 ---
 
+## Marketing ramp report (Gate 3 — unified monthly)
+
+**When:** Measure **lead journey timing** (list → touch → qualified lead → contract → close) per address, **and** include the full **Gate 2 consolidated list report** on the same run.
+
+**UI:** Docker `http://localhost:3300` → **Marketing ramp report** (Gate 3 tab).
+
+**Implementation:** `backend/app/services/marketing_ramp.py` + `monthly_unified.py` (parallel Gate 2), API prefix `/api/marketing-ramp`.
+
+### Inputs
+
+| File | Required columns | Role |
+|------|------------------|------|
+| **Salesforce Total Qualified Leads** | `Lead Source`, `Create Date`, address | Population rows with Create Date in window |
+| **REISift contacts export** | `Tags`, address fields | Touch tags, list purchase, REISift match |
+| **Closings workbook** | `Date Closed`, address, `Stage` | Close dates (Closed Lost excluded) |
+
+### Population window
+
+- Default: **Use full file date span** — union of QL Create Date range and closings Date Closed range.
+- Optional: explicit `start_date` / `end_date` on the upload form.
+
+### Touch counts (summary panel)
+
+- **Total touches by channel** = sum of all `(8020) CC`, `(8020) SMS`, and `(8020) DM` contact tags across matched REISift rows (Cold Calling, SMS, Direct Mail).
+- Per-row journey export still includes `cc_touch_count`, `sms_touch_count`, `dm_touch_count`, and `first_touch_channel`.
+- Tags must exist in REISift export; Past patches cold-calling/SMS uploads do **not** auto-generate `(8020)` tags.
+
+### Unified run (Gate 2 + Gate 3)
+
+Each Gate 3 analyze runs **marketing ramp** and **monthly consolidated** in parallel on the shared REISift + QL uploads (closings used only for ramp). The UI shows both sections on one page.
+
+### Export
+
+- **Download full XLSX** — all Gate 2 sheets (Summary, List Performance, combinations, channels, lifecycle, etc.) plus a **Marketing Ramp** sheet with journey rows.
+- Legacy saved reports without embedded consolidated data fall back to CSV export (ramp rows only).
+
+### Operator checklist
+
+1. Export Salesforce Total Qualified Leads, REISift contacts, and closings workbook for the period.
+2. Run **Marketing ramp report** with all three files.
+3. Review total touches (CC / SMS / DM), journey rows, and consolidated list performance on the same screen.
+4. Download full XLSX for archiving.
+
+---
+
 ## Large uploads and reverse proxies (EasyPanel / Traefik)
 
 Large upload flows can fail when the **UI** nginx container or front proxy timeouts are too low (`frontend/nginx.conf`: `client_max_body_size`, `client_body_timeout`, `proxy_*_timeout`).

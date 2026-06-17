@@ -117,6 +117,11 @@ def test_touch_from_tags_not_lists(mr_paths):
     assert oak["first_touch_channel"] == "DM"
     assert result.metrics["touch_counts"]["DM"] >= 1
 
+    totals = result.metrics["total_touch_counts"]
+    assert totals["CC"] >= 1
+    assert totals["SMS"] >= 1
+    assert totals["DM"] >= 1
+
 
 def test_converted_only_for_under_contract(mr_paths):
     ql_path, reisift_path, closings_path = mr_paths

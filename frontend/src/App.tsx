@@ -143,11 +143,14 @@ function App() {
   const handleExportMarketing = async (jobId: string) => {
     setMrExporting(true);
     try {
-      const blob = await downloadMarketingRampExport(jobId);
+      const hasConsolidated = Boolean(loadedMarketingReport?.consolidated);
+      const format = hasConsolidated ? 'xlsx' : 'csv';
+      const blob = await downloadMarketingRampExport(jobId, { format });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `marketing_ramp_${jobId}.csv`;
+      a.download =
+        format === 'xlsx' ? `monthly_report_${jobId}.xlsx` : `marketing_ramp_${jobId}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
