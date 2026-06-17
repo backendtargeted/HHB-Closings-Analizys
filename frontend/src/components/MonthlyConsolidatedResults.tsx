@@ -29,7 +29,7 @@ const MonthlyConsolidatedResults = ({
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-indigo-950">Gate 2 — Consolidated report</h2>
@@ -77,8 +77,13 @@ const MonthlyConsolidatedResults = ({
         </ul>
       )}
 
-      <p className="text-sm text-stone-600 bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 leading-relaxed">
-        {m.methodology_note}
+      <p className="text-sm text-stone-600">
+        <details>
+          <summary className="cursor-pointer text-stone-500 hover:text-stone-700">
+            Methodology note
+          </summary>
+          <p className="mt-2 leading-relaxed">{m.methodology_note}</p>
+        </details>
       </p>
 
       <ConsolidatedReportSections

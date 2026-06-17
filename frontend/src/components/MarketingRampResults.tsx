@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import ConsolidatedReportSections from './ConsolidatedReportSections';
+import CollapsibleSection from './CollapsibleSection';
+import { ReportTable } from './ReportTable';
 import { copyReportShareUrl } from '../utils/reportShareUrl';
 import type { MarketingRampCompletedResponse, MarketingRampRow } from '../types/marketingRamp';
 
@@ -14,23 +16,44 @@ interface MarketingRampResultsProps {
 const ROW_PREVIEW_LIMIT = 25;
 const TOUCH_CHANNEL_ORDER = ['CC', 'SMS', 'DM'] as const;
 
-function formatCell(value: string | number | boolean | null | undefined): string {
-  if (value === null || value === undefined || value === '') return '—';
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-  if (typeof value === 'number') return value.toLocaleString();
-  return String(value);
-}
+const JOURNEY_KEY_COLUMNS: { key: string; label: string; align?: 'left' | 'right'; sticky?: boolean }[] = [
+  { key: 'street', label: 'Street', sticky: true },
+  { key: 'city', label: 'City' },
+  { key: 'state', label: 'St' },
+  { key: 'population_kind', label: 'Population' },
+  { key: 'reporting_channel', label: 'Channel' },
+  { key: 'create_date', label: 'QL date' },
+  { key: 'date_closed', label: 'Closed' },
+  { key: 'date_under_contract', label: 'Contract' },
+  { key: 'first_touch_channel', label: '1st touch' },
+  { key: 'cc_touch_count', label: 'CC', align: 'right' },
+  { key: 'sms_touch_count', label: 'SMS', align: 'right' },
+  { key: 'dm_touch_count', label: 'DM', align: 'right' },
+  { key: 'days_list_to_first_touch', label: 'Days→touch', align: 'right' },
+  { key: 'days_list_to_create_date', label: 'Days→QL', align: 'right' },
+  { key: 'days_list_to_close', label: 'Days→close', align: 'right' },
+  { key: 'has_reisift_match', label: 'REISift' },
+];
 
-function humanizeKey(key: string): string {
-  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
+const POPULATION_LABELS: Record<string, string> = {
+  population_rows: 'Population',
+  qualified_leads_in_window: 'QL in window',
+  qualified_leads_total: 'QL total',
+  closings_in_window: 'Closings in window',
+  closings_total: 'Closings total',
+  qualified_only: 'Qualified only',
+  closing_only: 'Closing only',
+  both: 'QL + closing',
+  reisift_rows: 'REISift rows',
+};
 
-function sumTouchCountsFromRows(
-  rows: MarketingRampRow[],
-  channel: string
-): number {
+function sumTouchCountsFromRows(rows: MarketingRampRow[], channel: string): number {
   const key = `${channel.toLowerCase()}_touch_count`;
   return rows.reduce((sum, row) => sum + (Number(row[key]) || 0), 0);
+}
+
+function channelLabel(channelLabels: Record<string, string>, key: string): string {
+  return channelLabels[key] ?? key;
 }
 
 const MarketingRampResults = ({
@@ -41,6 +64,7 @@ const MarketingRampResults = ({
   exporting,
 }: MarketingRampResultsProps) => {
   const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [showAllJourneyColumns, setShowAllJourneyColumns] = useState(false);
   const m = result.metrics;
   const warnings = m.warnings ?? [];
   const rows = result.rows ?? [];
@@ -72,13 +96,13 @@ const MarketingRampResults = ({
 
   const populationEntries = useMemo(
     () =>
-      Object.entries(m.population_counts).filter(
-        ([, v]) => v !== undefined && v !== null && v > 0
-      ),
+      Object.entries(m.population_counts)
+        .filter(([, v]) => v !== undefined && v !== null && v > 0)
+        .map(([key, value]) => [POPULATION_LABELS[key] ?? key, value] as [string, number]),
     [m.population_counts]
   );
 
-  const rowColumns = useMemo(() => {
+  const allJourneyColumns = useMemo(() => {
     if (rows.length === 0) return [] as string[];
     const keys = new Set<string>();
     for (const row of rows.slice(0, 50)) {
@@ -86,6 +110,21 @@ const MarketingRampResults = ({
     }
     return Array.from(keys);
   }, [rows]);
+
+  const journeyColumns = useMemo(() => {
+    if (showAllJourneyColumns) {
+      return allJourneyColumns.map((key) => ({
+        key,
+        label: key.replace(/_/g, ' '),
+        align: key.includes('count') || key.startsWith('days_') ? ('right' as const) : undefined,
+        sticky: key === 'street',
+      }));
+    }
+    return JOURNEY_KEY_COLUMNS.map((col) => ({
+      ...col,
+      sticky: col.key === 'street',
+    }));
+  }, [showAllJourneyColumns, allJourneyColumns]);
 
   const previewRows = rows.slice(0, ROW_PREVIEW_LIMIT);
   const consolidatedWarnings = consolidated?.warnings ?? [];
@@ -96,15 +135,18 @@ const MarketingRampResults = ({
     setShareStatus(mode === 'copied' ? 'Report link copied.' : 'Copy the report link from the prompt.');
   };
 
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-emerald-950">Gate 3 — Monthly report</h2>
           <p className="text-sm text-stone-600 mt-1">
-            Window: {m.date_window_start} → {m.date_window_end}
-            {rows.length > 0 ? ` · ${rows.length.toLocaleString()} journey rows` : ''}
-            {consolidated ? ' · includes consolidated list analysis' : ''}
+            {m.date_window_start} → {m.date_window_end}
+            {rows.length > 0 ? ` · ${rows.length.toLocaleString()} rows` : ''}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -114,14 +156,14 @@ const MarketingRampResults = ({
             disabled={exporting}
             className="px-4 py-2 rounded-lg border border-emerald-700 text-emerald-900 text-sm font-medium hover:bg-emerald-50 disabled:opacity-50"
           >
-            {exporting ? 'Exporting…' : consolidated ? 'Download full XLSX' : 'Download CSV'}
+            {exporting ? 'Exporting…' : consolidated ? 'Download XLSX' : 'Download CSV'}
           </button>
           <button
             type="button"
             onClick={handleShare}
             className="px-4 py-2 rounded-lg border border-stone-300 text-emerald-900 text-sm font-medium hover:bg-stone-50"
           >
-            Copy Link
+            Copy link
           </button>
           <button
             type="button"
@@ -132,7 +174,8 @@ const MarketingRampResults = ({
           </button>
         </div>
       </div>
-      {shareStatus ? <p className="text-xs text-stone-500 -mt-4">{shareStatus}</p> : null}
+
+      {shareStatus ? <p className="text-xs text-stone-500 -mt-2">{shareStatus}</p> : null}
 
       {[...warnings, ...consolidatedWarnings].length > 0 && (
         <ul className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 list-disc pl-6 space-y-1">
@@ -142,85 +185,136 @@ const MarketingRampResults = ({
         </ul>
       )}
 
-      <p className="text-sm text-stone-600 bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 leading-relaxed">
-        {m.methodology_note}
-      </p>
+      <nav
+        aria-label="Report sections"
+        className="sticky top-0 z-30 flex flex-wrap gap-2 py-2 px-3 -mx-3 bg-stone-50/95 backdrop-blur border border-stone-200 rounded-xl"
+      >
+        <NavPill label="Summary" onClick={() => scrollTo('ramp-summary')} />
+        {rows.length > 0 ? (
+          <NavPill label="Journey rows" onClick={() => scrollTo('ramp-journey')} />
+        ) : null}
+        {consolidated ? (
+          <NavPill label="List analysis" onClick={() => scrollTo('ramp-consolidated')} />
+        ) : null}
+      </nav>
 
-      <section className="space-y-6">
-        <h3 className="text-xl font-semibold text-emerald-950">Marketing ramp</h3>
+      <CollapsibleSection
+        id="ramp-summary"
+        title="Marketing ramp summary"
+        subtitle="Population, channels, and touch totals"
+        defaultOpen
+      >
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {populationEntries.map(([label, value]) => (
+              <Stat key={label} label={label} value={value} />
+            ))}
+            <Stat
+              label="REISift match"
+              value={`${m.reisift_match.match_rate_pct}%`}
+              sub={`${m.reisift_match.matched.toLocaleString()} matched`}
+            />
+          </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {populationEntries.map(([key, value]) => (
-            <Stat key={key} label={humanizeKey(key)} value={value ?? 0} />
-          ))}
-          <Stat
-            label="REISift match rate"
-            value={`${m.reisift_match.match_rate_pct}%`}
-            sub={`${m.reisift_match.matched.toLocaleString()} matched · ${m.reisift_match.unmatched.toLocaleString()} unmatched`}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <CountPanel title="Channel counts" entries={channelEntries} channelLabels={channelLabels} />
-          <CountPanel
-            title="Total touches by channel"
-            subtitle="Sum of all (8020) CC / SMS / DM contact tags in REISift"
-            entries={totalTouchEntries}
-            channelLabels={channelLabels}
-            showAllEntries
-          />
-          <CountPanel title="Opportunity counts" entries={opportunityEntries} />
-        </div>
-
-        {rows.length > 0 && rowColumns.length > 0 && (
-          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm overflow-x-auto">
-            <h4 className="text-lg font-semibold text-stone-800 mb-2">Lead journey rows</h4>
-            <p className="text-xs text-stone-500 mb-4">
-              Showing first {Math.min(ROW_PREVIEW_LIMIT, rows.length).toLocaleString()} of{' '}
-              {rows.length.toLocaleString()} rows. Download export for the full dataset.
-            </p>
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="text-left text-stone-500 border-b">
-                  {rowColumns.map((col) => (
-                    <th key={col} className="py-2 pr-4 whitespace-nowrap">
-                      {humanizeKey(col)}
-                    </th>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <MetricCard title="Channels (QL attribution)">
+              {channelEntries.length === 0 ? (
+                <p className="text-sm text-stone-500">No data</p>
+              ) : (
+                <ul className="space-y-1.5 text-sm">
+                  {channelEntries.map(([key, count]) => (
+                    <li key={key} className="flex justify-between gap-3">
+                      <span className="text-stone-700">{channelLabel(channelLabels, key)}</span>
+                      <span className="font-medium tabular-nums">{count.toLocaleString()}</span>
+                    </li>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {previewRows.map((row: MarketingRampRow, idx) => (
-                  <tr key={idx} className="border-b border-stone-100">
-                    {rowColumns.map((col) => (
-                      <td key={col} className="py-2 pr-4 text-stone-800 whitespace-nowrap tabular-nums">
-                        {formatCell(row[col])}
-                      </td>
-                    ))}
-                  </tr>
+                </ul>
+              )}
+            </MetricCard>
+            <MetricCard title="Total touches" subtitle="(8020) tags in REISift">
+              <ul className="space-y-1.5 text-sm">
+                {totalTouchEntries.map(([key, count]) => (
+                  <li key={key} className="flex justify-between gap-3">
+                    <span className="text-stone-700">{channelLabel(channelLabels, key)}</span>
+                    <span className="font-medium tabular-nums">{count.toLocaleString()}</span>
+                  </li>
                 ))}
-              </tbody>
-            </table>
-          </section>
-        )}
-      </section>
+              </ul>
+            </MetricCard>
+            <MetricCard title="Opportunities">
+              {opportunityEntries.length === 0 ? (
+                <p className="text-sm text-stone-500">No under-contract rows in window</p>
+              ) : (
+                <ul className="space-y-1.5 text-sm">
+                  {opportunityEntries.map(([key, count]) => (
+                    <li key={key} className="flex justify-between gap-3">
+                      <span className="text-stone-700 capitalize">{key.replace(/_/g, ' ')}</span>
+                      <span className="font-medium tabular-nums">{count.toLocaleString()}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </MetricCard>
+          </div>
+
+          <details className="text-sm text-stone-600">
+            <summary className="cursor-pointer text-stone-500 hover:text-stone-700">
+              Methodology note
+            </summary>
+            <p className="mt-2 leading-relaxed">{m.methodology_note}</p>
+          </details>
+        </div>
+      </CollapsibleSection>
+
+      {rows.length > 0 && journeyColumns.length > 0 && (
+        <CollapsibleSection
+          id="ramp-journey"
+          title="Lead journey rows"
+          subtitle={`Preview of ${Math.min(ROW_PREVIEW_LIMIT, rows.length).toLocaleString()} of ${rows.length.toLocaleString()} — export for full data`}
+          badge="Key columns"
+          defaultOpen
+        >
+          <div className="space-y-3">
+            <label className="inline-flex items-center gap-2 text-sm text-stone-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showAllJourneyColumns}
+                onChange={(e) => setShowAllJourneyColumns(e.target.checked)}
+                className="rounded border-stone-300"
+              />
+              Show all columns ({allJourneyColumns.length})
+            </label>
+            <ReportTable
+              caption="Lead journey preview"
+              maxHeight="32rem"
+              rows={previewRows as MarketingRampRow[]}
+              rowKey={(_, idx) => String(idx)}
+              columns={journeyColumns.map((col) => ({
+                ...col,
+                render:
+                  col.key === 'reporting_channel' || col.key === 'first_touch_channel'
+                    ? (row: MarketingRampRow) =>
+                        channelLabel(channelLabels, String(row[col.key] ?? ''))
+                    : col.key === 'population_kind'
+                      ? (row: MarketingRampRow) =>
+                          String(row[col.key] ?? '').replace(/_/g, ' ')
+                      : undefined,
+              }))}
+            />
+          </div>
+        </CollapsibleSection>
+      )}
 
       {consolidated ? (
-        <section className="space-y-6 pt-4 border-t border-stone-200">
-          <div>
-            <h3 className="text-xl font-semibold text-indigo-950">Consolidated list report</h3>
+        <div id="ramp-consolidated" className="scroll-mt-24 space-y-4">
+          <div className="pt-2">
+            <h3 className="text-xl font-semibold text-indigo-950">Consolidated list analysis</h3>
             <p className="text-sm text-stone-600 mt-1">
               {consolidated.metrics.cohort_scope === 'full_file'
                 ? 'Full REISift export'
                 : `Month ${consolidated.metrics.report_month}`}
-              {consolidated.metrics.period.start && consolidated.metrics.period.end ? (
-                <> · Created span {consolidated.metrics.period.start} → {consolidated.metrics.period.end}</>
-              ) : null}
             </p>
           </div>
-          <p className="text-sm text-stone-600 bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 leading-relaxed">
-            {consolidated.metrics.methodology_note}
-          </p>
           <ConsolidatedReportSections
             metrics={consolidated.metrics}
             jobId={result.job_id}
@@ -228,79 +322,56 @@ const MarketingRampResults = ({
             onNewRun={onNewRun}
             accent="emerald"
           />
-        </section>
+        </div>
       ) : (
         <p className="text-sm text-stone-500 italic">
-          Consolidated list sections are unavailable for this saved report. Re-run Gate 3 to include
-          list performance and channel analysis.
+          Consolidated sections unavailable for this saved report. Re-run Gate 3 to include list
+          analysis.
         </p>
       )}
     </div>
   );
 };
 
-function Stat({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: number | string;
-  sub?: string;
-}) {
+function NavPill({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-medium text-stone-500 uppercase tracking-wide">{label}</p>
-      <p className="text-2xl font-bold text-stone-900 mt-1 tabular-nums">
+    <button
+      type="button"
+      onClick={onClick}
+      className="px-3 py-1.5 text-sm font-medium rounded-lg bg-white border border-stone-200 text-stone-700 hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-900 transition-colors"
+    >
+      {label}
+    </button>
+  );
+}
+
+function Stat({ label, value, sub }: { label: string; value: number | string; sub?: string }) {
+  return (
+    <div className="rounded-xl border border-stone-200 bg-white px-3 py-3">
+      <p className="text-[11px] font-medium text-stone-500 uppercase tracking-wide">{label}</p>
+      <p className="text-xl font-bold text-stone-900 mt-0.5 tabular-nums">
         {typeof value === 'number' ? value.toLocaleString() : value}
       </p>
-      {sub && <p className="text-xs text-stone-500 mt-1">{sub}</p>}
+      {sub ? <p className="text-xs text-stone-500 mt-0.5">{sub}</p> : null}
     </div>
   );
 }
 
-function CountPanel({
+function MetricCard({
   title,
   subtitle,
-  entries,
-  channelLabels,
-  showAllEntries = false,
+  children,
 }: {
   title: string;
   subtitle?: string;
-  entries: [string, number][];
-  channelLabels?: Record<string, string>;
-  showAllEntries?: boolean;
+  children: ReactNode;
 }) {
-  const displayEntries = showAllEntries ? entries : entries.filter(([, v]) => v > 0);
-
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-      <h3 className="text-lg font-semibold text-stone-800 mb-1">{title}</h3>
-      {subtitle ? <p className="text-xs text-stone-500 mb-4">{subtitle}</p> : <div className="mb-3" />}
-      {displayEntries.length === 0 ? (
-        <p className="text-sm text-stone-500">No data in this category.</p>
-      ) : (
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="text-left text-stone-500 border-b">
-              <th className="py-2 pr-4">Label</th>
-              <th className="py-2 text-right">Count</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayEntries.map(([key, count]) => (
-              <tr key={key} className="border-b border-stone-100">
-                <td className="py-2 pr-4 font-medium text-stone-800">
-                  {channelLabels?.[key] ?? humanizeKey(key)}
-                </td>
-                <td className="py-2 text-right tabular-nums">{count.toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </section>
+    <div className="rounded-xl border border-stone-200 bg-stone-50/50 p-4">
+      <h4 className="text-sm font-semibold text-stone-800">{title}</h4>
+      {subtitle ? <p className="text-xs text-stone-500 mt-0.5">{subtitle}</p> : null}
+      <div className="mt-3">{children}</div>
+    </div>
   );
 }
 

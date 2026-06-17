@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import QualifiedLeadsResults from './QualifiedLeadsResults';
 import LifecycleSection from './LifecycleSection';
+import CollapsibleSection from './CollapsibleSection';
+import { ReportTable } from './ReportTable';
 import type { MonthlyConsolidatedMetrics } from '../types/monthlyConsolidated';
 import type { QualifiedLeadsAnalyzeResponse } from '../types/qualifiedLeads';
 import type { SummaryStats } from '../types/analysis';
@@ -20,7 +22,6 @@ const ConsolidatedReportSections = ({
   jobId,
   channelLabels,
   onNewRun,
-  accent = 'indigo',
 }: ConsolidatedReportSectionsProps) => {
   const cohort = m.cohort;
 
@@ -50,133 +51,120 @@ const ConsolidatedReportSections = ({
     return Array.from(grouped.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [m.combinations]);
 
-  const headingClass =
-    accent === 'emerald' ? 'text-lg font-semibold text-emerald-950' : 'text-lg font-semibold text-stone-800';
-  const groupHeadingClass =
-    accent === 'emerald' ? 'text-sm font-semibold text-emerald-900' : 'text-sm font-semibold text-indigo-900';
-
   return (
-    <div className="space-y-8">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Stat label="REISift rows analyzed" value={cohort.total_rows} />
-        <Stat label="CRM leads ((SF) tag)" value={cohort.crm_lead_rows} />
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+        <Stat label="REISift rows" value={cohort.total_rows} />
+        <Stat label="CRM leads" value={cohort.crm_lead_rows} />
         <Stat label="Closings" value={cohort.closing_rows} />
-        <Stat label="Stacked (multi-list)" value={cohort.stacked_rows} sub={`${cohort.stacked_pct}%`} />
+        <Stat label="Stacked rows" value={cohort.stacked_rows} sub={`${cohort.stacked_pct}%`} />
         <Stat
-          label="QL address match"
+          label="QL match"
           value={`${m.list_attribution.match_rate_pct}%`}
           sub={`${m.list_attribution.matched_to_reisift} matched`}
         />
       </div>
 
-      <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm overflow-x-auto">
-        <h3 className={`${headingClass} mb-4`}>List performance (distress focus)</h3>
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="text-left text-stone-500 border-b">
-              <th className="py-2 pr-4">List</th>
-              <th className="py-2 pr-4 text-right">Rows</th>
-              <th className="py-2 pr-4 text-right">CRM</th>
-              <th className="py-2 pr-4 text-right">Qualified</th>
-              <th className="py-2 pr-4 text-right">Closings</th>
-              <th className="py-2 pr-4 text-right">Close rate</th>
-              <th className="py-2 text-right">Stacked rows</th>
-            </tr>
-          </thead>
-          <tbody>
-            {m.lists.map((row) => (
-              <tr key={row.token} className="border-b border-stone-100">
-                <td className="py-2 pr-4 font-medium text-stone-800">{row.token}</td>
-                <td className="py-2 pr-4 text-right tabular-nums">{row.row_count.toLocaleString()}</td>
-                <td className="py-2 pr-4 text-right tabular-nums">{row.crm_lead_count.toLocaleString()}</td>
-                <td className="py-2 pr-4 text-right tabular-nums">
-                  {row.qualified_lead_count.toLocaleString()}
-                </td>
-                <td className="py-2 pr-4 text-right tabular-nums">{row.closing_count.toLocaleString()}</td>
-                <td className="py-2 pr-4 text-right tabular-nums">{pct(row.closing_rate)}</td>
-                <td className="py-2 text-right tabular-nums">{row.stacked_row_count.toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+      <CollapsibleSection
+        id="consolidated-lists"
+        title="List performance"
+        subtitle="Distress lists ranked by cohort activity"
+        badge={`${m.lists.length} lists`}
+        defaultOpen
+      >
+        <ReportTable
+          caption="List performance"
+          maxHeight="24rem"
+          rows={m.lists}
+          rowKey={(row) => row.token}
+          columns={[
+            { key: 'token', label: 'List', sticky: true },
+            { key: 'row_count', label: 'Rows', align: 'right' },
+            { key: 'crm_lead_count', label: 'CRM', align: 'right' },
+            { key: 'qualified_lead_count', label: 'Qualified', align: 'right' },
+            { key: 'closing_count', label: 'Closings', align: 'right' },
+            {
+              key: 'closing_rate',
+              label: 'Close rate',
+              align: 'right',
+              render: (row) => pct(row.closing_rate),
+            },
+            { key: 'stacked_row_count', label: 'Stacked', align: 'right' },
+          ]}
+        />
+      </CollapsibleSection>
 
-      <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm overflow-x-auto">
-        <h3 className={`${headingClass} mb-2`}>
-          List combinations (≥{comboMinRows.toLocaleString()} properties)
-        </h3>
-        <p className="text-xs text-stone-500 mb-4">
-          Distress-only stacks (excludes source/import and hygiene lists such as DNC, Dead Deals, Closings
-          App, MLSLI, TBD, Buyers). Threshold = median multi-list combo size for this cohort.
-        </p>
+      <CollapsibleSection
+        id="consolidated-combos"
+        title="List combinations"
+        subtitle={`Stacks with ≥${comboMinRows.toLocaleString()} properties (distress lists only)`}
+        badge={`${m.combinations.length} combos`}
+        defaultOpen={false}
+      >
         {m.combinations.length === 0 ? (
-          <p className="text-sm text-stone-500 py-4">
+          <p className="text-sm text-stone-500 py-2">
             No combinations met the minimum row threshold for this cohort.
           </p>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-5">
             {comboGroups.map(([group, combos]) => (
               <div key={group}>
-                <h4 className={`${groupHeadingClass} mb-2`}>{group}</h4>
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-stone-500 border-b">
-                      <th className="py-2 pr-4">Combination</th>
-                      <th className="py-2 pr-4 text-right">Rows</th>
-                      <th className="py-2 pr-4 text-right">Closings</th>
-                      <th className="py-2 text-right">Close rate</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {combos.map((c) => (
-                      <tr key={c.lists_key} className="border-b border-stone-100">
-                        <td className="py-2 pr-4 text-stone-800">{c.lists_key}</td>
-                        <td className="py-2 pr-4 text-right tabular-nums">
-                          {c.row_count.toLocaleString()}
-                        </td>
-                        <td className="py-2 pr-4 text-right tabular-nums">
-                          {c.closing_count.toLocaleString()}
-                        </td>
-                        <td className="py-2 text-right tabular-nums">{pct(c.closing_rate)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <h4 className="text-sm font-semibold text-stone-800 mb-2">{group}</h4>
+                <ReportTable
+                  caption={`${group} combinations`}
+                  maxHeight="16rem"
+                  rows={combos}
+                  rowKey={(row) => row.lists_key}
+                  columns={[
+                    { key: 'lists_key', label: 'Combination', sticky: true },
+                    { key: 'row_count', label: 'Rows', align: 'right' },
+                    { key: 'closing_count', label: 'Closings', align: 'right' },
+                    {
+                      key: 'closing_rate',
+                      label: 'Close rate',
+                      align: 'right',
+                      render: (row) => pct(row.closing_rate),
+                    },
+                  ]}
+                />
               </div>
             ))}
           </div>
         )}
-      </section>
+      </CollapsibleSection>
 
       {tagLeadSource.length > 0 && (
-        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-          <h3 className={`${headingClass} mb-2`}>Lead source (from tags)</h3>
-          <p className="text-xs text-stone-500 mb-4">
-            Derived from REISift tag history — first 8020 channel or list purchase.
-          </p>
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="text-left text-stone-500 border-b">
-                <th className="py-2 pr-4">Source</th>
-                <th className="py-2 pr-4 text-right">Properties</th>
-                <th className="py-2 text-right">Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tagLeadSource.map((row) => (
-                <tr key={row.source} className="border-b border-stone-100">
-                  <td className="py-2 pr-4 font-medium text-stone-800">{row.source}</td>
-                  <td className="py-2 pr-4 text-right tabular-nums">{row.count.toLocaleString()}</td>
-                  <td className="py-2 text-right tabular-nums">{row.share_pct.toFixed(1)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+        <CollapsibleSection
+          id="consolidated-tag-source"
+          title="Lead source (from tags)"
+          subtitle="First 8020 channel or list purchase per property"
+          defaultOpen={false}
+        >
+          <ReportTable
+            caption="Tag lead source"
+            maxHeight="16rem"
+            rows={tagLeadSource}
+            rowKey={(row) => row.source}
+            columns={[
+              { key: 'source', label: 'Source', sticky: true },
+              { key: 'count', label: 'Properties', align: 'right' },
+              {
+                key: 'share_pct',
+                label: 'Share',
+                align: 'right',
+                render: (row) => `${row.share_pct.toFixed(1)}%`,
+              },
+            ]}
+          />
+        </CollapsibleSection>
       )}
 
-      <section>
-        <h3 className="text-lg font-semibold text-teal-950 mb-3">Channel effectiveness (qualified leads)</h3>
+      <CollapsibleSection
+        id="consolidated-channels"
+        title="Channel effectiveness"
+        subtitle="Qualified leads by Salesforce lead source"
+        defaultOpen={false}
+      >
         <QualifiedLeadsResults
           result={qlWrapped}
           channelLabels={channelLabels}
@@ -185,40 +173,42 @@ const ConsolidatedReportSections = ({
           exporting={false}
           embedded
         />
-      </section>
+      </CollapsibleSection>
 
       {hasLifecycle && (
-        <section>
-          <h3 className="text-lg font-semibold text-navy mb-3">Lead journey (closing cohort)</h3>
+        <CollapsibleSection
+          id="consolidated-lifecycle"
+          title="Lead journey (closing cohort)"
+          defaultOpen={false}
+        >
           <LifecycleSection stats={lifecycleStats} />
-        </section>
+        </CollapsibleSection>
       )}
 
       {openPipeline && (openPipeline.stuck_at_stage?.length ?? 0) > 0 && (
-        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm overflow-x-auto">
-          <h3 className="text-lg font-semibold text-navy mb-2">Open pipeline — where leads are stuck</h3>
-          <p className="text-xs text-stone-500 mb-4">
-            Non-closing cohort rows ranked by highest lifecycle stage reached (tag-derived).
-          </p>
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="text-left text-stone-500 border-b">
-                <th className="py-2 pr-4">Highest stage</th>
-                <th className="py-2 pr-4 text-right">Properties</th>
-                <th className="py-2 text-right">Share of open</th>
-              </tr>
-            </thead>
-            <tbody>
-              {openPipeline.stuck_at_stage.map((row) => (
-                <tr key={row.stage} className="border-b border-stone-100">
-                  <td className="py-2 pr-4 font-medium text-stone-800">{row.stage}</td>
-                  <td className="py-2 pr-4 text-right tabular-nums">{row.count.toLocaleString()}</td>
-                  <td className="py-2 text-right tabular-nums">{row.share_pct.toFixed(1)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+        <CollapsibleSection
+          id="consolidated-pipeline"
+          title="Open pipeline"
+          subtitle="Where non-closing leads are stuck"
+          defaultOpen={false}
+        >
+          <ReportTable
+            caption="Open pipeline stuck at stage"
+            maxHeight="16rem"
+            rows={openPipeline.stuck_at_stage}
+            rowKey={(row) => row.stage}
+            columns={[
+              { key: 'stage', label: 'Highest stage', sticky: true },
+              { key: 'count', label: 'Properties', align: 'right' },
+              {
+                key: 'share_pct',
+                label: 'Share of open',
+                align: 'right',
+                render: (row) => `${row.share_pct.toFixed(1)}%`,
+              },
+            ]}
+          />
+        </CollapsibleSection>
       )}
     </div>
   );
@@ -234,12 +224,12 @@ function Stat({
   sub?: string;
 }) {
   return (
-    <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-medium text-stone-500 uppercase tracking-wide">{label}</p>
-      <p className="text-2xl font-bold text-stone-900 mt-1 tabular-nums">
+    <div className="rounded-xl border border-stone-200 bg-white px-3 py-3 shadow-sm">
+      <p className="text-[11px] font-medium text-stone-500 uppercase tracking-wide">{label}</p>
+      <p className="text-xl font-bold text-stone-900 mt-0.5 tabular-nums">
         {typeof value === 'number' ? value.toLocaleString() : value}
       </p>
-      {sub && <p className="text-xs text-stone-500 mt-1">{sub}</p>}
+      {sub && <p className="text-xs text-stone-500 mt-0.5">{sub}</p>}
     </div>
   );
 }

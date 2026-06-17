@@ -9,7 +9,7 @@ import MonthlyConsolidatedWorkspace from './components/MonthlyConsolidatedWorksp
 import MonthlyConsolidatedResults from './components/MonthlyConsolidatedResults';
 import MarketingRampWorkspace from './components/MarketingRampWorkspace';
 import MarketingRampResults from './components/MarketingRampResults';
-import SavedReports from './components/SavedReports';
+import SavedReports, { SavedReportsPanel } from './components/SavedReports';
 import {
   downloadQualifiedLeadsExport,
   downloadMonthlyConsolidatedExport,
@@ -252,6 +252,9 @@ function App() {
   const showWorkflowPicker =
     !showMonthlyResults && !showQualifiedResults && !showLegacyAttribution && !showMarketingResults;
 
+  const showAnyReport =
+    showMarketingResults || showMonthlyResults || showQualifiedResults || showLegacyAttribution;
+
   const workspaceTabId =
     gate === 'pastPatches' ? 'tab-gate1' : gate === 'marketingRamp' ? 'tab-gate3' : 'tab-gate2';
 
@@ -297,55 +300,71 @@ function App() {
           </>
         )}
         <div className="mb-6">
-          <MethodologySection />
+          {!showAnyReport ? <MethodologySection /> : null}
         </div>
         {showMarketingResults && loadedMarketingReport ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-            <div className="lg:col-span-2 min-w-0">
-              <MarketingRampResults
-                result={loadedMarketingReport}
-                channelLabels={QL_CHANNEL_LABELS}
-                onNewRun={handleNewRun}
-                onExport={() => handleExportMarketing(loadedMarketingReport.job_id)}
-                exporting={mrExporting}
-              />
-            </div>
-            {savedReportsSidebar}
+          <div className="space-y-6">
+            <MarketingRampResults
+              result={loadedMarketingReport}
+              channelLabels={QL_CHANNEL_LABELS}
+              onNewRun={handleNewRun}
+              onExport={() => handleExportMarketing(loadedMarketingReport.job_id)}
+              exporting={mrExporting}
+            />
+            <SavedReportsPanel
+              onOpenAttributionReport={handleOpenSavedReport}
+              onOpenQualifiedLeadsReport={handleOpenQualifiedReport}
+              onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
+              onOpenMarketingRampReport={handleOpenMarketingReport}
+              refreshKey={savedReportsRefresh}
+            />
           </div>
         ) : showMonthlyResults && loadedMonthlyReport ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-            <div className="lg:col-span-2 min-w-0">
-              <MonthlyConsolidatedResults
-                result={loadedMonthlyReport}
-                channelLabels={QL_CHANNEL_LABELS}
-                onNewRun={handleNewRun}
-                onExport={() => handleExportMonthly(loadedMonthlyReport.job_id)}
-                exporting={mcrExporting}
-              />
-            </div>
-            {savedReportsSidebar}
+          <div className="space-y-6">
+            <MonthlyConsolidatedResults
+              result={loadedMonthlyReport}
+              channelLabels={QL_CHANNEL_LABELS}
+              onNewRun={handleNewRun}
+              onExport={() => handleExportMonthly(loadedMonthlyReport.job_id)}
+              exporting={mcrExporting}
+            />
+            <SavedReportsPanel
+              onOpenAttributionReport={handleOpenSavedReport}
+              onOpenQualifiedLeadsReport={handleOpenQualifiedReport}
+              onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
+              onOpenMarketingRampReport={handleOpenMarketingReport}
+              refreshKey={savedReportsRefresh}
+            />
           </div>
         ) : showQualifiedResults && loadedQualifiedReport ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-            <div className="lg:col-span-2 min-w-0">
-              <p className="text-xs text-stone-500 mb-3 uppercase tracking-wide">Legacy saved report</p>
-              <QualifiedLeadsResults
-                result={loadedQualifiedReport}
-                channelLabels={QL_CHANNEL_LABELS}
-                onNewRun={handleNewRun}
-                onExportRows={() => handleExportQualifiedRows(loadedQualifiedReport.job_id)}
-                exporting={qlExporting}
-              />
-            </div>
-            {savedReportsSidebar}
+          <div className="space-y-6">
+            <p className="text-xs text-stone-500 uppercase tracking-wide">Legacy saved report</p>
+            <QualifiedLeadsResults
+              result={loadedQualifiedReport}
+              channelLabels={QL_CHANNEL_LABELS}
+              onNewRun={handleNewRun}
+              onExportRows={() => handleExportQualifiedRows(loadedQualifiedReport.job_id)}
+              exporting={qlExporting}
+            />
+            <SavedReportsPanel
+              onOpenAttributionReport={handleOpenSavedReport}
+              onOpenQualifiedLeadsReport={handleOpenQualifiedReport}
+              onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
+              onOpenMarketingRampReport={handleOpenMarketingReport}
+              refreshKey={savedReportsRefresh}
+            />
           </div>
         ) : showLegacyAttribution && loadedSavedReport ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-            <div className="lg:col-span-2 min-w-0">
-              <p className="text-xs text-stone-500 mb-3 uppercase tracking-wide">Legacy saved report</p>
-              <AnalysisResults results={loadedSavedReport} onNewAnalysis={handleNewRun} />
-            </div>
-            {savedReportsSidebar}
+          <div className="space-y-6">
+            <p className="text-xs text-stone-500 uppercase tracking-wide">Legacy saved report</p>
+            <AnalysisResults results={loadedSavedReport} onNewAnalysis={handleNewRun} />
+            <SavedReportsPanel
+              onOpenAttributionReport={handleOpenSavedReport}
+              onOpenQualifiedLeadsReport={handleOpenQualifiedReport}
+              onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
+              onOpenMarketingRampReport={handleOpenMarketingReport}
+              refreshKey={savedReportsRefresh}
+            />
           </div>
         ) : (
           <div

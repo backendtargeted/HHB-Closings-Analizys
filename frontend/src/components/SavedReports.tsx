@@ -209,3 +209,27 @@ const SavedReports = ({
 };
 
 export default SavedReports;
+
+type SavedReportsPanelProps = SavedReportsProps;
+
+export function SavedReportsPanel(props: SavedReportsPanelProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-2xl border border-stone-200 bg-white shadow-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-5 py-3 text-left hover:bg-stone-50 rounded-2xl"
+      >
+        <span className="font-semibold text-stone-800">Saved reports</span>
+        <span className="text-sm text-stone-500">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open ? (
+        <div className="px-5 pb-5 border-t border-stone-100">
+          <SavedReports {...props} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
