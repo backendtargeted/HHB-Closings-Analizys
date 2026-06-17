@@ -51,6 +51,13 @@ export type MarketingRampCompletedResponse = MarketingRampAnalyzeResponse & {
   metrics: MarketingRampMetrics;
 };
 
+export interface MarketingRampJobStatus {
+  job_id: string;
+  status: 'pending' | 'running' | 'started' | 'completed' | 'failed';
+  progress: number;
+  message: string;
+}
+
 export function asMarketingRampCompleted(
   response: MarketingRampAnalyzeResponse
 ): MarketingRampCompletedResponse {

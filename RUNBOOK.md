@@ -177,6 +177,8 @@ Exports with **500k+ rows** are supported but the analyze request is **synchrono
 
 Each Gate 3 analyze runs **marketing ramp** and **monthly consolidated** in parallel on the shared REISift + QL uploads (closings used only for ramp). The UI shows both sections on one page.
 
+**Execution:** Like Gate 2, the API returns **202 immediately** after saving uploads; analysis runs in a **background subprocess**. Poll `GET /api/marketing-ramp/{job_id}/status` until complete, then fetch results. This avoids proxy 502 timeouts on large files (unified analysis can take several minutes).
+
 ### Export
 
 - **Download full XLSX** — all Gate 2 sheets (Summary, List Performance, combinations, channels, lifecycle, etc.) plus a **Marketing Ramp** sheet with journey rows.

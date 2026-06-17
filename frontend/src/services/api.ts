@@ -21,6 +21,7 @@ import type { SavedReportsListResponse } from '../types/reports';
 import type {
   MarketingRampAnalyzeResponse,
   MarketingRampCompletedResponse,
+  MarketingRampJobStatus,
 } from '../types/marketingRamp';
 import { asMarketingRampCompleted } from '../types/marketingRamp';
 
@@ -497,18 +498,21 @@ export const deleteMonthlyConsolidatedJob = async (jobId: string): Promise<void>
 
 export async function pollMarketingRampJob(
   jobId: string,
-  onProgress?: (message: string) => void
+  onProgress?: (pct: number, message: string) => void
 ): Promise<MarketingRampCompletedResponse> {
   const deadline = Date.now() + 30 * 60 * 1000;
   while (Date.now() < deadline) {
-    const response = await getMarketingRampJob(jobId);
-    if (response.status === 'completed' && response.metrics) {
-      return asMarketingRampCompleted(response);
+    const status = await getMarketingRampJobStatus(jobId);
+    const serverPct = status.progress ?? 0;
+    const uiPct =
+      serverPct >= 10 ? 90 + Math.round(((serverPct - 10) / 90) * 9) : 90;
+    onProgress?.(Math.min(99, uiPct), status.message || 'Analyzing…');
+    if (status.status === 'completed') {
+      return asMarketingRampCompleted(await getMarketingRampJob(jobId));
     }
-    if (response.status === 'failed') {
-      throw new Error(response.message || 'Analysis failed');
+    if (status.status === 'failed') {
+      throw new Error(status.message || 'Analysis failed');
     }
-    onProgress?.(response.message || 'Analyzing…');
     await sleep(1000);
   }
   throw new Error('Analysis timed out after 30 minutes');
@@ -523,7 +527,7 @@ export const analyzeMarketingRamp = async (
     startDate?: string;
     endDate?: string;
   },
-  onProgress?: (message: string) => void
+  onProgress?: (pct: number, message: string) => void
 ): Promise<MarketingRampCompletedResponse> => {
   const form = new FormData();
   form.append('qualified_leads_file', qualifiedLeadsFile);
@@ -535,21 +539,38 @@ export const analyzeMarketingRamp = async (
     if (options.endDate) form.append('end_date', options.endDate);
   }
 
+  const totalBytes = qualifiedLeadsFile.size + reisiftFile.size + closingsFile.size;
+  onProgress?.(0, 'Uploading report files…');
+
   const response = await api.post<MarketingRampAnalyzeResponse>(
     '/marketing-ramp/analyze',
     form,
     {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: DIRECT_UPLOAD_TIMEOUT_MS,
+      onUploadProgress: (evt) => {
+        if (!evt.total && !totalBytes) {
+          return;
+        }
+        const loaded = evt.loaded ?? 0;
+        const total = evt.total && evt.total > 0 ? evt.total : totalBytes;
+        const pct = Math.min(85, Math.round((loaded / total) * 85));
+        onProgress?.(pct, 'Uploading report files…');
+      },
     }
   );
 
-  if (response.data.status === 'completed' && response.data.metrics) {
-    return asMarketingRampCompleted(response.data);
-  }
+  onProgress?.(88, 'Files received — analyzing…');
+  const result = await pollMarketingRampJob(response.data.job_id, onProgress);
+  onProgress?.(100, 'Done');
+  return result;
+};
 
-  onProgress?.('Files received — analyzing…');
-  return pollMarketingRampJob(response.data.job_id, onProgress);
+export const getMarketingRampJobStatus = async (
+  jobId: string
+): Promise<MarketingRampJobStatus> => {
+  const response = await api.get<MarketingRampJobStatus>(`/marketing-ramp/${jobId}/status`);
+  return response.data;
 };
 
 export const getMarketingRampJob = async (

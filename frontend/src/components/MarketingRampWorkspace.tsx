@@ -15,6 +15,8 @@ const MarketingRampWorkspace = ({ onRunComplete, onOpenResult }: MarketingRampWo
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [statusMessage, setStatusMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const handleRun = async () => {
@@ -28,11 +30,16 @@ const MarketingRampWorkspace = ({ onRunComplete, onOpenResult }: MarketingRampWo
     }
     setLoading(true);
     setError(null);
+    setProgress(0);
+    setStatusMessage('');
     try {
       const data = await analyzeMarketingRamp(qlFile, reisiftFile, closingsFile, {
         useFullFileSpan: useFullSpan,
         startDate: startDate.trim() || undefined,
         endDate: endDate.trim() || undefined,
+      }, (pct, msg) => {
+        setProgress(pct);
+        setStatusMessage(msg);
       });
       onOpenResult?.(data);
       onRunComplete?.();
@@ -40,6 +47,7 @@ const MarketingRampWorkspace = ({ onRunComplete, onOpenResult }: MarketingRampWo
       setError(getAxiosErrorMessage(e, 'Analysis failed'));
     } finally {
       setLoading(false);
+      setStatusMessage('');
     }
   };
 
@@ -48,8 +56,8 @@ const MarketingRampWorkspace = ({ onRunComplete, onOpenResult }: MarketingRampWo
       <h2 className="text-xl font-bold text-emerald-950">Marketing ramp report</h2>
       <p className="text-sm text-emerald-950/80 mt-2 leading-relaxed max-w-2xl">
         Upload Salesforce Total Qualified Leads, REISift contacts export, and closings workbook.
-        The report measures row-level lead journey timing — channel touches, REISift match, and
-        opportunity progression within your chosen date window.
+        The report measures row-level lead journey timing and includes the consolidated list report
+        on the same run. Large files analyze in the background after upload.
       </p>
 
       <div className="mt-6 grid gap-4 max-w-md">
@@ -125,13 +133,27 @@ const MarketingRampWorkspace = ({ onRunComplete, onOpenResult }: MarketingRampWo
         </p>
       )}
 
+      {loading && (
+        <div className="mt-4 max-w-md">
+          <div className="h-2 rounded-full bg-emerald-100 overflow-hidden">
+            <div
+              className="h-full bg-emerald-700 transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          {statusMessage ? (
+            <p className="text-xs text-emerald-900/80 mt-2">{statusMessage}</p>
+          ) : null}
+        </div>
+      )}
+
       <button
         type="button"
         onClick={handleRun}
         disabled={loading}
         className="mt-6 px-5 py-2.5 rounded-lg bg-emerald-800 text-white font-medium hover:bg-emerald-900 disabled:opacity-50"
       >
-        {loading ? 'Analyzing…' : 'Run marketing ramp report'}
+        {loading ? 'Analyzing… (large files may take a few minutes)' : 'Run marketing ramp report'}
       </button>
     </div>
   );
