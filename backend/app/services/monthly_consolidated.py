@@ -72,6 +72,7 @@ EXCLUDED_LIST_TOKENS: frozenset[str] = frozenset(
         "podio (source)",
         "appraiva (source list)",
         # Hygiene / operational (incl. REISift tokens split from legacy combined names)
+        "leads",
         "dnc + dead deals",
         "dnc",
         "dead deals",

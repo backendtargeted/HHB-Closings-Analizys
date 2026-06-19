@@ -45,6 +45,7 @@ def test_analysis_list_tokens_excludes_source_lists():
     assert analysis_list_tokens(raw) == ["High Equity", "Default Risk"]
     assert is_excluded_list_token("8020 Source List")
     assert is_excluded_list_token("podio (source)")
+    assert is_excluded_list_token("leads")
     assert not is_excluded_list_token("High Equity")
 
 
@@ -144,6 +145,7 @@ def test_hygiene_lists_excluded_from_metrics_and_combos():
     assert "Closings App" not in tokens
     assert "MLSLI" not in tokens
     assert "Buyers (Investorbase)" not in tokens
+    assert "Leads" not in tokens
     combos, _ = compute_combinations(df, min_rows=2)
     for c in combos:
         assert "DNC" not in c.lists_key
