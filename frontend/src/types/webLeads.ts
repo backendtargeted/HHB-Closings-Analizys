@@ -1,6 +1,9 @@
+export type WebLeadsCohortSource = 'web_leads' | 'court_alerts' | 'long_island_profiles';
+
 export interface WebLeadRow {
   address: string;
   address_key: string;
+  cohort_track_date: string;
   ql_create_date: string;
   reisift_created_on: string;
   anchor_date: string;
@@ -11,14 +14,22 @@ export interface WebLeadRow {
   days_list_to_web: number | null;
   prior_8020_channels: string[];
   journey_path: string;
+  journey_path_compact: string;
   matched: boolean;
+  closings_matched: boolean;
+  closings_date_closed: string;
+  closings_stage: string;
 }
 
 export interface WebLeadsMetrics {
   report_type: string;
   date_window_start: string;
   date_window_end: string;
+  cohort_source: string;
   inputs: {
+    cohort_rows: number;
+    cohort_source: string;
+    reisift_reference_rows: number;
     reisift_rows_ingested: number;
     website_ql_total: number;
   };

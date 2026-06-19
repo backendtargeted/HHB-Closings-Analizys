@@ -17,7 +17,6 @@ from typing import Any, Dict, Optional
 
 from flask import Blueprint, jsonify, request, send_file
 
-from ..services.qualified_leads import parse_ymd_param
 from ..services.report_store import (
     REPORTS_DIR,
     delete_report_file,
@@ -26,6 +25,7 @@ from ..services.report_store import (
 )
 from ..services.resumable_uploads import resolve_trusted_final_path
 from ..services.web_leads import (
+    COHORT_SOURCE_DEFAULT,
     analyze,
     build_export_workbook,
     result_from_metrics_dict,
@@ -71,11 +71,10 @@ def _read_job_progress(job_dir: Path) -> Dict[str, Any] | None:
 
 def _analyze_in_subprocess(
     job_id: str,
-    reisift_path: str,
-    ql_path: Optional[str],
-    use_full: bool,
-    start_raw: str,
-    end_raw: str,
+    cohort_path: str,
+    reisift_reference_path: str,
+    closings_path: Optional[str],
+    cohort_source: str,
     job_dir_str: str,
 ) -> None:
     job_dir = Path(job_dir_str)
@@ -101,24 +100,13 @@ def _analyze_in_subprocess(
                 "message": "Starting web leads analysis…",
             },
         )
-        if use_full:
-            result = analyze(
-                reisift_path,
-                ql_path,
-                use_full_file_span=True,
-                on_progress=on_progress,
-            )
-        else:
-            start_date = parse_ymd_param(start_raw, "start_date")
-            end_date = parse_ymd_param(end_raw, "end_date")
-            result = analyze(
-                reisift_path,
-                ql_path,
-                use_full_file_span=False,
-                start_date=start_date,
-                end_date=end_date,
-                on_progress=on_progress,
-            )
+        result = analyze(
+            cohort_path,
+            reisift_reference_path,
+            closings_path=closings_path,
+            cohort_source=cohort_source,
+            on_progress=on_progress,
+        )
 
         metrics = result.to_api_dict()
         created_at = datetime.now(timezone.utc).isoformat()
@@ -265,11 +253,10 @@ def _watch_analysis_process(job_id: str, proc: multiprocessing.Process) -> None:
 
 def _run_web_leads_job(
     job_id: str,
-    reisift_path: str,
-    ql_path: Optional[str],
-    use_full: bool,
-    start_raw: str,
-    end_raw: str,
+    cohort_path: str,
+    reisift_reference_path: str,
+    closings_path: Optional[str],
+    cohort_source: str,
 ) -> None:
     job_dir = WL_ROOT / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -288,7 +275,14 @@ def _run_web_leads_job(
 
     proc = multiprocessing.Process(
         target=_analyze_in_subprocess,
-        args=(job_id, reisift_path, ql_path, use_full, start_raw, end_raw, str(job_dir)),
+        args=(
+            job_id,
+            cohort_path,
+            reisift_reference_path,
+            closings_path,
+            cohort_source,
+            str(job_dir),
+        ),
         daemon=True,
     )
     proc.start()
@@ -298,11 +292,10 @@ def _run_web_leads_job(
 
 
 def _start_web_leads_job(
-    reisift_path: str,
-    ql_path: Optional[str],
-    use_full: bool,
-    start_raw: str,
-    end_raw: str,
+    cohort_path: str,
+    reisift_reference_path: str,
+    closings_path: Optional[str],
+    cohort_source: str,
     job_id: str | None = None,
 ) -> tuple[dict[str, Any], int]:
     job_id = job_id or str(uuid.uuid4())
@@ -321,7 +314,7 @@ def _start_web_leads_job(
 
     thread = threading.Thread(
         target=_run_web_leads_job,
-        args=(job_id, reisift_path, ql_path, use_full, start_raw, end_raw),
+        args=(job_id, cohort_path, reisift_reference_path, closings_path, cohort_source),
         daemon=True,
     )
     thread.start()
@@ -338,75 +331,63 @@ def _start_web_leads_job(
 
 @web_leads_bp.route("/analyze", methods=["POST"])
 def web_leads_analyze():
-    use_full = request.form.get("use_full_file_span", "1").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-    )
-    start_raw = (request.form.get("start_date") or "").strip()
-    end_raw = (request.form.get("end_date") or "").strip()
+    cohort_source = (request.form.get("cohort_source") or COHORT_SOURCE_DEFAULT).strip()
 
     if request.is_json:
         data = request.get_json() or {}
-        use_full = data.get("use_full_file_span", True)
-        if isinstance(use_full, str):
-            use_full = use_full.strip().lower() in ("1", "true", "yes")
-        start_raw = (data.get("start_date") or "").strip()
-        end_raw = (data.get("end_date") or "").strip()
-        reisift_raw = (data.get("reisift_path") or "").strip()
-        ql_raw = (data.get("qualified_leads_path") or "").strip() or None
+        cohort_source = (data.get("cohort_source") or COHORT_SOURCE_DEFAULT).strip()
+        cohort_raw = (data.get("cohort_path") or "").strip()
+        reisift_raw = (data.get("reisift_reference_path") or data.get("reisift_path") or "").strip()
+        closings_raw = (data.get("closings_path") or "").strip() or None
+        if not cohort_raw:
+            return jsonify({"detail": "cohort_path is required"}), 400
         if not reisift_raw:
-            return jsonify({"detail": "reisift_path is required"}), 400
-        if not use_full and ql_raw:
-            try:
-                parse_ymd_param(start_raw, "start_date")
-                parse_ymd_param(end_raw, "end_date")
-            except ValueError as exc:
-                return jsonify({"detail": str(exc)}), 400
+            return jsonify({"detail": "reisift_reference_path is required"}), 400
         try:
+            cohort_path = str(resolve_trusted_final_path(cohort_raw))
             reisift_path = str(resolve_trusted_final_path(reisift_raw))
-            ql_path = (
-                str(resolve_trusted_final_path(ql_raw)) if ql_raw else None
+            closings_path = (
+                str(resolve_trusted_final_path(closings_raw)) if closings_raw else None
             )
         except ValueError as exc:
             return jsonify({"detail": str(exc)}), 400
         payload, status = _start_web_leads_job(
-            reisift_path, ql_path, use_full, start_raw, end_raw
+            cohort_path, reisift_path, closings_path, cohort_source
         )
         return jsonify(_sanitize_for_json(payload)), status
 
-    reisift = request.files.get("reisift_file")
-    ql = request.files.get("qualified_leads_file")
+    cohort = request.files.get("cohort_file")
+    reisift = request.files.get("reisift_reference_file") or request.files.get("reisift_file")
+    closings = request.files.get("closings_file")
+    if not cohort or not cohort.filename:
+        return jsonify({"detail": "cohort_file is required"}), 400
     if not reisift or not reisift.filename:
-        return jsonify({"detail": "reisift_file is required"}), 400
-
-    if not use_full and ql and ql.filename:
-        try:
-            parse_ymd_param(start_raw, "start_date")
-            parse_ymd_param(end_raw, "end_date")
-        except ValueError as exc:
-            return jsonify({"detail": str(exc)}), 400
+        return jsonify({"detail": "reisift_reference_file is required"}), 400
 
     job_id = str(uuid.uuid4())
     job_dir = WL_ROOT / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
+    cohort_name = Path(cohort.filename.replace("\\", "/")).name
+    cohort_path_obj = job_dir / cohort_name
+    cohort.save(str(cohort_path_obj))
+
     reisift_name = Path(reisift.filename.replace("\\", "/")).name
-    reisift_path = job_dir / reisift_name
-    reisift.save(str(reisift_path))
-    ql_path: Optional[str] = None
-    if ql and ql.filename:
-        ql_name = Path(ql.filename.replace("\\", "/")).name
-        ql_path_obj = job_dir / ql_name
-        ql.save(str(ql_path_obj))
-        ql_path = str(ql_path_obj)
+    reisift_path_obj = job_dir / reisift_name
+    reisift.save(str(reisift_path_obj))
+
+    closings_path: Optional[str] = None
+    if closings and closings.filename:
+        closings_name = Path(closings.filename.replace("\\", "/")).name
+        closings_path_obj = job_dir / closings_name
+        closings.save(str(closings_path_obj))
+        closings_path = str(closings_path_obj)
 
     payload, status = _start_web_leads_job(
-        str(reisift_path),
-        ql_path,
-        use_full,
-        start_raw,
-        end_raw,
+        str(cohort_path_obj),
+        str(reisift_path_obj),
+        closings_path,
+        cohort_source,
         job_id=job_id,
     )
     return jsonify(_sanitize_for_json(payload)), status

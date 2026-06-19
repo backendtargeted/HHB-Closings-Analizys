@@ -13,7 +13,8 @@ const WebLeadsResults = ({ result, onNewRun, onExport, exporting }: WebLeadsResu
   const [shareStatus, setShareStatus] = useState<string | null>(null);
   const m = result.metrics;
   const warnings = result.warnings ?? m.warnings ?? [];
-  const matchedRows = m.rows.filter((r) => r.matched);
+  const cohortRows = m.inputs.cohort_rows ?? m.inputs.website_ql_total;
+  const matchedRows = m.rows;
 
   const handleShare = async () => {
     setShareStatus(null);
@@ -29,9 +30,12 @@ const WebLeadsResults = ({ result, onNewRun, onExport, exporting }: WebLeadsResu
           <p className="text-sm text-stone-600 mt-1">
             {m.date_window_start} → {m.date_window_end}
             {' · '}
-            {m.inputs.website_ql_total.toLocaleString()} website QL
+            {cohortRows.toLocaleString()} cohort track
             {' · '}
             {m.match.matched.toLocaleString()} matched REISift
+            {m.match.unmatched > 0
+              ? ` (${m.match.unmatched.toLocaleString()} not in reference)`
+              : ''}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -72,7 +76,7 @@ const WebLeadsResults = ({ result, onNewRun, onExport, exporting }: WebLeadsResu
       <p className="text-sm text-stone-600">{m.methodology_note}</p>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Website QL" value={m.inputs.website_ql_total} />
+        <StatCard label="Cohort track" value={cohortRows} />
         <StatCard label="Matched" value={m.match.matched} sub={`${m.match.match_rate_pct}%`} />
         <StatCard
           label="Prior history"
@@ -119,7 +123,7 @@ const WebLeadsResults = ({ result, onNewRun, onExport, exporting }: WebLeadsResu
 
       {m.top_lists.length > 0 && (
         <CompactTable
-          title="Top lists (matched web leads)"
+          title="Top lists (REISift matches)"
           columns={['List', 'Count', 'Share']}
           rows={m.top_lists.map((l) => [l.list, l.count, `${l.share_pct}%`])}
         />
@@ -148,12 +152,14 @@ const WebLeadsResults = ({ result, onNewRun, onExport, exporting }: WebLeadsResu
             <thead className="sticky top-0 bg-white">
               <tr className="border-b text-left text-stone-500">
                 <th className="py-2 pr-3">Address</th>
-                <th className="py-2 pr-3">Created on</th>
-                <th className="py-2 pr-3">SF Create</th>
+                <th className="py-2 pr-3">Track date</th>
+                <th className="py-2 pr-3">REISift Created</th>
+                <th className="py-2 pr-3">Anchor</th>
                 <th className="py-2 pr-3">Lists</th>
                 <th className="py-2 pr-3">Prior?</th>
                 <th className="py-2 pr-3">Days list→web</th>
                 <th className="py-2 pr-3">8020 before</th>
+                <th className="py-2 pr-3">Closed</th>
                 <th className="py-2">Path</th>
               </tr>
             </thead>
@@ -161,15 +167,25 @@ const WebLeadsResults = ({ result, onNewRun, onExport, exporting }: WebLeadsResu
               {matchedRows.map((r) => (
                 <tr key={r.address_key + r.anchor_date} className="border-b border-stone-100">
                   <td className="py-2 pr-3">{r.address}</td>
+                  <td className="py-2 pr-3">
+                    {r.cohort_track_date || r.ql_create_date || '—'}
+                  </td>
                   <td className="py-2 pr-3">{r.reisift_created_on || '—'}</td>
-                  <td className="py-2 pr-3">{r.ql_create_date || '—'}</td>
+                  <td className="py-2 pr-3">{r.anchor_date || '—'}</td>
                   <td className="py-2 pr-3">{r.lists.join(', ') || '—'}</td>
                   <td className="py-2 pr-3">{r.had_prior_history ? 'Yes' : 'No'}</td>
                   <td className="py-2 pr-3">
                     {r.days_list_to_web != null ? r.days_list_to_web : '—'}
                   </td>
                   <td className="py-2 pr-3">{r.prior_8020_channels.join(', ') || '—'}</td>
-                  <td className="py-2 font-mono">{r.journey_path}</td>
+                  <td className="py-2 pr-3">
+                    {r.closings_matched
+                      ? `${r.closings_date_closed || '—'} (${r.closings_stage || '—'})`
+                      : '—'}
+                  </td>
+                  <td className="py-2 font-mono">
+                    {r.journey_path_compact || r.journey_path}
+                  </td>
                 </tr>
               ))}
             </tbody>

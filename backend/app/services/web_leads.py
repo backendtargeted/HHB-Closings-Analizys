@@ -1,9 +1,9 @@
 """
-Gate 4 — Web Leads report.
+Gate 4 — Web Leads (and similar cohort tracks).
 
-Matches Salesforce Website qualified leads to REISift rows and measures how
-often those inbound web leads were already on distress lists or touched via
-8020 channels before the web-lead anchor date (REISift Created on vs SF Create Date).
+Upload a manually filtered cohort file (web leads, court alerts, etc.) and match
+each row to the full REISift export for lists, tag history, journey paths, and
+combinations. Optional closings workbook for close-date enrichment.
 """
 
 from __future__ import annotations
@@ -11,39 +11,44 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import date
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 
 from .lifecycle import Event, build_events
+from .closing_resolution import filter_closings_by_stage
 from .marketing_mapper import find_column_name
+from .marketing_ramp import (
+    CLOSINGS_ADDR,
+    DATE_CLOSED_CANDIDATES,
+    STAGE_CANDIDATES,
+    load_closings_file,
+    _address_key_from_row,
+    _discover_addr_cols,
+)
 from .monthly_consolidated import (
     CREATED_CANDIDATES,
     REISIFT_ADDR,
-    SF_ADDR,
     _col_val,
-    _discover_sf_addr_cols,
     _parse_tags_cached,
     _reisift_address_key,
-    _sf_address_key,
     analysis_list_tokens,
     load_reisift_file,
     stackable_list_tokens,
-)
-from .qualified_leads import (
-    CREATE_DATE_CANDIDATES,
-    load_qualified_leads_file,
-    rollup_channel,
-    validate_and_prepare,
 )
 
 REPORT_TYPE = "web_leads"
 
 ProgressCallback = Callable[[int, str], None]
 
-WEB_CHANNELS: Tuple[str, ...] = ("Website",)
+COHORT_SOURCE_DEFAULT = "web_leads"
+
+COHORT_SOURCE_LABELS: Dict[str, str] = {
+    "web_leads": "Web Leads track",
+    "court_alerts": "Court alerts track",
+    "long_island_profiles": "Long Island profiles track",
+}
 
 COMBO_CAP = 12
 PATH_CAP = 10
@@ -78,19 +83,20 @@ def _parse_event_date(iso: str) -> Optional[pd.Timestamp]:
 
 
 def _web_anchor_date(
+    cohort_created: Optional[pd.Timestamp],
     reisift_created: Optional[pd.Timestamp],
-    ql_create: Optional[pd.Timestamp],
     web_lead_tag_date: Optional[pd.Timestamp] = None,
 ) -> Optional[pd.Timestamp]:
+    """Anchor = when the lead entered this cohort track (web tag month preferred)."""
+    if web_lead_tag_date is not None and pd.notna(web_lead_tag_date):
+        return pd.Timestamp(web_lead_tag_date).normalize()
     candidates = [
         d
-        for d in (web_lead_tag_date, reisift_created, ql_create)
+        for d in (cohort_created, reisift_created)
         if d is not None and pd.notna(d)
     ]
     if not candidates:
         return None
-    if web_lead_tag_date is not None and pd.notna(web_lead_tag_date):
-        return pd.Timestamp(web_lead_tag_date).normalize()
     return min(candidates)
 
 
@@ -166,6 +172,53 @@ def compute_web_journey_path(events: List[Event], anchor: pd.Timestamp) -> str:
     return " -> ".join(tokens)
 
 
+def _compact_journey_display(path: str) -> str:
+    """Shorten noisy paths for summary tables (collapse repeated LIST tokens)."""
+    parts = [p.strip() for p in path.split(" -> ")]
+    compact: List[str] = []
+    for p in parts:
+        if p == "LIST" and compact and compact[-1] == "LIST":
+            continue
+        compact.append(p)
+    if len(compact) > 8:
+        head = compact[:3]
+        tail = compact[-4:]
+        compact = head + ["…"] + tail
+    return " -> ".join(compact)
+
+
+def _build_closings_index(closings_path: str) -> Dict[str, Dict[str, Any]]:
+    """address_key -> latest stage-filtered closing row."""
+    df = load_closings_file(closings_path)
+    filtered = filter_closings_by_stage(df)
+    date_col = find_column_name(filtered, DATE_CLOSED_CANDIDATES)
+    addr_cols = _discover_addr_cols(filtered, CLOSINGS_ADDR)
+    if not addr_cols.get("street"):
+        return {}
+
+    stage_col = find_column_name(filtered, STAGE_CANDIDATES)
+    index: Dict[str, Dict[str, Any]] = {}
+    for _, row in filtered.iterrows():
+        key = _address_key_from_row(row, addr_cols)
+        if not key or key == "|||":
+            continue
+        closed_raw = row.get(date_col, "") if date_col else ""
+        closed = pd.to_datetime(closed_raw, errors="coerce")
+        closed_ymd = ""
+        if pd.notna(closed):
+            closed_ymd = pd.Timestamp(closed).date().isoformat()
+        stage_val = str(row.get(stage_col, "") or "").strip() if stage_col else ""
+        entry = {
+            "date_closed": closed_ymd,
+            "stage": stage_val,
+            "sort_closed": pd.Timestamp(closed) if pd.notna(closed) else pd.Timestamp.min,
+        }
+        existing = index.get(key)
+        if existing is None or entry["sort_closed"] > existing["sort_closed"]:
+            index[key] = entry
+    return index
+
+
 def _prior_history_from_events(
     events: List[Event],
     anchor: pd.Timestamp,
@@ -214,7 +267,7 @@ def _build_reisift_index(df: pd.DataFrame) -> Dict[str, int]:
 class WebLeadRow:
     address: str
     address_key: str
-    ql_create_date: str
+    cohort_track_date: str
     reisift_created_on: str
     anchor_date: str
     lists: List[str]
@@ -224,13 +277,18 @@ class WebLeadRow:
     days_list_to_web: Optional[int]
     prior_8020_channels: List[str]
     journey_path: str
+    journey_path_compact: str
     matched: bool
+    closings_matched: bool = False
+    closings_date_closed: str = ""
+    closings_stage: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "address": self.address,
             "address_key": self.address_key,
-            "ql_create_date": self.ql_create_date,
+            "cohort_track_date": self.cohort_track_date,
+            "ql_create_date": self.cohort_track_date,  # legacy alias
             "reisift_created_on": self.reisift_created_on,
             "anchor_date": self.anchor_date,
             "lists": self.lists,
@@ -240,7 +298,11 @@ class WebLeadRow:
             "days_list_to_web": self.days_list_to_web,
             "prior_8020_channels": self.prior_8020_channels,
             "journey_path": self.journey_path,
+            "journey_path_compact": self.journey_path_compact,
             "matched": self.matched,
+            "closings_matched": self.closings_matched,
+            "closings_date_closed": self.closings_date_closed,
+            "closings_stage": self.closings_stage,
         }
 
 
@@ -264,6 +326,7 @@ class WebLeadsResult:
     rows: List[WebLeadRow]
     warnings: List[str] = field(default_factory=list)
     methodology_note: str = ""
+    cohort_source: str = COHORT_SOURCE_DEFAULT
 
     def to_api_dict(self) -> Dict[str, Any]:
         return {
@@ -271,8 +334,11 @@ class WebLeadsResult:
             "date_window_start": self.date_window_start,
             "date_window_end": self.date_window_end,
             "inputs": {
-                "reisift_rows_ingested": self.reisift_rows_ingested,
+                "cohort_rows": self.website_ql_total,
+                "cohort_source": self.cohort_source,
+                "reisift_reference_rows": self.reisift_rows_ingested,
                 "website_ql_total": self.website_ql_total,
+                "reisift_rows_ingested": self.reisift_rows_ingested,
             },
             "match": {
                 "matched": self.matched_count,
@@ -292,6 +358,7 @@ class WebLeadsResult:
             "rows": [r.to_dict() for r in self.rows],
             "warnings": self.warnings,
             "methodology_note": self.methodology_note,
+            "cohort_source": self.cohort_source,
         }
 
 
@@ -301,7 +368,7 @@ def result_from_metrics_dict(m: Dict[str, Any]) -> WebLeadsResult:
         WebLeadRow(
             address=r.get("address", ""),
             address_key=r.get("address_key", ""),
-            ql_create_date=r.get("ql_create_date", ""),
+            cohort_track_date=r.get("cohort_track_date") or r.get("ql_create_date", ""),
             reisift_created_on=r.get("reisift_created_on", ""),
             anchor_date=r.get("anchor_date", ""),
             lists=r.get("lists") or [],
@@ -311,7 +378,11 @@ def result_from_metrics_dict(m: Dict[str, Any]) -> WebLeadsResult:
             days_list_to_web=r.get("days_list_to_web"),
             prior_8020_channels=r.get("prior_8020_channels") or [],
             journey_path=r.get("journey_path", ""),
+            journey_path_compact=r.get("journey_path_compact") or r.get("journey_path", ""),
             matched=bool(r.get("matched", True)),
+            closings_matched=bool(r.get("closings_matched")),
+            closings_date_closed=r.get("closings_date_closed", ""),
+            closings_stage=r.get("closings_stage", ""),
         )
         for r in m.get("rows") or []
     ]
@@ -337,6 +408,7 @@ def result_from_metrics_dict(m: Dict[str, Any]) -> WebLeadsResult:
         rows=rows,
         warnings=m.get("warnings") or [],
         methodology_note=m.get("methodology_note", ""),
+        cohort_source=m.get("cohort_source", COHORT_SOURCE_DEFAULT),
     )
 
 
@@ -350,35 +422,6 @@ def _format_address(row: pd.Series) -> str:
     return f"{street}, {city}".strip(", ") or street or "Unknown"
 
 
-def _website_ql_window(
-    sf_df: pd.DataFrame,
-    use_full_file_span: bool,
-    start: Optional[date],
-    end: Optional[date],
-) -> Tuple[pd.DataFrame, date, date]:
-    prepared, lead_col, create_col = validate_and_prepare(sf_df)
-    parsed_dates = prepared["_create_date_parsed"]
-    valid = parsed_dates.dropna()
-    if valid.empty:
-        raise ValueError("Qualified leads file has no parseable Create Date values.")
-
-    if use_full_file_span:
-        window_start = valid.min().date()
-        window_end = valid.max().date()
-    else:
-        if start is None or end is None:
-            raise ValueError("start_date and end_date required when not using full file span.")
-        window_start, window_end = start, end
-
-    w_start = pd.Timestamp(window_start)
-    w_end = pd.Timestamp(window_end) + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
-    in_window = parsed_dates.notna() & (parsed_dates >= w_start) & (parsed_dates <= w_end)
-    windowed = prepared.loc[in_window].copy()
-    windowed["_reporting_channel"] = windowed[lead_col].map(rollup_channel)
-    website = windowed.loc[windowed["_reporting_channel"].isin(WEB_CHANNELS)].copy()
-    return website, window_start, window_end
-
-
 def _reisift_created_ts(
     row: pd.Series, created_col: Optional[str]
 ) -> Optional[pd.Timestamp]:
@@ -390,21 +433,28 @@ def _reisift_created_ts(
     return pd.Timestamp(parsed).normalize()
 
 
-def _process_matched_reisift_row(
-    rs_row: pd.Series,
-    created_col: Optional[str],
-    ql_create_ts: Optional[pd.Timestamp],
+def _process_cohort_reisift_match(
+    cohort_row: pd.Series,
+    reisift_row: pd.Series,
+    cohort_created_col: Optional[str],
+    reisift_created_col: Optional[str],
     address_key: str,
+    closings_entry: Optional[Dict[str, Any]] = None,
 ) -> Tuple[WebLeadRow, bool]:
-    address = _format_address(rs_row)
-    reisift_created_ts = _reisift_created_ts(rs_row, created_col)
-    tags_val = rs_row.get("Tags", "")
-    web_tag_date = parse_web_lead_tag_date(tags_val)
+    """Enrich cohort row using full REISift tags/lists; anchor from cohort track."""
+    address = _format_address(cohort_row)
+    cohort_created = _reisift_created_ts(cohort_row, cohort_created_col)
+    reisift_created = _reisift_created_ts(reisift_row, reisift_created_col)
+    cohort_tags = cohort_row.get("Tags", "")
+    web_tag_date = parse_web_lead_tag_date(cohort_tags) or parse_web_lead_tag_date(
+        reisift_row.get("Tags", "")
+    )
 
-    anchor = _web_anchor_date(reisift_created_ts, ql_create_ts, web_tag_date)
+    anchor = _web_anchor_date(cohort_created, reisift_created, web_tag_date)
     if anchor is None:
         anchor = pd.Timestamp.now().normalize()
 
+    tags_val = reisift_row.get("Tags", "")
     parsed = _parse_tags_cached(tags_val)
     events = build_events(parsed)
     had_prior, earliest_list, channels = _prior_history_from_events(
@@ -417,17 +467,26 @@ def _process_matched_reisift_row(
         earliest_list_str = earliest_list.date().isoformat()
         days_list = (anchor - earliest_list).days
 
-    lists = analysis_list_tokens(rs_row.get("Lists", ""))
-    stackable = stackable_list_tokens(rs_row.get("Lists", ""))
+    lists = analysis_list_tokens(reisift_row.get("Lists", ""))
+    stackable = stackable_list_tokens(reisift_row.get("Lists", ""))
     combo_key = " + ".join(sorted(stackable)) if len(stackable) >= 2 else ""
     journey = compute_web_journey_path(events, anchor)
+    journey_compact = _compact_journey_display(journey)
+
+    closings_matched = closings_entry is not None
+    closings_date = (closings_entry or {}).get("date_closed", "")
+    closings_stage = (closings_entry or {}).get("stage", "")
+
+    cohort_track_date_str = (
+        cohort_created.date().isoformat() if cohort_created is not None else ""
+    )
 
     row = WebLeadRow(
         address=address,
         address_key=address_key,
-        ql_create_date=ql_create_ts.date().isoformat() if ql_create_ts is not None else "",
+        cohort_track_date=cohort_track_date_str,
         reisift_created_on=(
-            reisift_created_ts.date().isoformat() if reisift_created_ts is not None else ""
+            reisift_created.date().isoformat() if reisift_created is not None else ""
         ),
         anchor_date=anchor.date().isoformat(),
         lists=lists,
@@ -437,7 +496,11 @@ def _process_matched_reisift_row(
         days_list_to_web=days_list,
         prior_8020_channels=channels,
         journey_path=journey,
+        journey_path_compact=journey_compact,
         matched=True,
+        closings_matched=closings_matched,
+        closings_date_closed=closings_date,
+        closings_stage=closings_stage,
     )
     return row, had_prior
 
@@ -458,6 +521,7 @@ def _finalize_result(
     age_counter: Counter[str],
     warnings: List[str],
     methodology: str,
+    cohort_source: str = COHORT_SOURCE_DEFAULT,
     on_progress: Optional[ProgressCallback] = None,
 ) -> WebLeadsResult:
     if on_progress:
@@ -537,87 +601,97 @@ def _finalize_result(
         rows=rows,
         warnings=warnings,
         methodology_note=methodology,
+        cohort_source=cohort_source,
     )
 
 
 def analyze(
-    reisift_path: str,
-    qualified_leads_path: Optional[str] = None,
+    cohort_path: str,
+    reisift_reference_path: str,
+    closings_path: Optional[str] = None,
     *,
-    use_full_file_span: bool = True,
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
+    cohort_source: str = COHORT_SOURCE_DEFAULT,
     on_progress: Optional[ProgressCallback] = None,
 ) -> WebLeadsResult:
-    if qualified_leads_path:
-        return _analyze_with_qualified_leads(
-            reisift_path,
-            qualified_leads_path,
-            use_full_file_span=use_full_file_span,
-            start_date=start_date,
-            end_date=end_date,
-            on_progress=on_progress,
-        )
-    return _analyze_reisift_only(reisift_path, on_progress=on_progress)
-
-
-def _analyze_reisift_only(
-    reisift_path: str,
-    on_progress: Optional[ProgressCallback] = None,
-) -> WebLeadsResult:
+    """Match a manually filtered cohort track to the full REISift reference."""
     warnings: List[str] = []
+    cohort_label = COHORT_SOURCE_LABELS.get(cohort_source, cohort_source)
 
     def report(progress: int, message: str) -> None:
         if on_progress:
             on_progress(progress, message)
 
-    report(10, "Loading REISift export…")
-    reisift_df = load_reisift_file(reisift_path)
+    report(5, "Loading cohort track file…")
+    cohort_df = load_reisift_file(cohort_path)
+    cohort_total = len(cohort_df)
+    if cohort_total == 0:
+        raise ValueError("Cohort track file is empty.")
+
+    report(15, "Loading full REISift reference…")
+    reisift_df = load_reisift_file(reisift_reference_path)
     reisift_ingested = len(reisift_df)
-    created_col = _discover_reisift_created_col(reisift_df)
-    if not created_col:
+
+    cohort_created_col = _discover_reisift_created_col(cohort_df)
+    reisift_created_col = _discover_reisift_created_col(reisift_df)
+    if not cohort_created_col:
         warnings.append(
-            "REISift export has no Created column; web-lead anchor uses List Purchased Web Leads tag only."
+            "Cohort track file has no Created column; track dates use web-lead tag month only."
+        )
+    if not reisift_created_col:
+        warnings.append("REISift reference has no Created column.")
+
+    if "Tags" not in cohort_df.columns:
+        warnings.append(
+            "Cohort track file has no Tags column; web-lead anchor uses Created dates only."
         )
 
-    if "Tags" not in reisift_df.columns:
-        raise ValueError("REISift export is missing required Tags column.")
+    report(25, "Indexing REISift reference addresses…")
+    reisift_index = _build_reisift_index(reisift_df)
 
-    report(35, "Identifying web leads from REISift tags…")
-    cohort_mask = reisift_df["Tags"].map(row_is_web_lead)
-    cohort = reisift_df.loc[cohort_mask].copy()
-    website_total = len(cohort)
-    if website_total == 0:
-        raise ValueError(
-            "No rows with a List Purchased Web Leads tag found. "
-            "Export web leads from REISift or upload Salesforce Website qualified leads."
-        )
-
-    created_dates = []
-    web_tag_dates = []
-    for _, row in cohort.iterrows():
-        ts = _reisift_created_ts(row, created_col)
-        if ts is not None:
-            created_dates.append(ts)
-        wt = parse_web_lead_tag_date(row.get("Tags", ""))
-        if wt is not None:
-            web_tag_dates.append(wt)
-    span_candidates = created_dates + web_tag_dates
-    window_start = min(span_candidates).date().isoformat() if span_candidates else ""
-    window_end = max(span_candidates).date().isoformat() if span_candidates else ""
+    closings_index: Dict[str, Dict[str, Any]] = {}
+    if closings_path:
+        report(30, "Loading closings workbook…")
+        closings_index = _build_closings_index(closings_path)
+        if not closings_index:
+            warnings.append(
+                "Closings file loaded but no stage-filtered closings matched address columns."
+            )
 
     rows: List[WebLeadRow] = []
     list_counter: Counter[str] = Counter()
     combo_counter: Counter[str] = Counter()
     path_counter: Counter[str] = Counter()
     age_counter: Counter[str] = Counter()
+    matched = 0
+    unmatched = 0
     prior_count = 0
+    track_dates: List[pd.Timestamp] = []
 
-    report(55, f"Analyzing {website_total:,} web lead rows…")
-    for i, (_, rs_row) in enumerate(cohort.iterrows()):
-        key = _reisift_address_key(rs_row)
-        web_row, had_prior = _process_matched_reisift_row(
-            rs_row, created_col, None, key
+    report(40, f"Matching {cohort_total:,} cohort rows to REISift…")
+    for i, (_, cohort_row) in enumerate(cohort_df.iterrows()):
+        key = _reisift_address_key(cohort_row)
+        cohort_created = _reisift_created_ts(cohort_row, cohort_created_col)
+        if cohort_created is not None:
+            track_dates.append(cohort_created)
+        web_tag = parse_web_lead_tag_date(cohort_row.get("Tags", ""))
+        if web_tag is not None:
+            track_dates.append(web_tag)
+
+        idx = reisift_index.get(key)
+        if idx is None:
+            unmatched += 1
+            continue
+
+        matched += 1
+        reisift_row = reisift_df.iloc[idx]
+        closings_entry = closings_index.get(key)
+        web_row, had_prior = _process_cohort_reisift_match(
+            cohort_row,
+            reisift_row,
+            cohort_created_col,
+            reisift_created_col,
+            key,
+            closings_entry,
         )
         rows.append(web_row)
         if had_prior:
@@ -630,161 +704,45 @@ def _analyze_reisift_only(
             list_counter[lst] += 1
         if web_row.combo_key:
             combo_counter[web_row.combo_key] += 1
-        path_counter[web_row.journey_path] += 1
+        path_counter[web_row.journey_path_compact] += 1
+
         if on_progress and i > 0 and i % 50 == 0:
-            report(55 + int(25 * i / max(website_total, 1)), f"Row {i:,} / {website_total:,}…")
+            report(
+                40 + int(40 * i / max(cohort_total, 1)),
+                f"Row {i:,} / {cohort_total:,}…",
+            )
+
+    if cohort_total and matched == 0:
+        warnings.append(
+            "No cohort rows matched the REISift reference by address; check exports align."
+        )
+    elif cohort_total and round(100.0 * matched / cohort_total, 2) < 50:
+        warnings.append(
+            f"Only {round(100.0 * matched / cohort_total, 2)}% of cohort rows "
+            "matched REISift by address; check exports align."
+        )
+
+    window_start = min(track_dates).date().isoformat() if track_dates else ""
+    window_end = max(track_dates).date().isoformat() if track_dates else ""
 
     methodology = (
-        "Cohort = REISift rows carrying a List Purchased Web Leads tag. "
-        "Anchor date = Web Leads list-purchase month (fallback: REISift Created on). "
-        "Prior history = any distress list purchase or (8020) CC/SMS/DM strictly before anchor. "
-        f"List combinations require ≥{COMBO_MIN_ROWS} web leads and cap at {COMBO_CAP}. "
-        f"Journey paths cap at {PATH_CAP} routes ending in WEB."
+        f"Cohort = {cohort_label} (manually filtered export). "
+        "Each row is matched to the full REISift reference by normalized property address. "
+        "This report lists REISift matches only; unmatched cohort rows are counted but not shown. "
+        "Anchor date = List Purchased Web Leads tag month when present, else cohort Created on "
+        "(fallback: REISift Created on). "
+        "Prior history = distress list purchase or (8020) CC/SMS/DM strictly before anchor. "
+        f"List combinations require ≥{COMBO_MIN_ROWS} matched rows and cap at {COMBO_CAP}. "
+        f"Journey paths cap at {PATH_CAP} compact routes ending in WEB."
     )
+    if closings_path:
+        methodology += " Closings enrichment uses stage-filtered closings matched by address."
 
     return _finalize_result(
         date_window_start=window_start,
         date_window_end=window_end,
         reisift_ingested=reisift_ingested,
-        website_total=website_total,
-        matched=website_total,
-        unmatched=0,
-        prior_count=prior_count,
-        rows=rows,
-        list_counter=list_counter,
-        combo_counter=combo_counter,
-        path_counter=path_counter,
-        age_counter=age_counter,
-        warnings=warnings,
-        methodology=methodology,
-        on_progress=on_progress,
-    )
-
-
-def _analyze_with_qualified_leads(
-    reisift_path: str,
-    qualified_leads_path: str,
-    *,
-    use_full_file_span: bool = True,
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
-    on_progress: Optional[ProgressCallback] = None,
-) -> WebLeadsResult:
-    warnings: List[str] = []
-
-    def report(progress: int, message: str) -> None:
-        if on_progress:
-            on_progress(progress, message)
-
-    report(10, "Loading REISift export…")
-    reisift_df = load_reisift_file(reisift_path)
-    reisift_ingested = len(reisift_df)
-    created_col = _discover_reisift_created_col(reisift_df)
-    if not created_col:
-        warnings.append(
-            "REISift export has no Created / Created on column; anchor dates use Salesforce Create Date only."
-        )
-
-    report(25, "Indexing REISift addresses…")
-    reisift_index = _build_reisift_index(reisift_df)
-
-    report(35, "Loading Website qualified leads…")
-    sf_df = load_qualified_leads_file(qualified_leads_path)
-    website_ql, window_start, window_end = _website_ql_window(
-        sf_df, use_full_file_span, start_date, end_date
-    )
-    website_total = len(website_ql)
-    if website_total == 0:
-        warnings.append(
-            f"No Website-channel qualified leads with Create Date in {window_start} – {window_end}."
-        )
-
-    addr_cols = _discover_sf_addr_cols(sf_df)
-    if not addr_cols.get("street"):
-        raise ValueError("Qualified leads file is missing a usable street/address column.")
-
-    report(50, "Matching web leads to REISift…")
-    rows: List[WebLeadRow] = []
-    list_counter: Counter[str] = Counter()
-    combo_counter: Counter[str] = Counter()
-    path_counter: Counter[str] = Counter()
-    age_counter: Counter[str] = Counter()
-    matched = 0
-    unmatched = 0
-    prior_count = 0
-    create_col = find_column_name(sf_df, CREATE_DATE_CANDIDATES) or ""
-
-    for _, ql_row in website_ql.iterrows():
-        key = _sf_address_key(ql_row, addr_cols)
-        ql_create = pd.to_datetime(ql_row.get(create_col, ""), errors="coerce")
-        ql_create_ts = (
-            pd.Timestamp(ql_create).normalize() if pd.notna(ql_create) else None
-        )
-
-        idx = reisift_index.get(key)
-        if idx is None:
-            unmatched += 1
-            rows.append(
-                WebLeadRow(
-                    address=str(ql_row.get(addr_cols["street"], "") or "").strip(),
-                    address_key=key,
-                    ql_create_date=ql_create_ts.date().isoformat() if ql_create_ts is not None else "",
-                    reisift_created_on="",
-                    anchor_date=ql_create_ts.date().isoformat() if ql_create_ts is not None else "",
-                    lists=[],
-                    combo_key="",
-                    had_prior_history=False,
-                    earliest_list_date="",
-                    days_list_to_web=None,
-                    prior_8020_channels=[],
-                    journey_path="WEB",
-                    matched=False,
-                )
-            )
-            continue
-
-        matched += 1
-        web_row, had_prior = _process_matched_reisift_row(
-            reisift_df.iloc[idx],
-            created_col,
-            ql_create_ts,
-            key,
-        )
-        rows.append(web_row)
-        if had_prior:
-            prior_count += 1
-            if web_row.days_list_to_web is not None:
-                age_counter[_age_bucket_label(web_row.days_list_to_web)] += 1
-            elif had_prior:
-                age_counter["Unknown"] += 1
-        for lst in web_row.lists:
-            list_counter[lst] += 1
-        if web_row.combo_key:
-            combo_counter[web_row.combo_key] += 1
-        path_counter[web_row.journey_path] += 1
-
-    if matched + unmatched and round(100.0 * matched / (matched + unmatched), 2) < 50:
-        warnings.append(
-            f"Only {round(100.0 * matched / (matched + unmatched), 2)}% of Website leads "
-            "matched REISift by address; check exports align."
-        )
-
-    methodology = (
-        "Cohort = Salesforce Total Qualified Leads with Lead Source mapped to Website, "
-        f"Create Date in {window_start} – {window_end}. "
-        "Each lead is matched to REISift by normalized property address. "
-        "Anchor date = Web Leads list tag month when present, else earlier of REISift Created on "
-        "and SF Create Date. "
-        "Prior history = distress list purchase or (8020) CC/SMS/DM strictly before anchor. "
-        f"List combinations require ≥{COMBO_MIN_ROWS} matched web leads and cap at {COMBO_CAP}. "
-        f"Journey paths cap at {PATH_CAP} distinct routes ending in WEB."
-    )
-
-    return _finalize_result(
-        date_window_start=window_start.isoformat(),
-        date_window_end=window_end.isoformat(),
-        reisift_ingested=reisift_ingested,
-        website_total=website_total,
+        website_total=cohort_total,
         matched=matched,
         unmatched=unmatched,
         prior_count=prior_count,
@@ -795,6 +753,7 @@ def _analyze_with_qualified_leads(
         age_counter=age_counter,
         warnings=warnings,
         methodology=methodology,
+        cohort_source=cohort_source,
         on_progress=on_progress,
     )
 
@@ -811,7 +770,8 @@ def build_export_workbook(result: WebLeadsResult) -> bytes:
             {"metric": "Date window start", "value": result.date_window_start},
             {"metric": "Date window end", "value": result.date_window_end},
             {"metric": "REISift rows ingested", "value": result.reisift_rows_ingested},
-            {"metric": "Website QL total", "value": result.website_ql_total},
+            {"metric": "Cohort track rows", "value": result.website_ql_total},
+            {"metric": "Cohort source", "value": result.cohort_source},
             {"metric": "Matched to REISift", "value": result.matched_count},
             {"metric": "Unmatched", "value": result.unmatched_count},
             {"metric": "Match rate %", "value": result.match_rate_pct},

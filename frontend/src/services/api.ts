@@ -625,18 +625,24 @@ export async function pollWebLeadsJob(
 }
 
 async function analyzeWebLeadsDirect(
-  reisiftFile: File,
-  qualifiedLeadsFile?: File,
+  cohortFile: File,
+  reisiftReferenceFile: File,
+  closingsFile?: File,
+  cohortSource?: string,
   onProgress?: (pct: number, message: string) => void
 ): Promise<WebLeadsCompletedResponse> {
   const form = new FormData();
-  form.append('reisift_file', reisiftFile);
-  if (qualifiedLeadsFile) {
-    form.append('qualified_leads_file', qualifiedLeadsFile);
+  form.append('cohort_file', cohortFile);
+  form.append('reisift_reference_file', reisiftReferenceFile);
+  if (closingsFile) {
+    form.append('closings_file', closingsFile);
   }
-  form.append('use_full_file_span', '1');
+  if (cohortSource) {
+    form.append('cohort_source', cohortSource);
+  }
 
-  const totalBytes = reisiftFile.size + (qualifiedLeadsFile?.size ?? 0);
+  const totalBytes =
+    cohortFile.size + reisiftReferenceFile.size + (closingsFile?.size ?? 0);
   onProgress?.(0, 'Uploading report files…');
 
   const response = await api.post<{ job_id: string; status: string; message: string }>(
@@ -664,35 +670,54 @@ async function analyzeWebLeadsDirect(
 }
 
 async function analyzeWebLeadsResumable(
-  reisiftFile: File,
-  qualifiedLeadsFile?: File,
+  cohortFile: File,
+  reisiftReferenceFile: File,
+  closingsFile?: File,
+  cohortSource?: string,
   onProgress?: (pct: number, message: string) => void
 ): Promise<WebLeadsCompletedResponse> {
-  onProgress?.(0, `Uploading ${reisiftFile.name} (chunked fallback)…`);
-  const reisiftPath = await uploadFileResumable('reisift', reisiftFile, (pct, msg) => {
-    onProgress?.(Math.round(pct * (qualifiedLeadsFile ? 0.45 : 0.9)), msg);
+  onProgress?.(0, `Uploading ${cohortFile.name} (chunked fallback)…`);
+  const cohortPath = await uploadFileResumable('reisift', cohortFile, (pct, msg) => {
+    onProgress?.(Math.round(pct * 0.3), msg);
   });
-  let qlPath: string | undefined;
-  if (qualifiedLeadsFile) {
-    onProgress?.(45, `Uploading ${qualifiedLeadsFile.name}…`);
-    qlPath = await uploadFileResumable('qualified_leads', qualifiedLeadsFile, (pct, msg) => {
-      onProgress?.(45 + Math.round(pct * 0.45), msg);
+  onProgress?.(30, `Uploading ${reisiftReferenceFile.name}…`);
+  const reisiftPath = await uploadFileResumable('reisift', reisiftReferenceFile, (pct, msg) => {
+    onProgress?.(30 + Math.round(pct * 0.35), msg);
+  });
+  let closingsPath: string | undefined;
+  if (closingsFile) {
+    onProgress?.(65, `Uploading ${closingsFile.name}…`);
+    closingsPath = await uploadFileResumable('closings', closingsFile, (pct, msg) => {
+      onProgress?.(65 + Math.round(pct * 0.25), msg);
     });
   }
   onProgress?.(90, 'Starting analysis…');
-  const started = await analyzeWebLeadsFromPaths(reisiftPath, qlPath);
+  const started = await analyzeWebLeadsFromPaths(
+    cohortPath,
+    reisiftPath,
+    closingsPath,
+    cohortSource
+  );
   const result = await pollWebLeadsJob(started.job_id, onProgress);
   onProgress?.(100, 'Done');
   return result;
 }
 
 export const analyzeWebLeads = async (
-  reisiftFile: File,
-  qualifiedLeadsFile?: File,
+  cohortFile: File,
+  reisiftReferenceFile: File,
+  closingsFile?: File,
+  cohortSource?: string,
   onProgress?: (pct: number, message: string) => void
 ): Promise<WebLeadsCompletedResponse> => {
   try {
-    return await analyzeWebLeadsDirect(reisiftFile, qualifiedLeadsFile, onProgress);
+    return await analyzeWebLeadsDirect(
+      cohortFile,
+      reisiftReferenceFile,
+      closingsFile,
+      cohortSource,
+      onProgress
+    );
   } catch (err) {
     if (!shouldFallbackToResumableUpload(err)) {
       throw err;
@@ -701,20 +726,31 @@ export const analyzeWebLeads = async (
       0,
       'Direct upload interrupted — retrying in smaller pieces (proxy timeout)…'
     );
-    return analyzeWebLeadsResumable(reisiftFile, qualifiedLeadsFile, onProgress);
+    return analyzeWebLeadsResumable(
+      cohortFile,
+      reisiftReferenceFile,
+      closingsFile,
+      cohortSource,
+      onProgress
+    );
   }
 };
 
 export const analyzeWebLeadsFromPaths = async (
-  reisiftPath: string,
-  qualifiedLeadsPath?: string
+  cohortPath: string,
+  reisiftReferencePath: string,
+  closingsPath?: string,
+  cohortSource?: string
 ): Promise<{ job_id: string; status: string; message: string }> => {
   const body: Record<string, unknown> = {
-    reisift_path: reisiftPath,
-    use_full_file_span: true,
+    cohort_path: cohortPath,
+    reisift_reference_path: reisiftReferencePath,
   };
-  if (qualifiedLeadsPath) {
-    body.qualified_leads_path = qualifiedLeadsPath;
+  if (closingsPath) {
+    body.closings_path = closingsPath;
+  }
+  if (cohortSource) {
+    body.cohort_source = cohortSource;
   }
   const response = await api.post<{ job_id: string; status: string; message: string }>(
     '/web-leads/analyze',
