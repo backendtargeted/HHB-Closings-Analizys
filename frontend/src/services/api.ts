@@ -24,6 +24,12 @@ import type {
   MarketingRampJobStatus,
 } from '../types/marketingRamp';
 import { asMarketingRampCompleted } from '../types/marketingRamp';
+import type {
+  WebLeadsAnalyzeResponse,
+  WebLeadsCompletedResponse,
+  WebLeadsJobStatus,
+} from '../types/webLeads';
+import { asWebLeadsCompleted } from '../types/webLeads';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -594,4 +600,138 @@ export const downloadMarketingRampExport = async (
 
 export const deleteMarketingRampJob = async (jobId: string): Promise<void> => {
   await api.delete(`/marketing-ramp/${jobId}`);
+};
+
+export async function pollWebLeadsJob(
+  jobId: string,
+  onProgress?: (pct: number, message: string) => void
+): Promise<WebLeadsCompletedResponse> {
+  const deadline = Date.now() + 30 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const status = await getWebLeadsJobStatus(jobId);
+    const serverPct = status.progress ?? 0;
+    const uiPct =
+      serverPct >= 10 ? 90 + Math.round(((serverPct - 10) / 90) * 9) : 90;
+    onProgress?.(Math.min(99, uiPct), status.message || 'Analyzing…');
+    if (status.status === 'completed') {
+      return asWebLeadsCompleted(await getWebLeadsJob(jobId));
+    }
+    if (status.status === 'failed') {
+      throw new Error(status.message || 'Analysis failed');
+    }
+    await sleep(1000);
+  }
+  throw new Error('Analysis timed out after 30 minutes');
+}
+
+async function analyzeWebLeadsDirect(
+  reisiftFile: File,
+  qualifiedLeadsFile: File,
+  onProgress?: (pct: number, message: string) => void
+): Promise<WebLeadsCompletedResponse> {
+  const form = new FormData();
+  form.append('reisift_file', reisiftFile);
+  form.append('qualified_leads_file', qualifiedLeadsFile);
+  form.append('use_full_file_span', '1');
+
+  const totalBytes = reisiftFile.size + qualifiedLeadsFile.size;
+  onProgress?.(0, 'Uploading report files…');
+
+  const response = await api.post<{ job_id: string; status: string; message: string }>(
+    '/web-leads/analyze',
+    form,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: DIRECT_UPLOAD_TIMEOUT_MS,
+      onUploadProgress: (evt) => {
+        if (!evt.total && !totalBytes) {
+          return;
+        }
+        const loaded = evt.loaded ?? 0;
+        const total = evt.total && evt.total > 0 ? evt.total : totalBytes;
+        const pct = Math.min(85, Math.round((loaded / total) * 85));
+        onProgress?.(pct, 'Uploading report files…');
+      },
+    }
+  );
+
+  onProgress?.(88, 'Files received — analyzing…');
+  const result = await pollWebLeadsJob(response.data.job_id, onProgress);
+  onProgress?.(100, 'Done');
+  return result;
+}
+
+async function analyzeWebLeadsResumable(
+  reisiftFile: File,
+  qualifiedLeadsFile: File,
+  onProgress?: (pct: number, message: string) => void
+): Promise<WebLeadsCompletedResponse> {
+  onProgress?.(0, `Uploading ${reisiftFile.name} (chunked fallback)…`);
+  const reisiftPath = await uploadFileResumable('reisift', reisiftFile, (pct, msg) => {
+    onProgress?.(Math.round(pct * 0.45), msg);
+  });
+  onProgress?.(45, `Uploading ${qualifiedLeadsFile.name}…`);
+  const qlPath = await uploadFileResumable('qualified_leads', qualifiedLeadsFile, (pct, msg) => {
+    onProgress?.(45 + Math.round(pct * 0.45), msg);
+  });
+  onProgress?.(90, 'Starting analysis…');
+  const started = await analyzeWebLeadsFromPaths(reisiftPath, qlPath);
+  const result = await pollWebLeadsJob(started.job_id, onProgress);
+  onProgress?.(100, 'Done');
+  return result;
+}
+
+export const analyzeWebLeads = async (
+  reisiftFile: File,
+  qualifiedLeadsFile: File,
+  onProgress?: (pct: number, message: string) => void
+): Promise<WebLeadsCompletedResponse> => {
+  try {
+    return await analyzeWebLeadsDirect(reisiftFile, qualifiedLeadsFile, onProgress);
+  } catch (err) {
+    if (!shouldFallbackToResumableUpload(err)) {
+      throw err;
+    }
+    onProgress?.(
+      0,
+      'Direct upload interrupted — retrying in smaller pieces (proxy timeout)…'
+    );
+    return analyzeWebLeadsResumable(reisiftFile, qualifiedLeadsFile, onProgress);
+  }
+};
+
+export const analyzeWebLeadsFromPaths = async (
+  reisiftPath: string,
+  qualifiedLeadsPath: string
+): Promise<{ job_id: string; status: string; message: string }> => {
+  const response = await api.post<{ job_id: string; status: string; message: string }>(
+    '/web-leads/analyze',
+    {
+      reisift_path: reisiftPath,
+      qualified_leads_path: qualifiedLeadsPath,
+      use_full_file_span: true,
+    }
+  );
+  return response.data;
+};
+
+export const getWebLeadsJobStatus = async (jobId: string): Promise<WebLeadsJobStatus> => {
+  const response = await api.get<WebLeadsJobStatus>(`/web-leads/${jobId}/status`);
+  return response.data;
+};
+
+export const getWebLeadsJob = async (jobId: string): Promise<WebLeadsAnalyzeResponse> => {
+  const response = await api.get<WebLeadsAnalyzeResponse>(`/web-leads/${jobId}`);
+  return response.data;
+};
+
+export const downloadWebLeadsExport = async (jobId: string): Promise<Blob> => {
+  const response = await api.get(`/web-leads/${jobId}/export`, {
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+export const deleteWebLeadsJob = async (jobId: string): Promise<void> => {
+  await api.delete(`/web-leads/${jobId}`);
 };

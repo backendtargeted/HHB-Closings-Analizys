@@ -5,10 +5,12 @@ import {
   getQualifiedLeadsJob,
   getMonthlyConsolidatedJob,
   getMarketingRampJob,
+  getWebLeadsJob,
   deleteAnalysis,
   deleteQualifiedLeadsJob,
   deleteMonthlyConsolidatedJob,
   deleteMarketingRampJob,
+  deleteWebLeadsJob,
 } from '../services/api';
 import type { AnalysisCompleteResponse } from '../types/analysis';
 import type { QualifiedLeadsAnalyzeResponse } from '../types/qualifiedLeads';
@@ -16,6 +18,8 @@ import type { MonthlyConsolidatedCompletedResponse } from '../types/monthlyConso
 import { asMonthlyConsolidatedCompleted } from '../types/monthlyConsolidated';
 import type { MarketingRampCompletedResponse } from '../types/marketingRamp';
 import { asMarketingRampCompleted } from '../types/marketingRamp';
+import type { WebLeadsCompletedResponse } from '../types/webLeads';
+import { asWebLeadsCompleted } from '../types/webLeads';
 import type { SavedReportItem } from '../types/reports';
 
 interface SavedReportsProps {
@@ -23,6 +27,7 @@ interface SavedReportsProps {
   onOpenQualifiedLeadsReport: (data: QualifiedLeadsAnalyzeResponse) => void;
   onOpenMonthlyConsolidatedReport?: (data: MonthlyConsolidatedCompletedResponse) => void;
   onOpenMarketingRampReport?: (data: MarketingRampCompletedResponse) => void;
+  onOpenWebLeadsReport?: (data: WebLeadsCompletedResponse) => void;
   refreshKey?: number;
 }
 
@@ -42,6 +47,7 @@ const typeLabel = (t: SavedReportItem['report_type']) => {
   if (t === 'qualified_leads') return 'Qualified leads (legacy)';
   if (t === 'monthly_consolidated') return 'Monthly report';
   if (t === 'marketing_ramp') return 'Marketing ramp';
+  if (t === 'web_leads') return 'Web leads';
   return 'Attribution (legacy)';
 };
 
@@ -50,6 +56,7 @@ const SavedReports = ({
   onOpenQualifiedLeadsReport,
   onOpenMonthlyConsolidatedReport,
   onOpenMarketingRampReport,
+  onOpenWebLeadsReport,
   refreshKey = 0,
 }: SavedReportsProps) => {
   const [reports, setReports] = useState<SavedReportItem[]>([]);
@@ -77,11 +84,17 @@ const SavedReports = ({
     if (filter === 'all') return reports;
     if (filter === 'monthly') {
       return reports.filter(
-        (r) => r.report_type === 'monthly_consolidated' || r.report_type === 'marketing_ramp'
+        (r) =>
+          r.report_type === 'monthly_consolidated' ||
+          r.report_type === 'marketing_ramp' ||
+          r.report_type === 'web_leads'
       );
     }
     return reports.filter(
-      (r) => r.report_type !== 'monthly_consolidated' && r.report_type !== 'marketing_ramp'
+      (r) =>
+        r.report_type !== 'monthly_consolidated' &&
+        r.report_type !== 'marketing_ramp' &&
+        r.report_type !== 'web_leads'
     );
   }, [reports, filter]);
 
@@ -95,6 +108,11 @@ const SavedReports = ({
         onOpenMarketingRampReport(data);
       } else if (item.report_type === 'marketing_ramp') {
         alert('Marketing ramp report handler not configured');
+      } else if (item.report_type === 'web_leads' && onOpenWebLeadsReport) {
+        const data = asWebLeadsCompleted(await getWebLeadsJob(item.job_id));
+        onOpenWebLeadsReport(data);
+      } else if (item.report_type === 'web_leads') {
+        alert('Web leads report handler not configured');
       } else if (item.report_type === 'monthly_consolidated' && onOpenMonthlyConsolidatedReport) {
         const data = asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(item.job_id));
         onOpenMonthlyConsolidatedReport(data);
@@ -117,6 +135,8 @@ const SavedReports = ({
         await deleteQualifiedLeadsJob(item.job_id);
       } else if (item.report_type === 'marketing_ramp') {
         await deleteMarketingRampJob(item.job_id);
+      } else if (item.report_type === 'web_leads') {
+        await deleteWebLeadsJob(item.job_id);
       } else if (item.report_type === 'monthly_consolidated') {
         await deleteMonthlyConsolidatedJob(item.job_id);
       } else {
@@ -159,7 +179,7 @@ const SavedReports = ({
       {filteredReports.length === 0 ? (
         <div className="text-stone-500 text-sm">
           {filter === 'monthly'
-            ? 'No monthly workflow reports yet. Run Gate 2 or Gate 3 to save one.'
+            ? 'No monthly workflow reports yet. Run Gate 2, Gate 3, or Gate 4 to save one.'
             : 'No reports in this filter.'}
         </div>
       ) : (
@@ -178,6 +198,9 @@ const SavedReports = ({
                     ? ` · ${r.date_window_start} – ${r.date_window_end}`
                     : ''}
                   {r.report_type === 'marketing_ramp' && r.date_window_start
+                    ? ` · ${r.date_window_start} – ${r.date_window_end}`
+                    : ''}
+                  {r.report_type === 'web_leads' && r.date_window_start
                     ? ` · ${r.date_window_start} – ${r.date_window_end}`
                     : ''}
                   {r.report_type === 'attribution' && r.as_of ? ` · as-of ${r.as_of}` : ''}

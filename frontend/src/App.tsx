@@ -9,15 +9,19 @@ import MonthlyConsolidatedWorkspace from './components/MonthlyConsolidatedWorksp
 import MonthlyConsolidatedResults from './components/MonthlyConsolidatedResults';
 import MarketingRampWorkspace from './components/MarketingRampWorkspace';
 import MarketingRampResults from './components/MarketingRampResults';
+import WebLeadsWorkspace from './components/WebLeadsWorkspace';
+import WebLeadsResults from './components/WebLeadsResults';
 import SavedReports, { SavedReportsPanel } from './components/SavedReports';
 import {
   downloadQualifiedLeadsExport,
   downloadMonthlyConsolidatedExport,
   downloadMarketingRampExport,
+  downloadWebLeadsExport,
   getAnalysisResults,
   getQualifiedLeadsJob,
   getMonthlyConsolidatedJob,
   getMarketingRampJob,
+  getWebLeadsJob,
 } from './services/api';
 import type { AnalysisCompleteResponse } from './types/analysis';
 import type { QualifiedLeadsAnalyzeResponse } from './types/qualifiedLeads';
@@ -25,6 +29,8 @@ import type { MonthlyConsolidatedCompletedResponse } from './types/monthlyConsol
 import { asMonthlyConsolidatedCompleted } from './types/monthlyConsolidated';
 import type { MarketingRampCompletedResponse } from './types/marketingRamp';
 import { asMarketingRampCompleted } from './types/marketingRamp';
+import type { WebLeadsCompletedResponse } from './types/webLeads';
+import { asWebLeadsCompleted } from './types/webLeads';
 
 const QL_CHANNEL_LABELS: Record<string, string> = {
   CC: 'Cold Calling',
@@ -39,7 +45,7 @@ const QL_CHANNEL_LABELS: Record<string, string> = {
 function App() {
   const setReportQueryParam = (
     jobId: string | null,
-    reportType?: 'attribution' | 'qualified_leads' | 'monthly_consolidated' | 'marketing_ramp'
+    reportType?: 'attribution' | 'qualified_leads' | 'monthly_consolidated' | 'marketing_ramp' | 'web_leads'
   ) => {
     const url = new URL(window.location.href);
     if (jobId) {
@@ -62,14 +68,18 @@ function App() {
     useState<MonthlyConsolidatedCompletedResponse | null>(null);
   const [loadedMarketingReport, setLoadedMarketingReport] =
     useState<MarketingRampCompletedResponse | null>(null);
+  const [loadedWebLeadsReport, setLoadedWebLeadsReport] =
+    useState<WebLeadsCompletedResponse | null>(null);
   const [savedReportsRefresh, setSavedReportsRefresh] = useState(0);
   const [qlExporting, setQlExporting] = useState(false);
   const [mcrExporting, setMcrExporting] = useState(false);
   const [mrExporting, setMrExporting] = useState(false);
+  const [wlExporting, setWlExporting] = useState(false);
 
   const showQualifiedResults = loadedQualifiedReport !== null;
   const showMonthlyResults = loadedMonthlyReport !== null;
   const showMarketingResults = loadedMarketingReport !== null;
+  const showWebLeadsResults = loadedWebLeadsReport !== null;
   const showLegacyAttribution = loadedSavedReport !== null;
 
   const handleNewRun = () => {
@@ -77,6 +87,7 @@ function App() {
     setLoadedQualifiedReport(null);
     setLoadedMonthlyReport(null);
     setLoadedMarketingReport(null);
+    setLoadedWebLeadsReport(null);
     setGate('monthlyConsolidated');
     setReportQueryParam(null);
   };
@@ -86,6 +97,7 @@ function App() {
     setLoadedQualifiedReport(null);
     setLoadedMonthlyReport(null);
     setLoadedMarketingReport(null);
+    setLoadedWebLeadsReport(null);
     setReportQueryParam(data.job_id, 'attribution');
   };
 
@@ -94,6 +106,7 @@ function App() {
     setLoadedSavedReport(null);
     setLoadedMonthlyReport(null);
     setLoadedMarketingReport(null);
+    setLoadedWebLeadsReport(null);
     setReportQueryParam(data.job_id, 'qualified_leads');
   };
 
@@ -102,6 +115,7 @@ function App() {
     setLoadedSavedReport(null);
     setLoadedQualifiedReport(null);
     setLoadedMarketingReport(null);
+    setLoadedWebLeadsReport(null);
     setGate('monthlyConsolidated');
     setReportQueryParam(data.job_id, 'monthly_consolidated');
   };
@@ -111,8 +125,23 @@ function App() {
     setLoadedSavedReport(null);
     setLoadedQualifiedReport(null);
     setLoadedMonthlyReport(null);
+    setLoadedWebLeadsReport(null);
     setGate('marketingRamp');
     setReportQueryParam(data.job_id, 'marketing_ramp');
+  };
+
+  const handleOpenWebLeadsReport = (data: WebLeadsCompletedResponse) => {
+    setLoadedWebLeadsReport(data);
+    setLoadedSavedReport(null);
+    setLoadedQualifiedReport(null);
+    setLoadedMonthlyReport(null);
+    setLoadedMarketingReport(null);
+    setGate('webLeads');
+    setReportQueryParam(data.job_id, 'web_leads');
+  };
+
+  const handleWebLeadsRunComplete = () => {
+    setSavedReportsRefresh((k) => k + 1);
   };
 
   const handleMonthlyRunComplete = () => {
@@ -177,6 +206,23 @@ function App() {
     }
   };
 
+  const handleExportWebLeads = async (jobId: string) => {
+    setWlExporting(true);
+    try {
+      const blob = await downloadWebLeadsExport(jobId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `web_leads_${jobId}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Export failed');
+    } finally {
+      setWlExporting(false);
+    }
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const reportId = params.get('report');
@@ -199,6 +245,12 @@ function App() {
           return {
             kind: 'marketing_ramp' as const,
             data: asMarketingRampCompleted(await getMarketingRampJob(reportId)),
+          };
+        }
+        if (reportType === 'web_leads') {
+          return {
+            kind: 'web_leads' as const,
+            data: asWebLeadsCompleted(await getWebLeadsJob(reportId)),
           };
         }
         if (reportType === 'attribution') {
@@ -235,6 +287,9 @@ function App() {
         } else if (loaded.kind === 'marketing_ramp') {
           setLoadedMarketingReport(loaded.data);
           setGate('marketingRamp');
+        } else if (loaded.kind === 'web_leads') {
+          setLoadedWebLeadsReport(loaded.data);
+          setGate('webLeads');
         } else {
           setLoadedSavedReport(loaded.data);
         }
@@ -250,13 +305,27 @@ function App() {
   }, []);
 
   const showWorkflowPicker =
-    !showMonthlyResults && !showQualifiedResults && !showLegacyAttribution && !showMarketingResults;
+    !showMonthlyResults &&
+    !showQualifiedResults &&
+    !showLegacyAttribution &&
+    !showMarketingResults &&
+    !showWebLeadsResults;
 
   const showAnyReport =
-    showMarketingResults || showMonthlyResults || showQualifiedResults || showLegacyAttribution;
+    showMarketingResults ||
+    showMonthlyResults ||
+    showQualifiedResults ||
+    showLegacyAttribution ||
+    showWebLeadsResults;
 
   const workspaceTabId =
-    gate === 'pastPatches' ? 'tab-gate1' : gate === 'marketingRamp' ? 'tab-gate3' : 'tab-gate2';
+    gate === 'pastPatches'
+      ? 'tab-gate1'
+      : gate === 'marketingRamp'
+        ? 'tab-gate3'
+        : gate === 'webLeads'
+          ? 'tab-gate4'
+          : 'tab-gate2';
 
   const savedReportsSidebar = (
     <aside className="rounded-2xl border border-stone-200/90 bg-white shadow-sm p-5 h-fit lg:sticky lg:top-6">
@@ -265,6 +334,7 @@ function App() {
         onOpenQualifiedLeadsReport={handleOpenQualifiedReport}
         onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
         onOpenMarketingRampReport={handleOpenMarketingReport}
+        onOpenWebLeadsReport={handleOpenWebLeadsReport}
         refreshKey={savedReportsRefresh}
       />
     </aside>
@@ -285,7 +355,7 @@ function App() {
             <div className="min-w-0">
               <h1 className="text-3xl font-bold text-white drop-shadow-sm">HHB Marketing Reports</h1>
               <p className="text-gray-200 mt-1">
-                Gate 1: ingest monthly data · Gate 2: consolidated report · Gate 3: marketing ramp
+                Gate 1: ingest · Gate 2: consolidated · Gate 3: marketing ramp · Gate 4: web leads
               </p>
             </div>
           </div>
@@ -302,7 +372,24 @@ function App() {
         <div className="mb-6">
           {!showAnyReport ? <MethodologySection /> : null}
         </div>
-        {showMarketingResults && loadedMarketingReport ? (
+        {showWebLeadsResults && loadedWebLeadsReport ? (
+          <div className="space-y-6">
+            <WebLeadsResults
+              result={loadedWebLeadsReport}
+              onNewRun={handleNewRun}
+              onExport={() => handleExportWebLeads(loadedWebLeadsReport.job_id)}
+              exporting={wlExporting}
+            />
+            <SavedReportsPanel
+              onOpenAttributionReport={handleOpenSavedReport}
+              onOpenQualifiedLeadsReport={handleOpenQualifiedReport}
+              onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
+              onOpenMarketingRampReport={handleOpenMarketingReport}
+              onOpenWebLeadsReport={handleOpenWebLeadsReport}
+              refreshKey={savedReportsRefresh}
+            />
+          </div>
+        ) : showMarketingResults && loadedMarketingReport ? (
           <div className="space-y-6">
             <MarketingRampResults
               result={loadedMarketingReport}
@@ -316,6 +403,7 @@ function App() {
               onOpenQualifiedLeadsReport={handleOpenQualifiedReport}
               onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
               onOpenMarketingRampReport={handleOpenMarketingReport}
+              onOpenWebLeadsReport={handleOpenWebLeadsReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -333,6 +421,7 @@ function App() {
               onOpenQualifiedLeadsReport={handleOpenQualifiedReport}
               onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
               onOpenMarketingRampReport={handleOpenMarketingReport}
+              onOpenWebLeadsReport={handleOpenWebLeadsReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -351,6 +440,7 @@ function App() {
               onOpenQualifiedLeadsReport={handleOpenQualifiedReport}
               onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
               onOpenMarketingRampReport={handleOpenMarketingReport}
+              onOpenWebLeadsReport={handleOpenWebLeadsReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -363,6 +453,7 @@ function App() {
               onOpenQualifiedLeadsReport={handleOpenQualifiedReport}
               onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
               onOpenMarketingRampReport={handleOpenMarketingReport}
+              onOpenWebLeadsReport={handleOpenWebLeadsReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -380,6 +471,11 @@ function App() {
                 <MarketingRampWorkspace
                   onRunComplete={handleMarketingRunComplete}
                   onOpenResult={handleOpenMarketingReport}
+                />
+              ) : gate === 'webLeads' ? (
+                <WebLeadsWorkspace
+                  onRunComplete={handleWebLeadsRunComplete}
+                  onOpenResult={handleOpenWebLeadsReport}
                 />
               ) : (
                 <MonthlyConsolidatedWorkspace

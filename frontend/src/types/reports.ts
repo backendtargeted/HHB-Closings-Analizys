@@ -1,4 +1,9 @@
-export type ReportType = 'attribution' | 'qualified_leads' | 'monthly_consolidated' | 'marketing_ramp';
+export type ReportType =
+  | 'attribution'
+  | 'qualified_leads'
+  | 'monthly_consolidated'
+  | 'marketing_ramp'
+  | 'web_leads';
 
 export interface SavedReportItem {
   job_id: string;
