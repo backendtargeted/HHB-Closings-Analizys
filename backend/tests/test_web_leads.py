@@ -109,6 +109,7 @@ def test_analyze_cohort_reisift_match(tmp_path):
     assert result.new_to_db_count == 1
 
     prior_row = next(r for r in result.rows if r.address.startswith("100"))
+    assert prior_row.has_8020_tag is True
     assert prior_row.had_prior_history is True
     assert prior_row.days_list_to_web is not None
     assert prior_row.days_list_to_web > 0
@@ -118,6 +119,7 @@ def test_analyze_cohort_reisift_match(tmp_path):
 
     new_row = next(r for r in result.rows if r.address.startswith("200"))
     assert new_row.had_prior_history is False
+    assert new_row.has_8020_tag is False
 
     assert len(result.top_paths) >= 1
     assert result.combinations == [] or all(c["row_count"] >= 3 for c in result.combinations)
@@ -159,6 +161,7 @@ def test_result_roundtrip():
                     "earliest_list_date": "2025-01-01",
                     "days_list_to_web": 139,
                     "prior_8020_channels": ["CC"],
+                    "has_8020_tag": True,
                     "journey_path": "LIST -> CC -> WEB",
                     "journey_path_compact": "LIST -> CC -> WEB",
                     "matched": True,

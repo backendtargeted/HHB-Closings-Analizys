@@ -71,6 +71,7 @@ LIST_PURCHASED_GENERIC_RE = re.compile(
     r"^List\s+Purchased\s+(?!8020|Web\s+Leads)(\d{1,2})[-/](\d{4})",
     re.I,
 )
+HAS_8020_TAG_RE = re.compile(r"\b8020\b", re.I)
 
 
 def _parse_event_date(iso: str) -> Optional[pd.Timestamp]:
@@ -102,6 +103,11 @@ def _web_anchor_date(
 
 def row_is_web_lead(tags_str: object) -> bool:
     return "list purchased web leads" in str(tags_str or "").lower()
+
+
+def tags_have_8020(tags_str: object) -> bool:
+    """True when REISift tags include any 8020 list-purchase or (8020) contact tag."""
+    return bool(HAS_8020_TAG_RE.search(str(tags_str or "")))
 
 
 def parse_web_lead_tag_date(tags_str: object) -> Optional[pd.Timestamp]:
@@ -276,6 +282,7 @@ class WebLeadRow:
     earliest_list_date: str
     days_list_to_web: Optional[int]
     prior_8020_channels: List[str]
+    has_8020_tag: bool
     journey_path: str
     journey_path_compact: str
     matched: bool
@@ -297,6 +304,7 @@ class WebLeadRow:
             "earliest_list_date": self.earliest_list_date,
             "days_list_to_web": self.days_list_to_web,
             "prior_8020_channels": self.prior_8020_channels,
+            "has_8020_tag": self.has_8020_tag,
             "journey_path": self.journey_path,
             "journey_path_compact": self.journey_path_compact,
             "matched": self.matched,
@@ -377,6 +385,7 @@ def result_from_metrics_dict(m: Dict[str, Any]) -> WebLeadsResult:
             earliest_list_date=r.get("earliest_list_date", ""),
             days_list_to_web=r.get("days_list_to_web"),
             prior_8020_channels=r.get("prior_8020_channels") or [],
+            has_8020_tag=bool(r.get("has_8020_tag")),
             journey_path=r.get("journey_path", ""),
             journey_path_compact=r.get("journey_path_compact") or r.get("journey_path", ""),
             matched=bool(r.get("matched", True)),
@@ -455,6 +464,7 @@ def _process_cohort_reisift_match(
         anchor = pd.Timestamp.now().normalize()
 
     tags_val = reisift_row.get("Tags", "")
+    has_8020 = tags_have_8020(tags_val) or tags_have_8020(cohort_tags)
     parsed = _parse_tags_cached(tags_val)
     events = build_events(parsed)
     had_prior, earliest_list, channels = _prior_history_from_events(
@@ -495,6 +505,7 @@ def _process_cohort_reisift_match(
         earliest_list_date=earliest_list_str,
         days_list_to_web=days_list,
         prior_8020_channels=channels,
+        has_8020_tag=has_8020,
         journey_path=journey,
         journey_path_compact=journey_compact,
         matched=True,
@@ -529,8 +540,8 @@ def _finalize_result(
 
     match_rate = round(100.0 * matched / website_total, 2) if website_total else 0.0
     prior_pct = round(100.0 * prior_count / matched, 1) if matched else 0.0
-    new_count = matched - prior_count
-    new_pct = round(100.0 * new_count / matched, 1) if matched else 0.0
+    new_to_db_count = sum(1 for r in rows if not r.has_8020_tag)
+    new_pct = round(100.0 * new_to_db_count / matched, 1) if matched else 0.0
 
     top_lists = [
         {
@@ -592,7 +603,7 @@ def _finalize_result(
         match_rate_pct=match_rate,
         prior_history_count=prior_count,
         prior_history_pct=prior_pct,
-        new_to_db_count=new_count,
+        new_to_db_count=new_to_db_count,
         new_to_db_pct=new_pct,
         top_lists=top_lists,
         combinations=combinations,
@@ -732,6 +743,7 @@ def analyze(
         "Anchor date = List Purchased Web Leads tag month when present, else cohort Created on "
         "(fallback: REISift Created on). "
         "Prior history = distress list purchase or (8020) CC/SMS/DM strictly before anchor. "
+        "New to database = matched rows with no 8020 tag on the REISift record. "
         f"List combinations require ≥{COMBO_MIN_ROWS} matched rows and cap at {COMBO_CAP}. "
         f"Journey paths cap at {PATH_CAP} compact routes ending in WEB."
     )

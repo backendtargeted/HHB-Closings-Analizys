@@ -13,6 +13,7 @@ export interface WebLeadRow {
   earliest_list_date: string;
   days_list_to_web: number | null;
   prior_8020_channels: string[];
+  has_8020_tag: boolean;
   journey_path: string;
   journey_path_compact: string;
   matched: boolean;

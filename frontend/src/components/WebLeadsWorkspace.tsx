@@ -116,8 +116,8 @@ const WebLeadsWorkspace = ({ onRunComplete, onOpenResult }: WebLeadsWorkspacePro
       <p className="text-sm text-violet-950/80 mt-2 leading-relaxed max-w-2xl">
         Upload your manually filtered cohort track (e.g. web leads you exported from REISift for
         analysis). Match each row to the <strong>full REISift export</strong> to see lists, tag
-        history, journey paths, and combinations. Only rows that match REISift are shown in the
-        report. Optional closings workbook adds close date and stage.
+        Optional closings workbook adds close date and stage. You can use the same REISift
+        export for both cohort track and reference when your track file is already a REISift export.
       </p>
 
       <div className="mt-6 grid gap-4 max-w-md">
