@@ -24,8 +24,8 @@ const WebLeadsWorkspace = ({ onRunComplete, onOpenResult }: WebLeadsWorkspacePro
   const [exporting, setExporting] = useState(false);
 
   const handleRun = async () => {
-    if (!reisiftFile || !qlFile) {
-      setError('Upload both REISift export and Salesforce Total Qualified Leads export.');
+    if (!reisiftFile) {
+      setError('Upload your REISift web leads export (.csv).');
       return;
     }
     setLoading(true);
@@ -33,7 +33,7 @@ const WebLeadsWorkspace = ({ onRunComplete, onOpenResult }: WebLeadsWorkspacePro
     setProgress(0);
     setStatusMessage('');
     try {
-      const data = await analyzeWebLeads(reisiftFile, qlFile, (pct, msg) => {
+      const data = await analyzeWebLeads(reisiftFile, qlFile ?? undefined, (pct, msg) => {
         setProgress(pct);
         setStatusMessage(msg);
       });
@@ -94,11 +94,11 @@ const WebLeadsWorkspace = ({ onRunComplete, onOpenResult }: WebLeadsWorkspacePro
     <div className="rounded-2xl border border-violet-200/90 bg-violet-50/40 p-6 shadow-sm">
       <h2 className="text-xl font-bold text-violet-950">Web Leads report</h2>
       <p className="text-sm text-violet-950/80 mt-2 leading-relaxed max-w-2xl">
-        Upload your full REISift contacts export plus Salesforce Total Qualified Leads.
-        Website-channel leads are filtered automatically. For each match, the report checks
+        Upload your REISift export (rows with <strong>List Purchased Web Leads</strong> tags).
+        Optional: Salesforce Total Qualified Leads to match Website-channel leads by address instead.
         whether the property was already on distress lists or touched via{' '}
         <code className="text-xs bg-white/80 px-1 rounded">(8020)</code> tags before the web-lead
-        anchor date (earlier of REISift <strong>Created on</strong> and SF Create Date).
+        anchor date (Web Leads list month or REISift <strong>Created on</strong>).
       </p>
 
       <div className="mt-6 grid gap-4 max-w-md">
@@ -112,7 +112,7 @@ const WebLeadsWorkspace = ({ onRunComplete, onOpenResult }: WebLeadsWorkspacePro
           />
         </label>
         <label className="block text-sm font-medium text-violet-950">
-          Salesforce Total Qualified Leads (.csv)
+          Salesforce Total Qualified Leads (.csv) — optional
           <input
             type="file"
             accept=".csv,.xlsx,.xls"
@@ -132,7 +132,7 @@ const WebLeadsWorkspace = ({ onRunComplete, onOpenResult }: WebLeadsWorkspacePro
         <button
           type="button"
           onClick={handleRun}
-          disabled={loading || !reisiftFile || !qlFile}
+          disabled={loading || !reisiftFile}
           className="px-5 py-2.5 rounded-lg bg-violet-800 text-white text-sm font-semibold hover:bg-violet-900 disabled:opacity-50"
         >
           {loading ? 'Analyzing…' : 'Run Web Leads report'}

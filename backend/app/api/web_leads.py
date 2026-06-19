@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from flask import Blueprint, jsonify, request, send_file
 
@@ -72,7 +72,7 @@ def _read_job_progress(job_dir: Path) -> Dict[str, Any] | None:
 def _analyze_in_subprocess(
     job_id: str,
     reisift_path: str,
-    ql_path: str,
+    ql_path: Optional[str],
     use_full: bool,
     start_raw: str,
     end_raw: str,
@@ -102,7 +102,12 @@ def _analyze_in_subprocess(
             },
         )
         if use_full:
-            result = analyze(reisift_path, ql_path, use_full_file_span=True, on_progress=on_progress)
+            result = analyze(
+                reisift_path,
+                ql_path,
+                use_full_file_span=True,
+                on_progress=on_progress,
+            )
         else:
             start_date = parse_ymd_param(start_raw, "start_date")
             end_date = parse_ymd_param(end_raw, "end_date")
@@ -261,7 +266,7 @@ def _watch_analysis_process(job_id: str, proc: multiprocessing.Process) -> None:
 def _run_web_leads_job(
     job_id: str,
     reisift_path: str,
-    ql_path: str,
+    ql_path: Optional[str],
     use_full: bool,
     start_raw: str,
     end_raw: str,
@@ -294,7 +299,7 @@ def _run_web_leads_job(
 
 def _start_web_leads_job(
     reisift_path: str,
-    ql_path: str,
+    ql_path: Optional[str],
     use_full: bool,
     start_raw: str,
     end_raw: str,
@@ -349,12 +354,10 @@ def web_leads_analyze():
         start_raw = (data.get("start_date") or "").strip()
         end_raw = (data.get("end_date") or "").strip()
         reisift_raw = (data.get("reisift_path") or "").strip()
-        ql_raw = (data.get("qualified_leads_path") or "").strip()
+        ql_raw = (data.get("qualified_leads_path") or "").strip() or None
         if not reisift_raw:
             return jsonify({"detail": "reisift_path is required"}), 400
-        if not ql_raw:
-            return jsonify({"detail": "qualified_leads_path is required"}), 400
-        if not use_full:
+        if not use_full and ql_raw:
             try:
                 parse_ymd_param(start_raw, "start_date")
                 parse_ymd_param(end_raw, "end_date")
@@ -362,7 +365,9 @@ def web_leads_analyze():
                 return jsonify({"detail": str(exc)}), 400
         try:
             reisift_path = str(resolve_trusted_final_path(reisift_raw))
-            ql_path = str(resolve_trusted_final_path(ql_raw))
+            ql_path = (
+                str(resolve_trusted_final_path(ql_raw)) if ql_raw else None
+            )
         except ValueError as exc:
             return jsonify({"detail": str(exc)}), 400
         payload, status = _start_web_leads_job(
@@ -374,10 +379,8 @@ def web_leads_analyze():
     ql = request.files.get("qualified_leads_file")
     if not reisift or not reisift.filename:
         return jsonify({"detail": "reisift_file is required"}), 400
-    if not ql or not ql.filename:
-        return jsonify({"detail": "qualified_leads_file is required"}), 400
 
-    if not use_full:
+    if not use_full and ql and ql.filename:
         try:
             parse_ymd_param(start_raw, "start_date")
             parse_ymd_param(end_raw, "end_date")
@@ -389,15 +392,18 @@ def web_leads_analyze():
     job_dir.mkdir(parents=True, exist_ok=True)
 
     reisift_name = Path(reisift.filename.replace("\\", "/")).name
-    ql_name = Path(ql.filename.replace("\\", "/")).name
     reisift_path = job_dir / reisift_name
-    ql_path = job_dir / ql_name
     reisift.save(str(reisift_path))
-    ql.save(str(ql_path))
+    ql_path: Optional[str] = None
+    if ql and ql.filename:
+        ql_name = Path(ql.filename.replace("\\", "/")).name
+        ql_path_obj = job_dir / ql_name
+        ql.save(str(ql_path_obj))
+        ql_path = str(ql_path_obj)
 
     payload, status = _start_web_leads_job(
         str(reisift_path),
-        str(ql_path),
+        ql_path,
         use_full,
         start_raw,
         end_raw,

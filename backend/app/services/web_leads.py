@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from .lifecycle import Event, build_events, events_on_or_before
+from .lifecycle import Event, build_events
 from .marketing_mapper import find_column_name
 from .monthly_consolidated import (
     CREATED_CANDIDATES,
@@ -58,6 +58,15 @@ AGE_BUCKETS: Tuple[Tuple[str, int, Optional[int]], ...] = (
     ("365+ days", 366, None),
 )
 
+WEB_LEADS_TAG_RE = re.compile(
+    r"List\s+Purchased\s+Web\s+Leads\s+(\d{1,2})[-/](\d{4})",
+    re.I,
+)
+LIST_PURCHASED_GENERIC_RE = re.compile(
+    r"^List\s+Purchased\s+(?!8020|Web\s+Leads)(\d{1,2})[-/](\d{4})",
+    re.I,
+)
+
 
 def _parse_event_date(iso: str) -> Optional[pd.Timestamp]:
     if not iso:
@@ -71,16 +80,72 @@ def _parse_event_date(iso: str) -> Optional[pd.Timestamp]:
 def _web_anchor_date(
     reisift_created: Optional[pd.Timestamp],
     ql_create: Optional[pd.Timestamp],
+    web_lead_tag_date: Optional[pd.Timestamp] = None,
 ) -> Optional[pd.Timestamp]:
-    candidates = [d for d in (reisift_created, ql_create) if d is not None and pd.notna(d)]
+    candidates = [
+        d
+        for d in (web_lead_tag_date, reisift_created, ql_create)
+        if d is not None and pd.notna(d)
+    ]
     if not candidates:
         return None
+    if web_lead_tag_date is not None and pd.notna(web_lead_tag_date):
+        return pd.Timestamp(web_lead_tag_date).normalize()
     return min(candidates)
+
+
+def row_is_web_lead(tags_str: object) -> bool:
+    return "list purchased web leads" in str(tags_str or "").lower()
+
+
+def parse_web_lead_tag_date(tags_str: object) -> Optional[pd.Timestamp]:
+    """Earliest List Purchased Web Leads MM/YYYY from raw tag text."""
+    dates: List[pd.Timestamp] = []
+    for part in str(tags_str or "").split(","):
+        tag = part.strip()
+        match = WEB_LEADS_TAG_RE.search(tag)
+        if not match:
+            continue
+        month, year = int(match.group(1)), int(match.group(2))
+        try:
+            dates.append(pd.Timestamp(year=year, month=month, day=1))
+        except ValueError:
+            continue
+    if not dates:
+        return None
+    return min(dates)
+
+
+def _supplement_list_dates_from_tags(tags_str: object) -> List[pd.Timestamp]:
+    """Parse non-8020 List Purchased MM/YYYY tags not handled by parse_tags."""
+    dates: List[pd.Timestamp] = []
+    for part in str(tags_str or "").split(","):
+        tag = part.strip()
+        match = LIST_PURCHASED_GENERIC_RE.match(tag)
+        if not match:
+            continue
+        month, year = int(match.group(1)), int(match.group(2))
+        try:
+            dates.append(pd.Timestamp(year=year, month=month, day=1))
+        except ValueError:
+            continue
+    return dates
+
+
+def events_before_anchor(events: List[Event], anchor: pd.Timestamp) -> List[Event]:
+    """Events strictly before the web-lead anchor calendar day."""
+    anchor_dt = anchor.to_pydatetime()
+    out: List[Event] = []
+    for e in events:
+        dt = _parse_event_date(e.date_iso)
+        if dt is not None and dt.to_pydatetime() < anchor_dt:
+            out.append(e)
+    return out
 
 
 def compute_web_journey_path(events: List[Event], anchor: pd.Timestamp) -> str:
     """Compact path ending at WEB — list/skip/8020/SF tokens before anchor."""
-    before = events_on_or_before(events, anchor)
+    before = events_before_anchor(events, anchor)
     tokens: List[str] = []
     for e in before:
         if e.type == "list_purchase":
@@ -102,11 +167,13 @@ def compute_web_journey_path(events: List[Event], anchor: pd.Timestamp) -> str:
 
 
 def _prior_history_from_events(
-    events: List[Event], anchor: pd.Timestamp
+    events: List[Event],
+    anchor: pd.Timestamp,
+    tags_str: object = "",
 ) -> Tuple[bool, Optional[pd.Timestamp], List[str]]:
     """Return (had_prior, earliest_list_date, 8020_channels_before_anchor)."""
-    before = events_on_or_before(events, anchor)
-    list_dates: List[pd.Timestamp] = []
+    before = events_before_anchor(events, anchor)
+    list_dates: List[pd.Timestamp] = list(_supplement_list_dates_from_tags(tags_str))
     channels: List[str] = []
     for e in before:
         if e.type == "list_purchase":
@@ -312,7 +379,289 @@ def _website_ql_window(
     return website, window_start, window_end
 
 
+def _reisift_created_ts(
+    row: pd.Series, created_col: Optional[str]
+) -> Optional[pd.Timestamp]:
+    if not created_col or created_col not in row.index:
+        return None
+    parsed = pd.to_datetime(row.get(created_col), errors="coerce")
+    if pd.isna(parsed):
+        return None
+    return pd.Timestamp(parsed).normalize()
+
+
+def _process_matched_reisift_row(
+    rs_row: pd.Series,
+    created_col: Optional[str],
+    ql_create_ts: Optional[pd.Timestamp],
+    address_key: str,
+) -> Tuple[WebLeadRow, bool]:
+    address = _format_address(rs_row)
+    reisift_created_ts = _reisift_created_ts(rs_row, created_col)
+    tags_val = rs_row.get("Tags", "")
+    web_tag_date = parse_web_lead_tag_date(tags_val)
+
+    anchor = _web_anchor_date(reisift_created_ts, ql_create_ts, web_tag_date)
+    if anchor is None:
+        anchor = pd.Timestamp.now().normalize()
+
+    parsed = _parse_tags_cached(tags_val)
+    events = build_events(parsed)
+    had_prior, earliest_list, channels = _prior_history_from_events(
+        events, anchor, tags_val
+    )
+
+    days_list: Optional[int] = None
+    earliest_list_str = ""
+    if earliest_list is not None:
+        earliest_list_str = earliest_list.date().isoformat()
+        days_list = (anchor - earliest_list).days
+
+    lists = analysis_list_tokens(rs_row.get("Lists", ""))
+    stackable = stackable_list_tokens(rs_row.get("Lists", ""))
+    combo_key = " + ".join(sorted(stackable)) if len(stackable) >= 2 else ""
+    journey = compute_web_journey_path(events, anchor)
+
+    row = WebLeadRow(
+        address=address,
+        address_key=address_key,
+        ql_create_date=ql_create_ts.date().isoformat() if ql_create_ts is not None else "",
+        reisift_created_on=(
+            reisift_created_ts.date().isoformat() if reisift_created_ts is not None else ""
+        ),
+        anchor_date=anchor.date().isoformat(),
+        lists=lists,
+        combo_key=combo_key,
+        had_prior_history=had_prior,
+        earliest_list_date=earliest_list_str,
+        days_list_to_web=days_list,
+        prior_8020_channels=channels,
+        journey_path=journey,
+        matched=True,
+    )
+    return row, had_prior
+
+
+def _finalize_result(
+    *,
+    date_window_start: str,
+    date_window_end: str,
+    reisift_ingested: int,
+    website_total: int,
+    matched: int,
+    unmatched: int,
+    prior_count: int,
+    rows: List[WebLeadRow],
+    list_counter: Counter[str],
+    combo_counter: Counter[str],
+    path_counter: Counter[str],
+    age_counter: Counter[str],
+    warnings: List[str],
+    methodology: str,
+    on_progress: Optional[ProgressCallback] = None,
+) -> WebLeadsResult:
+    if on_progress:
+        on_progress(85, "Aggregating compact summaries…")
+
+    match_rate = round(100.0 * matched / website_total, 2) if website_total else 0.0
+    prior_pct = round(100.0 * prior_count / matched, 1) if matched else 0.0
+    new_count = matched - prior_count
+    new_pct = round(100.0 * new_count / matched, 1) if matched else 0.0
+
+    top_lists = [
+        {
+            "list": name,
+            "count": cnt,
+            "share_pct": round(100.0 * cnt / matched, 1) if matched else 0,
+        }
+        for name, cnt in list_counter.most_common(LIST_CAP)
+    ]
+    combinations = [
+        {
+            "lists_key": key,
+            "lists": key.split(" + "),
+            "row_count": cnt,
+            "share_pct": round(100.0 * cnt / matched, 1) if matched else 0,
+        }
+        for key, cnt in combo_counter.most_common(COMBO_CAP)
+        if cnt >= COMBO_MIN_ROWS
+    ]
+    top_paths = [
+        {
+            "path": path,
+            "count": cnt,
+            "share_pct": round(100.0 * cnt / matched, 1) if matched else 0,
+        }
+        for path, cnt in path_counter.most_common(PATH_CAP)
+    ]
+    age_buckets = [
+        {
+            "bucket": label,
+            "count": age_counter.get(label, 0),
+            "share_pct": round(100.0 * age_counter.get(label, 0) / prior_count, 1)
+            if prior_count
+            else 0,
+        }
+        for label, _, _ in AGE_BUCKETS
+    ]
+    if age_counter.get("Unknown", 0):
+        age_buckets.append(
+            {
+                "bucket": "Unknown",
+                "count": age_counter["Unknown"],
+                "share_pct": round(100.0 * age_counter["Unknown"] / prior_count, 1)
+                if prior_count
+                else 0,
+            }
+        )
+
+    if on_progress:
+        on_progress(95, "Analysis complete")
+
+    return WebLeadsResult(
+        date_window_start=date_window_start,
+        date_window_end=date_window_end,
+        reisift_rows_ingested=reisift_ingested,
+        website_ql_total=website_total,
+        matched_count=matched,
+        unmatched_count=unmatched,
+        match_rate_pct=match_rate,
+        prior_history_count=prior_count,
+        prior_history_pct=prior_pct,
+        new_to_db_count=new_count,
+        new_to_db_pct=new_pct,
+        top_lists=top_lists,
+        combinations=combinations,
+        top_paths=top_paths,
+        age_buckets=age_buckets,
+        rows=rows,
+        warnings=warnings,
+        methodology_note=methodology,
+    )
+
+
 def analyze(
+    reisift_path: str,
+    qualified_leads_path: Optional[str] = None,
+    *,
+    use_full_file_span: bool = True,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    on_progress: Optional[ProgressCallback] = None,
+) -> WebLeadsResult:
+    if qualified_leads_path:
+        return _analyze_with_qualified_leads(
+            reisift_path,
+            qualified_leads_path,
+            use_full_file_span=use_full_file_span,
+            start_date=start_date,
+            end_date=end_date,
+            on_progress=on_progress,
+        )
+    return _analyze_reisift_only(reisift_path, on_progress=on_progress)
+
+
+def _analyze_reisift_only(
+    reisift_path: str,
+    on_progress: Optional[ProgressCallback] = None,
+) -> WebLeadsResult:
+    warnings: List[str] = []
+
+    def report(progress: int, message: str) -> None:
+        if on_progress:
+            on_progress(progress, message)
+
+    report(10, "Loading REISift export…")
+    reisift_df = load_reisift_file(reisift_path)
+    reisift_ingested = len(reisift_df)
+    created_col = _discover_reisift_created_col(reisift_df)
+    if not created_col:
+        warnings.append(
+            "REISift export has no Created column; web-lead anchor uses List Purchased Web Leads tag only."
+        )
+
+    if "Tags" not in reisift_df.columns:
+        raise ValueError("REISift export is missing required Tags column.")
+
+    report(35, "Identifying web leads from REISift tags…")
+    cohort_mask = reisift_df["Tags"].map(row_is_web_lead)
+    cohort = reisift_df.loc[cohort_mask].copy()
+    website_total = len(cohort)
+    if website_total == 0:
+        raise ValueError(
+            "No rows with a List Purchased Web Leads tag found. "
+            "Export web leads from REISift or upload Salesforce Website qualified leads."
+        )
+
+    created_dates = []
+    web_tag_dates = []
+    for _, row in cohort.iterrows():
+        ts = _reisift_created_ts(row, created_col)
+        if ts is not None:
+            created_dates.append(ts)
+        wt = parse_web_lead_tag_date(row.get("Tags", ""))
+        if wt is not None:
+            web_tag_dates.append(wt)
+    span_candidates = created_dates + web_tag_dates
+    window_start = min(span_candidates).date().isoformat() if span_candidates else ""
+    window_end = max(span_candidates).date().isoformat() if span_candidates else ""
+
+    rows: List[WebLeadRow] = []
+    list_counter: Counter[str] = Counter()
+    combo_counter: Counter[str] = Counter()
+    path_counter: Counter[str] = Counter()
+    age_counter: Counter[str] = Counter()
+    prior_count = 0
+
+    report(55, f"Analyzing {website_total:,} web lead rows…")
+    for i, (_, rs_row) in enumerate(cohort.iterrows()):
+        key = _reisift_address_key(rs_row)
+        web_row, had_prior = _process_matched_reisift_row(
+            rs_row, created_col, None, key
+        )
+        rows.append(web_row)
+        if had_prior:
+            prior_count += 1
+            if web_row.days_list_to_web is not None:
+                age_counter[_age_bucket_label(web_row.days_list_to_web)] += 1
+            else:
+                age_counter["Unknown"] += 1
+        for lst in web_row.lists:
+            list_counter[lst] += 1
+        if web_row.combo_key:
+            combo_counter[web_row.combo_key] += 1
+        path_counter[web_row.journey_path] += 1
+        if on_progress and i > 0 and i % 50 == 0:
+            report(55 + int(25 * i / max(website_total, 1)), f"Row {i:,} / {website_total:,}…")
+
+    methodology = (
+        "Cohort = REISift rows carrying a List Purchased Web Leads tag. "
+        "Anchor date = Web Leads list-purchase month (fallback: REISift Created on). "
+        "Prior history = any distress list purchase or (8020) CC/SMS/DM strictly before anchor. "
+        f"List combinations require ≥{COMBO_MIN_ROWS} web leads and cap at {COMBO_CAP}. "
+        f"Journey paths cap at {PATH_CAP} routes ending in WEB."
+    )
+
+    return _finalize_result(
+        date_window_start=window_start,
+        date_window_end=window_end,
+        reisift_ingested=reisift_ingested,
+        website_total=website_total,
+        matched=website_total,
+        unmatched=0,
+        prior_count=prior_count,
+        rows=rows,
+        list_counter=list_counter,
+        combo_counter=combo_counter,
+        path_counter=path_counter,
+        age_counter=age_counter,
+        warnings=warnings,
+        methodology=methodology,
+        on_progress=on_progress,
+    )
+
+
+def _analyze_with_qualified_leads(
     reisift_path: str,
     qualified_leads_path: str,
     *,
@@ -363,13 +712,11 @@ def analyze(
     matched = 0
     unmatched = 0
     prior_count = 0
+    create_col = find_column_name(sf_df, CREATE_DATE_CANDIDATES) or ""
 
     for _, ql_row in website_ql.iterrows():
         key = _sf_address_key(ql_row, addr_cols)
-        ql_create_raw = ql_row.get(
-            find_column_name(sf_df, CREATE_DATE_CANDIDATES) or "", ""
-        )
-        ql_create = pd.to_datetime(ql_create_raw, errors="coerce")
+        ql_create = pd.to_datetime(ql_row.get(create_col, ""), errors="coerce")
         ql_create_ts = (
             pd.Timestamp(ql_create).normalize() if pd.notna(ql_create) else None
         )
@@ -397,156 +744,58 @@ def analyze(
             continue
 
         matched += 1
-        rs_row = reisift_df.iloc[idx]
-        address = _format_address(rs_row)
-        reisift_created_ts: Optional[pd.Timestamp] = None
-        if created_col and created_col in rs_row.index:
-            reisift_created_ts = pd.to_datetime(rs_row[created_col], errors="coerce")
-            if pd.notna(reisift_created_ts):
-                reisift_created_ts = pd.Timestamp(reisift_created_ts).normalize()
-
-        anchor = _web_anchor_date(reisift_created_ts, ql_create_ts)
-        if anchor is None:
-            anchor = pd.Timestamp.now().normalize()
-
-        tags_val = rs_row.get("Tags", "")
-        parsed = _parse_tags_cached(tags_val)
-        events = build_events(parsed)
-        had_prior, earliest_list, channels = _prior_history_from_events(events, anchor)
+        web_row, had_prior = _process_matched_reisift_row(
+            reisift_df.iloc[idx],
+            created_col,
+            ql_create_ts,
+            key,
+        )
+        rows.append(web_row)
         if had_prior:
             prior_count += 1
-
-        days_list: Optional[int] = None
-        earliest_list_str = ""
-        if earliest_list is not None:
-            earliest_list_str = earliest_list.date().isoformat()
-            days_list = (anchor - earliest_list).days
-            age_counter[_age_bucket_label(days_list)] += 1
-        elif had_prior:
-            age_counter["Unknown"] += 1
-
-        lists = analysis_list_tokens(rs_row.get("Lists", ""))
-        stackable = stackable_list_tokens(rs_row.get("Lists", ""))
-        combo_key = " + ".join(sorted(stackable)) if len(stackable) >= 2 else ""
-
-        for lst in lists:
+            if web_row.days_list_to_web is not None:
+                age_counter[_age_bucket_label(web_row.days_list_to_web)] += 1
+            elif had_prior:
+                age_counter["Unknown"] += 1
+        for lst in web_row.lists:
             list_counter[lst] += 1
-        if combo_key:
-            combo_counter[combo_key] += 1
+        if web_row.combo_key:
+            combo_counter[web_row.combo_key] += 1
+        path_counter[web_row.journey_path] += 1
 
-        journey = compute_web_journey_path(events, anchor)
-        path_counter[journey] += 1
-
-        rows.append(
-            WebLeadRow(
-                address=address,
-                address_key=key,
-                ql_create_date=ql_create_ts.date().isoformat() if ql_create_ts is not None else "",
-                reisift_created_on=(
-                    reisift_created_ts.date().isoformat() if reisift_created_ts is not None else ""
-                ),
-                anchor_date=anchor.date().isoformat(),
-                lists=lists,
-                combo_key=combo_key,
-                had_prior_history=had_prior,
-                earliest_list_date=earliest_list_str,
-                days_list_to_web=days_list,
-                prior_8020_channels=channels,
-                journey_path=journey,
-                matched=True,
-            )
-        )
-
-    report(85, "Aggregating compact summaries…")
-    total_ql = matched + unmatched
-    match_rate = round(100.0 * matched / total_ql, 2) if total_ql else 0.0
-    prior_pct = round(100.0 * prior_count / matched, 1) if matched else 0.0
-    new_count = matched - prior_count
-    new_pct = round(100.0 * new_count / matched, 1) if matched else 0.0
-
-    if match_rate < 50 and total_ql:
+    if matched + unmatched and round(100.0 * matched / (matched + unmatched), 2) < 50:
         warnings.append(
-            f"Only {match_rate}% of Website leads matched REISift by address; check exports align."
-        )
-
-    top_lists = [
-        {"list": name, "count": cnt, "share_pct": round(100.0 * cnt / matched, 1) if matched else 0}
-        for name, cnt in list_counter.most_common(LIST_CAP)
-    ]
-
-    combinations = [
-        {
-            "lists_key": key,
-            "lists": key.split(" + "),
-            "row_count": cnt,
-            "share_pct": round(100.0 * cnt / matched, 1) if matched else 0,
-        }
-        for key, cnt in combo_counter.most_common(COMBO_CAP)
-        if cnt >= COMBO_MIN_ROWS
-    ]
-
-    top_paths = [
-        {
-            "path": path,
-            "count": cnt,
-            "share_pct": round(100.0 * cnt / matched, 1) if matched else 0,
-        }
-        for path, cnt in path_counter.most_common(PATH_CAP)
-    ]
-
-    age_buckets = [
-        {
-            "bucket": label,
-            "count": age_counter.get(label, 0),
-            "share_pct": round(
-                100.0 * age_counter.get(label, 0) / prior_count, 1
-            )
-            if prior_count
-            else 0,
-        }
-        for label, _, _ in AGE_BUCKETS
-    ]
-    if age_counter.get("Unknown", 0):
-        age_buckets.append(
-            {
-                "bucket": "Unknown",
-                "count": age_counter["Unknown"],
-                "share_pct": round(100.0 * age_counter["Unknown"] / prior_count, 1)
-                if prior_count
-                else 0,
-            }
+            f"Only {round(100.0 * matched / (matched + unmatched), 2)}% of Website leads "
+            "matched REISift by address; check exports align."
         )
 
     methodology = (
         "Cohort = Salesforce Total Qualified Leads with Lead Source mapped to Website, "
         f"Create Date in {window_start} – {window_end}. "
         "Each lead is matched to REISift by normalized property address. "
-        "Anchor date = earlier of REISift Created on and SF Create Date. "
-        "Prior history = any List Purchased 8020 or (8020) CC/SMS/DM tag on or before anchor. "
+        "Anchor date = Web Leads list tag month when present, else earlier of REISift Created on "
+        "and SF Create Date. "
+        "Prior history = distress list purchase or (8020) CC/SMS/DM strictly before anchor. "
         f"List combinations require ≥{COMBO_MIN_ROWS} matched web leads and cap at {COMBO_CAP}. "
         f"Journey paths cap at {PATH_CAP} distinct routes ending in WEB."
     )
 
-    report(95, "Analysis complete")
-    return WebLeadsResult(
+    return _finalize_result(
         date_window_start=window_start.isoformat(),
         date_window_end=window_end.isoformat(),
-        reisift_rows_ingested=reisift_ingested,
-        website_ql_total=website_total,
-        matched_count=matched,
-        unmatched_count=unmatched,
-        match_rate_pct=match_rate,
-        prior_history_count=prior_count,
-        prior_history_pct=prior_pct,
-        new_to_db_count=new_count,
-        new_to_db_pct=new_pct,
-        top_lists=top_lists,
-        combinations=combinations,
-        top_paths=top_paths,
-        age_buckets=age_buckets,
+        reisift_ingested=reisift_ingested,
+        website_total=website_total,
+        matched=matched,
+        unmatched=unmatched,
+        prior_count=prior_count,
         rows=rows,
+        list_counter=list_counter,
+        combo_counter=combo_counter,
+        path_counter=path_counter,
+        age_counter=age_counter,
         warnings=warnings,
-        methodology_note=methodology,
+        methodology=methodology,
+        on_progress=on_progress,
     )
 
 

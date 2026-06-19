@@ -626,15 +626,17 @@ export async function pollWebLeadsJob(
 
 async function analyzeWebLeadsDirect(
   reisiftFile: File,
-  qualifiedLeadsFile: File,
+  qualifiedLeadsFile?: File,
   onProgress?: (pct: number, message: string) => void
 ): Promise<WebLeadsCompletedResponse> {
   const form = new FormData();
   form.append('reisift_file', reisiftFile);
-  form.append('qualified_leads_file', qualifiedLeadsFile);
+  if (qualifiedLeadsFile) {
+    form.append('qualified_leads_file', qualifiedLeadsFile);
+  }
   form.append('use_full_file_span', '1');
 
-  const totalBytes = reisiftFile.size + qualifiedLeadsFile.size;
+  const totalBytes = reisiftFile.size + (qualifiedLeadsFile?.size ?? 0);
   onProgress?.(0, 'Uploading report files…');
 
   const response = await api.post<{ job_id: string; status: string; message: string }>(
@@ -663,17 +665,20 @@ async function analyzeWebLeadsDirect(
 
 async function analyzeWebLeadsResumable(
   reisiftFile: File,
-  qualifiedLeadsFile: File,
+  qualifiedLeadsFile?: File,
   onProgress?: (pct: number, message: string) => void
 ): Promise<WebLeadsCompletedResponse> {
   onProgress?.(0, `Uploading ${reisiftFile.name} (chunked fallback)…`);
   const reisiftPath = await uploadFileResumable('reisift', reisiftFile, (pct, msg) => {
-    onProgress?.(Math.round(pct * 0.45), msg);
+    onProgress?.(Math.round(pct * (qualifiedLeadsFile ? 0.45 : 0.9)), msg);
   });
-  onProgress?.(45, `Uploading ${qualifiedLeadsFile.name}…`);
-  const qlPath = await uploadFileResumable('qualified_leads', qualifiedLeadsFile, (pct, msg) => {
-    onProgress?.(45 + Math.round(pct * 0.45), msg);
-  });
+  let qlPath: string | undefined;
+  if (qualifiedLeadsFile) {
+    onProgress?.(45, `Uploading ${qualifiedLeadsFile.name}…`);
+    qlPath = await uploadFileResumable('qualified_leads', qualifiedLeadsFile, (pct, msg) => {
+      onProgress?.(45 + Math.round(pct * 0.45), msg);
+    });
+  }
   onProgress?.(90, 'Starting analysis…');
   const started = await analyzeWebLeadsFromPaths(reisiftPath, qlPath);
   const result = await pollWebLeadsJob(started.job_id, onProgress);
@@ -683,7 +688,7 @@ async function analyzeWebLeadsResumable(
 
 export const analyzeWebLeads = async (
   reisiftFile: File,
-  qualifiedLeadsFile: File,
+  qualifiedLeadsFile?: File,
   onProgress?: (pct: number, message: string) => void
 ): Promise<WebLeadsCompletedResponse> => {
   try {
@@ -702,15 +707,18 @@ export const analyzeWebLeads = async (
 
 export const analyzeWebLeadsFromPaths = async (
   reisiftPath: string,
-  qualifiedLeadsPath: string
+  qualifiedLeadsPath?: string
 ): Promise<{ job_id: string; status: string; message: string }> => {
+  const body: Record<string, unknown> = {
+    reisift_path: reisiftPath,
+    use_full_file_span: true,
+  };
+  if (qualifiedLeadsPath) {
+    body.qualified_leads_path = qualifiedLeadsPath;
+  }
   const response = await api.post<{ job_id: string; status: string; message: string }>(
     '/web-leads/analyze',
-    {
-      reisift_path: reisiftPath,
-      qualified_leads_path: qualifiedLeadsPath,
-      use_full_file_span: true,
-    }
+    body
   );
   return response.data;
 };
