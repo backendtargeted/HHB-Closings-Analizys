@@ -1,9 +1,8 @@
 """
-Gate 4 — Web Leads (and similar cohort tracks).
+Gate 4 — Web Leads (and similar REISift source slices).
 
-Upload a manually filtered cohort file (web leads, court alerts, etc.) and match
-each row to the full REISift export for lists, tag history, journey paths, and
-combinations. Optional closings workbook for close-date enrichment.
+Upload a REISift export already filtered by source (web leads, court alerts, etc.).
+Optional closings workbook for close-date enrichment.
 """
 
 from __future__ import annotations
@@ -45,9 +44,9 @@ ProgressCallback = Callable[[int, str], None]
 COHORT_SOURCE_DEFAULT = "web_leads"
 
 COHORT_SOURCE_LABELS: Dict[str, str] = {
-    "web_leads": "Web Leads track",
-    "court_alerts": "Court alerts track",
-    "long_island_profiles": "Long Island profiles track",
+    "web_leads": "Web Leads",
+    "court_alerts": "Court alerts",
+    "long_island_profiles": "Long Island profiles",
 }
 
 COMBO_CAP = 12
@@ -617,51 +616,40 @@ def _finalize_result(
 
 
 def analyze(
-    cohort_path: str,
-    reisift_reference_path: str,
+    reisift_path: str,
     closings_path: Optional[str] = None,
     *,
     cohort_source: str = COHORT_SOURCE_DEFAULT,
     on_progress: Optional[ProgressCallback] = None,
 ) -> WebLeadsResult:
-    """Match a manually filtered cohort track to the full REISift reference."""
+    """Analyze a REISift export sliced by lead source."""
     warnings: List[str] = []
-    cohort_label = COHORT_SOURCE_LABELS.get(cohort_source, cohort_source)
+    source_label = COHORT_SOURCE_LABELS.get(cohort_source, cohort_source)
 
     def report(progress: int, message: str) -> None:
         if on_progress:
             on_progress(progress, message)
 
-    report(5, "Loading cohort track file…")
-    cohort_df = load_reisift_file(cohort_path)
-    cohort_total = len(cohort_df)
-    if cohort_total == 0:
-        raise ValueError("Cohort track file is empty.")
+    report(10, "Loading REISift export…")
+    reisift_df = load_reisift_file(reisift_path)
+    row_total = len(reisift_df)
+    if row_total == 0:
+        raise ValueError("REISift export is empty.")
 
-    report(15, "Loading full REISift reference…")
-    reisift_df = load_reisift_file(reisift_reference_path)
-    reisift_ingested = len(reisift_df)
-
-    cohort_created_col = _discover_reisift_created_col(cohort_df)
-    reisift_created_col = _discover_reisift_created_col(reisift_df)
-    if not cohort_created_col:
+    created_col = _discover_reisift_created_col(reisift_df)
+    if not created_col:
         warnings.append(
-            "Cohort track file has no Created column; track dates use web-lead tag month only."
-        )
-    if not reisift_created_col:
-        warnings.append("REISift reference has no Created column.")
-
-    if "Tags" not in cohort_df.columns:
-        warnings.append(
-            "Cohort track file has no Tags column; web-lead anchor uses Created dates only."
+            "REISift export has no Created column; anchor dates use web-lead tag month only."
         )
 
-    report(25, "Indexing REISift reference addresses…")
-    reisift_index = _build_reisift_index(reisift_df)
+    if "Tags" not in reisift_df.columns:
+        warnings.append(
+            "REISift export has no Tags column; web-lead anchor uses Created dates only."
+        )
 
     closings_index: Dict[str, Dict[str, Any]] = {}
     if closings_path:
-        report(30, "Loading closings workbook…")
+        report(20, "Loading closings workbook…")
         closings_index = _build_closings_index(closings_path)
         if not closings_index:
             warnings.append(
@@ -673,34 +661,25 @@ def analyze(
     combo_counter: Counter[str] = Counter()
     path_counter: Counter[str] = Counter()
     age_counter: Counter[str] = Counter()
-    matched = 0
-    unmatched = 0
     prior_count = 0
     track_dates: List[pd.Timestamp] = []
 
-    report(40, f"Matching {cohort_total:,} cohort rows to REISift…")
-    for i, (_, cohort_row) in enumerate(cohort_df.iterrows()):
-        key = _reisift_address_key(cohort_row)
-        cohort_created = _reisift_created_ts(cohort_row, cohort_created_col)
-        if cohort_created is not None:
-            track_dates.append(cohort_created)
-        web_tag = parse_web_lead_tag_date(cohort_row.get("Tags", ""))
+    report(35, f"Analyzing {row_total:,} REISift rows…")
+    for i, (_, row) in enumerate(reisift_df.iterrows()):
+        key = _reisift_address_key(row)
+        row_created = _reisift_created_ts(row, created_col)
+        if row_created is not None:
+            track_dates.append(row_created)
+        web_tag = parse_web_lead_tag_date(row.get("Tags", ""))
         if web_tag is not None:
             track_dates.append(web_tag)
 
-        idx = reisift_index.get(key)
-        if idx is None:
-            unmatched += 1
-            continue
-
-        matched += 1
-        reisift_row = reisift_df.iloc[idx]
         closings_entry = closings_index.get(key)
         web_row, had_prior = _process_cohort_reisift_match(
-            cohort_row,
-            reisift_row,
-            cohort_created_col,
-            reisift_created_col,
+            row,
+            row,
+            created_col,
+            created_col,
             key,
             closings_entry,
         )
@@ -719,32 +698,20 @@ def analyze(
 
         if on_progress and i > 0 and i % 50 == 0:
             report(
-                40 + int(40 * i / max(cohort_total, 1)),
-                f"Row {i:,} / {cohort_total:,}…",
+                35 + int(50 * i / max(row_total, 1)),
+                f"Row {i:,} / {row_total:,}…",
             )
-
-    if cohort_total and matched == 0:
-        warnings.append(
-            "No cohort rows matched the REISift reference by address; check exports align."
-        )
-    elif cohort_total and round(100.0 * matched / cohort_total, 2) < 50:
-        warnings.append(
-            f"Only {round(100.0 * matched / cohort_total, 2)}% of cohort rows "
-            "matched REISift by address; check exports align."
-        )
 
     window_start = min(track_dates).date().isoformat() if track_dates else ""
     window_end = max(track_dates).date().isoformat() if track_dates else ""
 
     methodology = (
-        f"Cohort = {cohort_label} (manually filtered export). "
-        "Each row is matched to the full REISift reference by normalized property address. "
-        "This report lists REISift matches only; unmatched cohort rows are counted but not shown. "
-        "Anchor date = List Purchased Web Leads tag month when present, else cohort Created on "
-        "(fallback: REISift Created on). "
+        f"Rows = REISift export sliced by {source_label}. "
+        "Each row is analyzed from its own tags, lists, and Created date. "
+        "Anchor date = List Purchased Web Leads tag month when present, else Created on. "
         "Prior history = distress list purchase or (8020) CC/SMS/DM strictly before anchor. "
-        "New to database = matched rows with no 8020 tag on the REISift record. "
-        f"List combinations require ≥{COMBO_MIN_ROWS} matched rows and cap at {COMBO_CAP}. "
+        "New to database = rows with no 8020 tag on the REISift record. "
+        f"List combinations require ≥{COMBO_MIN_ROWS} rows and cap at {COMBO_CAP}. "
         f"Journey paths cap at {PATH_CAP} compact routes ending in WEB."
     )
     if closings_path:
@@ -753,10 +720,10 @@ def analyze(
     return _finalize_result(
         date_window_start=window_start,
         date_window_end=window_end,
-        reisift_ingested=reisift_ingested,
-        website_total=cohort_total,
-        matched=matched,
-        unmatched=unmatched,
+        reisift_ingested=row_total,
+        website_total=row_total,
+        matched=row_total,
+        unmatched=0,
         prior_count=prior_count,
         rows=rows,
         list_counter=list_counter,
@@ -782,7 +749,7 @@ def build_export_workbook(result: WebLeadsResult) -> bytes:
             {"metric": "Date window start", "value": result.date_window_start},
             {"metric": "Date window end", "value": result.date_window_end},
             {"metric": "REISift rows ingested", "value": result.reisift_rows_ingested},
-            {"metric": "Cohort track rows", "value": result.website_ql_total},
+            {"metric": "REISift export rows", "value": result.website_ql_total},
             {"metric": "Cohort source", "value": result.cohort_source},
             {"metric": "Matched to REISift", "value": result.matched_count},
             {"metric": "Unmatched", "value": result.unmatched_count},

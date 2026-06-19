@@ -157,7 +157,7 @@ const WebLeadsRowTable = ({ rows }: WebLeadsRowTableProps) => {
         <div>
           <h3 className="text-lg font-semibold text-stone-900">Row detail</h3>
           <p className="text-sm text-stone-600 mt-1">
-            {filteredRows.length.toLocaleString()} of {rows.length.toLocaleString()} matched rows
+            {filteredRows.length.toLocaleString()} of {rows.length.toLocaleString()} rows
             {no8020Count > 0 ? ` · ${no8020Count.toLocaleString()} without 8020 tag` : ''}
           </p>
         </div>

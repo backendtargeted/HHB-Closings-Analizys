@@ -625,15 +625,13 @@ export async function pollWebLeadsJob(
 }
 
 async function analyzeWebLeadsDirect(
-  cohortFile: File,
-  reisiftReferenceFile: File,
+  reisiftFile: File,
   closingsFile?: File,
   cohortSource?: string,
   onProgress?: (pct: number, message: string) => void
 ): Promise<WebLeadsCompletedResponse> {
   const form = new FormData();
-  form.append('cohort_file', cohortFile);
-  form.append('reisift_reference_file', reisiftReferenceFile);
+  form.append('reisift_file', reisiftFile);
   if (closingsFile) {
     form.append('closings_file', closingsFile);
   }
@@ -641,8 +639,7 @@ async function analyzeWebLeadsDirect(
     form.append('cohort_source', cohortSource);
   }
 
-  const totalBytes =
-    cohortFile.size + reisiftReferenceFile.size + (closingsFile?.size ?? 0);
+  const totalBytes = reisiftFile.size + (closingsFile?.size ?? 0);
   onProgress?.(0, 'Uploading report files…');
 
   const response = await api.post<{ job_id: string; status: string; message: string }>(
@@ -670,19 +667,14 @@ async function analyzeWebLeadsDirect(
 }
 
 async function analyzeWebLeadsResumable(
-  cohortFile: File,
-  reisiftReferenceFile: File,
+  reisiftFile: File,
   closingsFile?: File,
   cohortSource?: string,
   onProgress?: (pct: number, message: string) => void
 ): Promise<WebLeadsCompletedResponse> {
-  onProgress?.(0, `Uploading ${cohortFile.name} (chunked fallback)…`);
-  const cohortPath = await uploadFileResumable('reisift', cohortFile, (pct, msg) => {
-    onProgress?.(Math.round(pct * 0.3), msg);
-  });
-  onProgress?.(30, `Uploading ${reisiftReferenceFile.name}…`);
-  const reisiftPath = await uploadFileResumable('reisift', reisiftReferenceFile, (pct, msg) => {
-    onProgress?.(30 + Math.round(pct * 0.35), msg);
+  onProgress?.(0, `Uploading ${reisiftFile.name} (chunked fallback)…`);
+  const reisiftPath = await uploadFileResumable('reisift', reisiftFile, (pct, msg) => {
+    onProgress?.(Math.round(pct * (closingsFile ? 0.65 : 0.9)), msg);
   });
   let closingsPath: string | undefined;
   if (closingsFile) {
@@ -692,32 +684,20 @@ async function analyzeWebLeadsResumable(
     });
   }
   onProgress?.(90, 'Starting analysis…');
-  const started = await analyzeWebLeadsFromPaths(
-    cohortPath,
-    reisiftPath,
-    closingsPath,
-    cohortSource
-  );
+  const started = await analyzeWebLeadsFromPaths(reisiftPath, closingsPath, cohortSource);
   const result = await pollWebLeadsJob(started.job_id, onProgress);
   onProgress?.(100, 'Done');
   return result;
 }
 
 export const analyzeWebLeads = async (
-  cohortFile: File,
-  reisiftReferenceFile: File,
+  reisiftFile: File,
   closingsFile?: File,
   cohortSource?: string,
   onProgress?: (pct: number, message: string) => void
 ): Promise<WebLeadsCompletedResponse> => {
   try {
-    return await analyzeWebLeadsDirect(
-      cohortFile,
-      reisiftReferenceFile,
-      closingsFile,
-      cohortSource,
-      onProgress
-    );
+    return await analyzeWebLeadsDirect(reisiftFile, closingsFile, cohortSource, onProgress);
   } catch (err) {
     if (!shouldFallbackToResumableUpload(err)) {
       throw err;
@@ -726,25 +706,17 @@ export const analyzeWebLeads = async (
       0,
       'Direct upload interrupted — retrying in smaller pieces (proxy timeout)…'
     );
-    return analyzeWebLeadsResumable(
-      cohortFile,
-      reisiftReferenceFile,
-      closingsFile,
-      cohortSource,
-      onProgress
-    );
+    return analyzeWebLeadsResumable(reisiftFile, closingsFile, cohortSource, onProgress);
   }
 };
 
 export const analyzeWebLeadsFromPaths = async (
-  cohortPath: string,
-  reisiftReferencePath: string,
+  reisiftPath: string,
   closingsPath?: string,
   cohortSource?: string
 ): Promise<{ job_id: string; status: string; message: string }> => {
   const body: Record<string, unknown> = {
-    cohort_path: cohortPath,
-    reisift_reference_path: reisiftReferencePath,
+    reisift_path: reisiftPath,
   };
   if (closingsPath) {
     body.closings_path = closingsPath;

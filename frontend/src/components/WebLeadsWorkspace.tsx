@@ -13,17 +13,16 @@ interface WebLeadsWorkspaceProps {
   onOpenResult?: (data: WebLeadsCompletedResponse) => void;
 }
 
-const COHORT_OPTIONS: Array<{ value: WebLeadsCohortSource; label: string }> = [
-  { value: 'web_leads', label: 'Web Leads track' },
-  { value: 'court_alerts', label: 'Court alerts track' },
-  { value: 'long_island_profiles', label: 'Long Island profiles track' },
+const SOURCE_OPTIONS: Array<{ value: WebLeadsCohortSource; label: string }> = [
+  { value: 'web_leads', label: 'Web Leads' },
+  { value: 'court_alerts', label: 'Court alerts' },
+  { value: 'long_island_profiles', label: 'Long Island profiles' },
 ];
 
 const WebLeadsWorkspace = ({ onRunComplete, onOpenResult }: WebLeadsWorkspaceProps) => {
-  const [cohortFile, setCohortFile] = useState<File | null>(null);
-  const [reisiftReferenceFile, setReisiftReferenceFile] = useState<File | null>(null);
+  const [reisiftFile, setReisiftFile] = useState<File | null>(null);
   const [closingsFile, setClosingsFile] = useState<File | null>(null);
-  const [cohortSource, setCohortSource] = useState<WebLeadsCohortSource>('web_leads');
+  const [sourceType, setSourceType] = useState<WebLeadsCohortSource>('web_leads');
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
@@ -32,12 +31,8 @@ const WebLeadsWorkspace = ({ onRunComplete, onOpenResult }: WebLeadsWorkspacePro
   const [exporting, setExporting] = useState(false);
 
   const handleRun = async () => {
-    if (!cohortFile) {
-      setError('Upload your cohort track file (manually filtered leads).');
-      return;
-    }
-    if (!reisiftReferenceFile) {
-      setError('Upload the full REISift reference export.');
+    if (!reisiftFile) {
+      setError('Upload your REISift export (.csv).');
       return;
     }
     setLoading(true);
@@ -46,10 +41,9 @@ const WebLeadsWorkspace = ({ onRunComplete, onOpenResult }: WebLeadsWorkspacePro
     setStatusMessage('');
     try {
       const data = await analyzeWebLeads(
-        cohortFile,
-        reisiftReferenceFile,
+        reisiftFile,
         closingsFile ?? undefined,
-        cohortSource,
+        sourceType,
         (pct, msg) => {
           setProgress(pct);
           setStatusMessage(msg);
@@ -75,10 +69,9 @@ const WebLeadsWorkspace = ({ onRunComplete, onOpenResult }: WebLeadsWorkspacePro
       }
     }
     setResult(null);
-    setCohortFile(null);
-    setReisiftReferenceFile(null);
+    setReisiftFile(null);
     setClosingsFile(null);
-    setCohortSource('web_leads');
+    setSourceType('web_leads');
   };
 
   const handleExport = async () => {
@@ -114,21 +107,20 @@ const WebLeadsWorkspace = ({ onRunComplete, onOpenResult }: WebLeadsWorkspacePro
     <div className="rounded-2xl border border-violet-200/90 bg-violet-50/40 p-6 shadow-sm">
       <h2 className="text-xl font-bold text-violet-950">Web Leads report</h2>
       <p className="text-sm text-violet-950/80 mt-2 leading-relaxed max-w-2xl">
-        Upload your manually filtered cohort track (e.g. web leads you exported from REISift for
-        analysis). Match each row to the <strong>full REISift export</strong> to see lists, tag
-        Optional closings workbook adds close date and stage. You can use the same REISift
-        export for both cohort track and reference when your track file is already a REISift export.
+        Upload your REISift export already sliced by source (e.g. List Purchased Web Leads). We
+        analyze each row&apos;s lists, tag history, journey paths, and combinations. Optional
+        closings workbook adds close date and stage.
       </p>
 
       <div className="mt-6 grid gap-4 max-w-md">
         <label className="block text-sm font-medium text-violet-950">
-          Cohort track type
+          Source slice
           <select
-            value={cohortSource}
-            onChange={(e) => setCohortSource(e.target.value as WebLeadsCohortSource)}
+            value={sourceType}
+            onChange={(e) => setSourceType(e.target.value as WebLeadsCohortSource)}
             className="mt-1 block w-full text-sm rounded-lg border border-violet-200 bg-white px-3 py-2"
           >
-            {COHORT_OPTIONS.map((opt) => (
+            {SOURCE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -136,20 +128,11 @@ const WebLeadsWorkspace = ({ onRunComplete, onOpenResult }: WebLeadsWorkspacePro
           </select>
         </label>
         <label className="block text-sm font-medium text-violet-950">
-          Cohort track file (.csv) — required
+          REISift export (.csv) — required
           <input
             type="file"
             accept=".csv,.xlsx,.xls"
-            onChange={(e) => setCohortFile(e.target.files?.[0] ?? null)}
-            className="mt-1 block w-full text-sm"
-          />
-        </label>
-        <label className="block text-sm font-medium text-violet-950">
-          Full REISift reference export (.csv) — required
-          <input
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            onChange={(e) => setReisiftReferenceFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => setReisiftFile(e.target.files?.[0] ?? null)}
             className="mt-1 block w-full text-sm"
           />
         </label>
@@ -174,7 +157,7 @@ const WebLeadsWorkspace = ({ onRunComplete, onOpenResult }: WebLeadsWorkspacePro
         <button
           type="button"
           onClick={handleRun}
-          disabled={loading || !cohortFile || !reisiftReferenceFile}
+          disabled={loading || !reisiftFile}
           className="px-5 py-2.5 rounded-lg bg-violet-800 text-white text-sm font-semibold hover:bg-violet-900 disabled:opacity-50"
         >
           {loading ? 'Analyzing…' : 'Run Web Leads report'}

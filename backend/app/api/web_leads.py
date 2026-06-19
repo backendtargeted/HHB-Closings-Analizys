@@ -71,8 +71,7 @@ def _read_job_progress(job_dir: Path) -> Dict[str, Any] | None:
 
 def _analyze_in_subprocess(
     job_id: str,
-    cohort_path: str,
-    reisift_reference_path: str,
+    reisift_path: str,
     closings_path: Optional[str],
     cohort_source: str,
     job_dir_str: str,
@@ -101,8 +100,7 @@ def _analyze_in_subprocess(
             },
         )
         result = analyze(
-            cohort_path,
-            reisift_reference_path,
+            reisift_path,
             closings_path=closings_path,
             cohort_source=cohort_source,
             on_progress=on_progress,
@@ -253,8 +251,7 @@ def _watch_analysis_process(job_id: str, proc: multiprocessing.Process) -> None:
 
 def _run_web_leads_job(
     job_id: str,
-    cohort_path: str,
-    reisift_reference_path: str,
+    reisift_path: str,
     closings_path: Optional[str],
     cohort_source: str,
 ) -> None:
@@ -277,8 +274,7 @@ def _run_web_leads_job(
         target=_analyze_in_subprocess,
         args=(
             job_id,
-            cohort_path,
-            reisift_reference_path,
+            reisift_path,
             closings_path,
             cohort_source,
             str(job_dir),
@@ -292,8 +288,7 @@ def _run_web_leads_job(
 
 
 def _start_web_leads_job(
-    cohort_path: str,
-    reisift_reference_path: str,
+    reisift_path: str,
     closings_path: Optional[str],
     cohort_source: str,
     job_id: str | None = None,
@@ -314,7 +309,7 @@ def _start_web_leads_job(
 
     thread = threading.Thread(
         target=_run_web_leads_job,
-        args=(job_id, cohort_path, reisift_reference_path, closings_path, cohort_source),
+        args=(job_id, reisift_path, closings_path, cohort_source),
         daemon=True,
     )
     thread.start()
@@ -336,15 +331,16 @@ def web_leads_analyze():
     if request.is_json:
         data = request.get_json() or {}
         cohort_source = (data.get("cohort_source") or COHORT_SOURCE_DEFAULT).strip()
-        cohort_raw = (data.get("cohort_path") or "").strip()
-        reisift_raw = (data.get("reisift_reference_path") or data.get("reisift_path") or "").strip()
+        reisift_raw = (
+            data.get("reisift_path")
+            or data.get("reisift_reference_path")
+            or data.get("cohort_path")
+            or ""
+        ).strip()
         closings_raw = (data.get("closings_path") or "").strip() or None
-        if not cohort_raw:
-            return jsonify({"detail": "cohort_path is required"}), 400
         if not reisift_raw:
-            return jsonify({"detail": "reisift_reference_path is required"}), 400
+            return jsonify({"detail": "reisift_path is required"}), 400
         try:
-            cohort_path = str(resolve_trusted_final_path(cohort_raw))
             reisift_path = str(resolve_trusted_final_path(reisift_raw))
             closings_path = (
                 str(resolve_trusted_final_path(closings_raw)) if closings_raw else None
@@ -352,25 +348,22 @@ def web_leads_analyze():
         except ValueError as exc:
             return jsonify({"detail": str(exc)}), 400
         payload, status = _start_web_leads_job(
-            cohort_path, reisift_path, closings_path, cohort_source
+            reisift_path, closings_path, cohort_source
         )
         return jsonify(_sanitize_for_json(payload)), status
 
-    cohort = request.files.get("cohort_file")
-    reisift = request.files.get("reisift_reference_file") or request.files.get("reisift_file")
+    reisift = (
+        request.files.get("reisift_file")
+        or request.files.get("reisift_reference_file")
+        or request.files.get("cohort_file")
+    )
     closings = request.files.get("closings_file")
-    if not cohort or not cohort.filename:
-        return jsonify({"detail": "cohort_file is required"}), 400
     if not reisift or not reisift.filename:
-        return jsonify({"detail": "reisift_reference_file is required"}), 400
+        return jsonify({"detail": "reisift_file is required"}), 400
 
     job_id = str(uuid.uuid4())
     job_dir = WL_ROOT / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
-
-    cohort_name = Path(cohort.filename.replace("\\", "/")).name
-    cohort_path_obj = job_dir / cohort_name
-    cohort.save(str(cohort_path_obj))
 
     reisift_name = Path(reisift.filename.replace("\\", "/")).name
     reisift_path_obj = job_dir / reisift_name
@@ -384,7 +377,6 @@ def web_leads_analyze():
         closings_path = str(closings_path_obj)
 
     payload, status = _start_web_leads_job(
-        str(cohort_path_obj),
         str(reisift_path_obj),
         closings_path,
         cohort_source,

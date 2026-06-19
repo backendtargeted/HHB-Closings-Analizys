@@ -14,7 +14,10 @@ const WebLeadsResults = ({ result, onNewRun, onExport, exporting }: WebLeadsResu
   const [shareStatus, setShareStatus] = useState<string | null>(null);
   const m = result.metrics;
   const warnings = result.warnings ?? m.warnings ?? [];
-  const cohortRows = m.inputs.cohort_rows ?? m.inputs.website_ql_total;
+  const rowCount =
+    m.inputs.cohort_rows ??
+    m.inputs.reisift_reference_rows ??
+    m.inputs.website_ql_total;
 
   const handleShare = async () => {
     setShareStatus(null);
@@ -30,12 +33,7 @@ const WebLeadsResults = ({ result, onNewRun, onExport, exporting }: WebLeadsResu
           <p className="text-sm text-stone-600 mt-1">
             {m.date_window_start} → {m.date_window_end}
             {' · '}
-            {cohortRows.toLocaleString()} cohort track
-            {' · '}
-            {m.match.matched.toLocaleString()} matched REISift
-            {m.match.unmatched > 0
-              ? ` (${m.match.unmatched.toLocaleString()} not in reference)`
-              : ''}
+            {rowCount.toLocaleString()} REISift rows
             {m.prior_history.new_to_db_count > 0
               ? ` · ${m.prior_history.new_to_db_count.toLocaleString()} without 8020 tag`
               : ''}
