@@ -10,7 +10,12 @@ import {
   YAxis,
 } from 'recharts';
 import { copyReportShareUrl } from '../utils/reportShareUrl';
-import type { CountShareRow, ProbateCompletedResponse, ProbateRow } from '../types/probate';
+import type {
+  CountShareRow,
+  CrmBeforeFirstListRow,
+  ProbateCompletedResponse,
+  ProbateRow,
+} from '../types/probate';
 
 interface ProbateResultsProps {
   result: ProbateCompletedResponse;
@@ -210,12 +215,17 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
           label="Transactions"
           value={`${m.match.txn_matched.toLocaleString()} (${m.match.txn_rate_pct}%)`}
         />
+        <Stat
+          label="In CRM before first list"
+          value={(m.match.crm_before_first_list ?? m.crm_before_first_list?.length ?? 0).toLocaleString()}
+        />
       </div>
 
       <section className="rounded-xl border border-stone-200 bg-white p-5">
         <h3 className="text-lg font-semibold text-stone-900">Funnel</h3>
         <p className="text-sm text-stone-600 mt-1">
-          First list is the source. Create Date is when the team pushed the lead into Salesforce.
+          First list is the source. A Prospect is a QL whose Create Date is on or after that
+          first-list month.
         </p>
         <div className="mt-4 h-56">
           <ResponsiveContainer width="100%" height="100%">
@@ -279,8 +289,8 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
       <section className="rounded-xl border border-stone-200 bg-white p-5">
         <h3 className="text-lg font-semibold text-stone-900">Months first list to CRM push</h3>
         <p className="text-sm text-stone-600 mt-1">
-          Calendar months from the first-list month to Salesforce Create Date. Negative means the
-          CRM push is dated before that list tag month — still credited to first list.
+          Calendar months from the first-list month to Salesforce Create Date for counted
+          Prospects. Earlier CRM rows are not conversions.
         </p>
         {lagChart.length > 0 ? (
           <div className="mt-4 h-64">
@@ -365,6 +375,21 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
           `${r.prospect_rate_pct ?? 0}%`,
           r.txns ?? 0,
           fmt(r.mean_months_lip_to_prospect),
+        ])}
+      />
+
+      <CompactTable
+        title="In CRM before first list"
+        subtitle="Address or phone matched a Qualified Lead, but Create Date is before the first LIP/8020 list month. Not a conversion from this list. Not source credit."
+        columns={['Address', 'County', 'LIP', '8020', 'CRM date', 'Match', 'Campaign']}
+        rows={(m.crm_before_first_list ?? []).map((r: CrmBeforeFirstListRow) => [
+          r.address ?? '',
+          r.county ?? '',
+          r.lip_month ?? '',
+          r.eight_month || '—',
+          r.prospect_date || '—',
+          r.prospect_match_via || '—',
+          r.ql_campaign || '—',
         ])}
       />
 

@@ -100,7 +100,6 @@ FIRST_SOURCE_LABELS: Dict[str, str] = {
 }
 
 LAG_BUCKETS: Tuple[Tuple[str, Optional[int], Optional[int]], ...] = (
-    ("Before list month", None, -1),
     ("Same month", 0, 0),
     ("1-3 months", 1, 3),
     ("4-6 months", 4, 6),
@@ -192,8 +191,28 @@ def parse_probate_tags(tags_str: object) -> List[Dict[str, Any]]:
     return found
 
 
+def _tag_key(hit: Dict[str, Any]) -> Tuple[str, int, int]:
+    return (str(hit["county"]), int(hit["year"]), int(hit["month"]))
+
+
+def _locked_probate_keys() -> set[Tuple[str, int, int]]:
+    keys: set[Tuple[str, int, int]] = set()
+    for tag in LOCKED_PROBATE_TAGS:
+        for hit in parse_probate_tags(tag):
+            keys.add(_tag_key(hit))
+    return keys
+
+
+LOCKED_PROBATE_KEYS = _locked_probate_keys()
+
+
+def parse_locked_probate_tags(tags_str: object) -> List[Dict[str, Any]]:
+    """Probate tags that are in the locked 18-month set. Earliest-first."""
+    return [hit for hit in parse_probate_tags(tags_str) if _tag_key(hit) in LOCKED_PROBATE_KEYS]
+
+
 def first_probate_hit(tags_str: object) -> Optional[Dict[str, Any]]:
-    hits = parse_probate_tags(tags_str)
+    hits = parse_locked_probate_tags(tags_str)
     return hits[0] if hits else None
 
 
@@ -256,10 +275,8 @@ def months_between(
 
 
 def lag_bucket_label(months: Optional[int]) -> str:
-    if months is None:
+    if months is None or months < 0:
         return "Unknown"
-    if months < 0:
-        return "Before list month"
     for label, lo, hi in LAG_BUCKETS:
         if lo is None:
             continue
@@ -268,6 +285,18 @@ def lag_bucket_label(months: Optional[int]) -> str:
         if hi is not None and lo <= months <= hi:
             return label
     return "Unknown"
+
+
+def _first_list_date(
+    lip_date: Optional[pd.Timestamp], eight_date: Optional[pd.Timestamp]
+) -> Optional[pd.Timestamp]:
+    if lip_date is None or pd.isna(lip_date):
+        return None
+    if eight_date is None or pd.isna(eight_date):
+        return pd.Timestamp(lip_date)
+    lip = pd.Timestamp(lip_date)
+    eight = pd.Timestamp(eight_date)
+    return eight if eight < lip else lip
 
 
 def _zip5(raw: object) -> str:
@@ -466,28 +495,54 @@ def _lookup_indices(index: MatchIndex, full_key: str, phones: List[str]) -> Tupl
     return [], ""
 
 
-def _best_hit(index: Optional[MatchIndex], full_key: str, phones: List[str]) -> Optional[CrmHit]:
+def _crm_hit(index: MatchIndex, idx: int, via: str) -> CrmHit:
+    return CrmHit(
+        date=index.dates[idx],
+        primary_reason=index.primary_reasons[idx],
+        secondary_reason=index.secondary_reasons[idx],
+        via=via,
+        campaign=index.campaigns[idx] if index.campaigns else "",
+    )
+
+
+def _best_hit(
+    index: Optional[MatchIndex],
+    full_key: str,
+    phones: List[str],
+    *,
+    on_or_after: Optional[pd.Timestamp] = None,
+    before: Optional[pd.Timestamp] = None,
+) -> Optional[CrmHit]:
+    """Earliest matching CRM row. Optional month filters vs first-list month."""
     if index is None:
         return None
     idxs, via = _lookup_indices(index, full_key, phones)
     if not idxs:
         return None
-    best_i = idxs[0]
+    candidates: List[int] = []
+    for i in idxs:
+        dt = index.dates[i]
+        if on_or_after is not None:
+            lag = months_between(on_or_after, dt)
+            if lag is None or lag < 0:
+                continue
+        if before is not None:
+            lag = months_between(before, dt)
+            if lag is None or lag >= 0:
+                continue
+        candidates.append(i)
+    if not candidates:
+        return None
+    best_i = candidates[0]
     best_date = index.dates[best_i]
-    for i in idxs[1:]:
+    for i in candidates[1:]:
         dt = index.dates[i]
         if dt is None:
             continue
         if best_date is None or dt < best_date:
             best_date = dt
             best_i = i
-    return CrmHit(
-        date=best_date,
-        primary_reason=index.primary_reasons[best_i],
-        secondary_reason=index.secondary_reasons[best_i],
-        via=via,
-        campaign=index.campaigns[best_i] if index.campaigns else "",
-    )
+    return _crm_hit(index, best_i, via)
 
 
 def _pct(part: int, whole: int) -> float:
@@ -590,6 +645,8 @@ class ProbateResult:
     funnel: Dict[str, int]
     primary_reasons: List[Dict[str, Any]]
     secondary_reasons: List[Dict[str, Any]]
+    crm_before_first_list_count: int = 0
+    crm_before_first_list: List[Dict[str, Any]] = field(default_factory=list)
     rows: List[ProbateRow] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     methodology_note: str = ""
@@ -610,6 +667,7 @@ class ProbateResult:
                 "opp_rate_pct": self.opp_rate_pct,
                 "txn_matched": self.txn_matched,
                 "txn_rate_pct": self.txn_rate_pct,
+                "crm_before_first_list": self.crm_before_first_list_count,
             },
             "lag": {
                 "mean_months_lip_to_prospect": self.mean_months_lip_to_prospect,
@@ -623,6 +681,7 @@ class ProbateResult:
             "funnel": self.funnel,
             "primary_reasons": self.primary_reasons,
             "secondary_reasons": self.secondary_reasons,
+            "crm_before_first_list": self.crm_before_first_list,
             "rows": [r.to_dict() for r in self.rows],
             "warnings": self.warnings,
             "methodology_note": self.methodology_note,
@@ -655,6 +714,8 @@ def result_from_metrics_dict(metrics: Dict[str, Any]) -> ProbateResult:
         funnel=dict(metrics.get("funnel") or {}),
         primary_reasons=list(metrics.get("primary_reasons") or []),
         secondary_reasons=list(metrics.get("secondary_reasons") or []),
+        crm_before_first_list_count=int(match.get("crm_before_first_list") or 0),
+        crm_before_first_list=list(metrics.get("crm_before_first_list") or []),
         rows=rows,
         warnings=list(metrics.get("warnings") or []),
         methodology_note=str(metrics.get("methodology_note") or ""),
@@ -737,7 +798,7 @@ def analyze(
     ql_df = _load_crm_file(ql_path)
     if not find_column_name(ql_df, QL_CAMPAIGN_CANDIDATES):
         warnings.append(
-            "Qualified Leads file has no Campaign column — already-in-Salesforce breakdown will be blank."
+            "Qualified Leads file has no Campaign column — Campaign table will be blank."
         )
     ql_index = _build_match_index(
         ql_df,
@@ -775,6 +836,7 @@ def analyze(
         )
 
     rows: List[ProbateRow] = []
+    crm_before_rows: List[Dict[str, Any]] = []
     lip_dates: List[pd.Timestamp] = []
     lag_values: List[int] = []
     first_source_counter: Counter[str] = Counter()
@@ -797,7 +859,8 @@ def analyze(
         eight_date = parse_8020_list_purchase_date(tags_val)
         source = classify_first_source(lip_date, eight_date)
         first_source_counter[source] += 1
-        counties = [h["county"] for h in parse_probate_tags(tags_val)]
+        locked_hits = parse_locked_probate_tags(tags_val)
+        counties = [h["county"] for h in locked_hits]
         county = hit["county"]
         county_counter[county] += 1
 
@@ -809,16 +872,17 @@ def analyze(
         phones = _phones_from_row(row, REISIFT_PHONE_CANDIDATES)
         display = " ".join(p for p in (street, city) if p) or key
 
-        ql_hit = _best_hit(ql_index, key, phones)
+        winner_date = _first_list_date(lip_date, eight_date)
+        ql_hit = _best_hit(ql_index, key, phones, on_or_after=winner_date)
+        early_hit = None
+        if ql_hit is None:
+            early_hit = _best_hit(ql_index, key, phones, before=winner_date)
         opp_hit = _best_hit(opp_index, key, [])
         txn_hit = _best_hit(txn_index, key, [])
 
         prospect_date = ql_hit.date if ql_hit else None
         months_lip = months_between(lip_date, prospect_date)
         months_eight = months_between(eight_date, prospect_date)
-        winner_date = lip_date
-        if eight_date is not None and eight_date < lip_date:
-            winner_date = eight_date
         months_winner = months_between(winner_date, prospect_date)
         prospect_source = source if ql_hit else ""
         prospect_source_label = FIRST_SOURCE_LABELS[source] if ql_hit else ""
@@ -830,6 +894,20 @@ def analyze(
                 bucket = lag_bucket_label(months_winner)
                 lag_values.append(months_winner)
                 lag_counter[bucket] += 1
+        elif early_hit:
+            crm_before_rows.append(
+                {
+                    "address": display,
+                    "address_key": key,
+                    "county": county,
+                    "lip_month": _ym_label(lip_date),
+                    "eight_month": _ym_label(eight_date),
+                    "prospect_date": _iso_day(early_hit.date),
+                    "prospect_match_via": early_hit.via,
+                    "ql_campaign": early_hit.campaign or "",
+                    "first_source_label": FIRST_SOURCE_LABELS[source],
+                }
+            )
 
         if txn_hit:
             primary_counter[txn_hit.primary_reason] += 1
@@ -883,7 +961,8 @@ def analyze(
     universe = len(rows)
     if universe == 0:
         warnings.append(
-            "No REISift rows had a Probates NY Nassau/Queens/Suffolk M-YYYY tag."
+            "No REISift rows had a locked Probates NY Nassau/Queens/Suffolk tag "
+            "(Feb 2025–Aug 2026, 38 tags)."
         )
 
     prospect_n = sum(1 for r in rows if r.prospect_matched)
@@ -959,15 +1038,16 @@ def analyze(
     window_end = max(lip_dates).date().isoformat() if lip_dates else ""
 
     methodology = (
-        "Universe = REISift rows with a Probates NY Nassau/Queens/Suffolk M-YYYY tag "
-        "(Long Island Profiles county drop). First LIP month = earliest of those tags. "
-        "8020 list purchase = List Purchased 8020 MM/YYYY, or List Purchased MM/YYYY when a "
-        "standalone (8020) token is on the same row. First list on the row is the QL credit "
-        "(LIP only / LIP first / 8020 first / Same month). Salesforce Create Date is when "
-        "marketing called or texted that list and pushed the lead into CRM — a clock, not a "
-        "source. Campaign is how the team worked it. Lag is calendar months from the first-list "
-        "month to Create Date. Reason for selling is read only from the Transactions pipeline "
-        "Primary/Secondary columns after address match."
+        "Universe = REISift rows with at least one locked Probates NY Nassau/Queens/Suffolk "
+        "M-YYYY tag (38 tags, Feb 2025–Aug 2026; gaps are real). First LIP month = earliest "
+        "locked tag on the row. 8020 list purchase = List Purchased 8020 MM/YYYY, or List "
+        "Purchased MM/YYYY when a standalone (8020) token is on the same row. First list on "
+        "the row is the QL credit (LIP only / LIP first / 8020 first / Same month). A Prospect "
+        "is a Total Qualified Leads match whose Create Date is on or after that first-list "
+        "month (earliest such hit). An earlier CRM row is not this list's conversion. "
+        "Campaign is how the team worked a counted Prospect. Lag is calendar months from the "
+        "first-list month to that Create Date. Reason for selling is read only from the "
+        "Transactions pipeline Primary/Secondary columns after address match."
     )
 
     report(96, "Finishing summary…")
@@ -997,6 +1077,8 @@ def analyze(
         },
         primary_reasons=_counter_table(primary_counter, txn_n),
         secondary_reasons=_counter_table(secondary_counter, txn_n),
+        crm_before_first_list_count=len(crm_before_rows),
+        crm_before_first_list=crm_before_rows,
         rows=rows,
         warnings=warnings,
         methodology_note=methodology,
@@ -1018,6 +1100,10 @@ def build_export_workbook(result: ProbateResult) -> bytes:
             {"metric": "LIP / probate universe", "value": result.lip_universe},
             {"metric": "Prospect matched", "value": result.prospect_matched},
             {"metric": "Prospect % of LIP list", "value": result.prospect_rate_pct},
+            {
+                "metric": "In CRM before first list",
+                "value": result.crm_before_first_list_count,
+            },
             {"metric": "Opportunities matched", "value": result.opp_matched},
             {"metric": "Transactions matched", "value": result.txn_matched},
             {
@@ -1049,6 +1135,10 @@ def build_export_workbook(result: ProbateResult) -> bytes:
         if result.lag_buckets:
             pd.DataFrame(result.lag_buckets).to_excel(
                 writer, sheet_name="Lag Buckets", index=False
+            )
+        if result.crm_before_first_list:
+            pd.DataFrame(result.crm_before_first_list).to_excel(
+                writer, sheet_name="CRM Before First List", index=False
             )
         if result.primary_reasons:
             pd.DataFrame(result.primary_reasons).to_excel(

@@ -14,6 +14,7 @@ from app.services.probate import (
     LOCKED_PROBATE_TAGS,
     analyze,
     classify_first_source,
+    first_probate_hit,
     months_between,
     parse_8020_list_purchase_date,
     parse_probate_tags,
@@ -39,6 +40,10 @@ def test_parse_probate_tags_hyphen_and_leading_zero():
     assert parse_probate_tags("Probates NY Nassau 03/2025") == []
     assert len(LOCKED_PROBATE_TAGS) == 38
     assert all(parse_probate_tags(tag) for tag in LOCKED_PROBATE_TAGS)
+    assert row_has_probate_tag("Probates NY Nassau 11-2025") is False
+    assert parse_probate_tags("Probates NY Nassau 11-2025") != []
+    mixed = "Probates NY Nassau 01-2024,Probates NY Nassau 05-2025"
+    assert first_probate_hit(mixed)["date"] == pd.Timestamp("2025-05-01")
 
 
 def test_parse_8020_list_purchase_not_contact_tags():
@@ -186,7 +191,8 @@ def test_analyze_first_source_match_and_txn_reasons(tmp_path):
     result = analyze(reisift, ql, opps, txn)
     assert result.reisift_rows_ingested == 4
     assert result.lip_universe == 3
-    assert result.prospect_matched == 3
+    assert result.prospect_matched == 2
+    assert result.crm_before_first_list_count == 1
     assert result.opp_matched == 1
     assert result.txn_matched == 1
     assert result.funnel["lip"] == 3
@@ -210,12 +216,13 @@ def test_analyze_first_source_match_and_txn_reasons(tmp_path):
     assert oak.months_winner_to_prospect == 1
 
     pine = next(r for r in result.rows if r.address.startswith("30 Pine"))
-    # Create Date is before the LIP month; credit still stays with first list.
     assert pine.first_source == FIRST_SOURCE_LIP_ONLY
-    assert pine.prospect_source == FIRST_SOURCE_LIP_ONLY
-    assert pine.ql_campaign == "PPC - Google"
-    assert pine.months_lip_to_prospect == -2
-    assert any(item["label"] == "PPC - Google" for item in result.campaigns)
+    assert pine.prospect_matched is False
+    assert pine.prospect_source == ""
+    assert pine.ql_campaign == ""
+    assert pine.months_lip_to_prospect is None
+    assert any(item["address"].startswith("30 Pine") for item in result.crm_before_first_list)
+    assert all(item["label"] != "PPC - Google" for item in result.campaigns)
     assert any(item["label"] == "VA - Cold Calling (RES)" for item in result.campaigns)
 
     assert all(not r.address.startswith("40 Elm") for r in result.rows)
@@ -326,3 +333,106 @@ def test_result_roundtrip():
     assert result.lip_universe == 2
     assert len(result.rows) == 1
     assert result.rows[0].county == "Nassau"
+
+
+def test_unlocked_probate_tag_excluded_from_universe(tmp_path):
+    reisift = _write_csv(
+        tmp_path / "reisift.csv",
+        pd.DataFrame(
+            [
+                {
+                    "Property address": "1 Old St",
+                    "Property city": "Freeport",
+                    "Property state": "NY",
+                    "Property zip": "11520",
+                    "Phone 1": "",
+                    "Tags": "Probates NY Nassau 11-2025",
+                },
+                {
+                    "Property address": "2 New St",
+                    "Property city": "Freeport",
+                    "Property state": "NY",
+                    "Property zip": "11520",
+                    "Phone 1": "",
+                    "Tags": "Probates NY Nassau 01-2024,Probates NY Nassau 05-2025",
+                },
+            ]
+        ),
+    )
+    ql = _write_csv(
+        tmp_path / "ql.csv",
+        pd.DataFrame(
+            [
+                {
+                    "Street": "2 New St",
+                    "City": "Freeport",
+                    "State/Province": "NY",
+                    "Zip/Postal Code": "11520",
+                    "Phone": "",
+                    "Lead Source": "Cold Calling",
+                    "Campaign": "VA - Cold Calling (RES)",
+                    "Create Date": "2025-06-01",
+                }
+            ]
+        ),
+    )
+    result = analyze(reisift, ql)
+    assert result.lip_universe == 1
+    assert result.rows[0].address.startswith("2 New")
+    assert result.rows[0].lip_month == "2025-05"
+    assert result.rows[0].prospect_matched is True
+    assert result.rows[0].months_winner_to_prospect == 1
+
+
+def test_early_and_later_ql_uses_on_or_after_create_date(tmp_path):
+    reisift = _write_csv(
+        tmp_path / "reisift.csv",
+        pd.DataFrame(
+            [
+                {
+                    "Property address": "30 Pine Rd",
+                    "Property city": "Hicksville",
+                    "Property state": "NY",
+                    "Property zip": "11801",
+                    "Phone 1": "5165550999",
+                    "Tags": "Probates NY Nassau 03-2025",
+                }
+            ]
+        ),
+    )
+    ql = _write_csv(
+        tmp_path / "ql.csv",
+        pd.DataFrame(
+            [
+                {
+                    "Street": "30 Pine Rd",
+                    "City": "Hicksville",
+                    "State/Province": "NY",
+                    "Zip/Postal Code": "11801",
+                    "Phone": "5165550999",
+                    "Lead Source": "PPC",
+                    "Campaign": "PPC - Google",
+                    "Create Date": "2025-01-15",
+                },
+                {
+                    "Street": "30 Pine Rd",
+                    "City": "Hicksville",
+                    "State/Province": "NY",
+                    "Zip/Postal Code": "11801",
+                    "Phone": "5165550999",
+                    "Lead Source": "Cold Calling",
+                    "Campaign": "VA - Cold Calling (RES)",
+                    "Create Date": "2025-06-10",
+                },
+            ]
+        ),
+    )
+    result = analyze(reisift, ql)
+    row = result.rows[0]
+    assert row.prospect_matched is True
+    assert row.prospect_source == FIRST_SOURCE_LIP_ONLY
+    assert row.ql_campaign == "VA - Cold Calling (RES)"
+    assert row.prospect_date == "2025-06-10"
+    assert row.months_winner_to_prospect == 3
+    assert result.crm_before_first_list_count == 0
+    assert all(item["label"] != "PPC - Google" for item in result.campaigns)

@@ -6,6 +6,7 @@ import {
   getAxiosErrorMessage,
 } from '../services/api';
 import type { ProbateCompletedResponse } from '../types/probate';
+import { LOCKED_PROBATE_TAGS } from '../constants/probateTags';
 import ProbateResults from './ProbateResults';
 
 interface ProbateWorkspaceProps {
@@ -103,10 +104,26 @@ const ProbateWorkspace = ({ onRunComplete, onOpenResult }: ProbateWorkspaceProps
       <h2 className="text-xl font-bold text-rose-950">Probate lifecycle</h2>
       <p className="text-sm text-rose-950/80 mt-2 leading-relaxed max-w-2xl">
         Long Island Profiles vs 8020 on the same REISift row. First list is the QL credit.
-        Salesforce Create Date is when marketing called or texted that list and pushed the lead
-        into CRM. Campaign is how they worked it. Transactions supply reason for selling after
-        the match.
+        A Prospect counts only when Salesforce Create Date is on or after that first-list month.
+        Campaign is how they worked it. Transactions supply reason for selling after the match.
       </p>
+
+      <details className="mt-4 rounded-lg border border-rose-200 bg-white/70 px-4 py-3 max-w-2xl">
+        <summary className="cursor-pointer text-sm font-semibold text-rose-950">
+          18-month universe — {LOCKED_PROBATE_TAGS.length} locked tags
+        </summary>
+        <p className="text-xs text-rose-950/80 mt-2">
+          Only rows with at least one of these tags are included. Gaps are real (no Nassau 11-2025;
+          Queens starts Feb 2026). First LIP month is the earliest locked tag on the row.
+        </p>
+        <ul className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 text-xs text-rose-950 font-mono">
+          {LOCKED_PROBATE_TAGS.map((tag) => (
+            <li key={tag} className="py-0.5">
+              {tag}
+            </li>
+          ))}
+        </ul>
+      </details>
 
       <div className="mt-6 grid gap-4 max-w-md">
         <label className="block text-sm font-medium text-rose-950">

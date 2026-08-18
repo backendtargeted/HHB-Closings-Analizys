@@ -26,6 +26,18 @@ export interface ProbateRow {
   tags: string;
 }
 
+export interface CrmBeforeFirstListRow {
+  address: string;
+  address_key?: string;
+  county: string;
+  lip_month: string;
+  eight_month: string;
+  prospect_date: string;
+  prospect_match_via: string;
+  ql_campaign: string;
+  first_source_label: string;
+}
+
 export interface CountShareRow {
   label?: string;
   key?: string;
@@ -57,6 +69,7 @@ export interface ProbateMetrics {
     opp_rate_pct: number;
     txn_matched: number;
     txn_rate_pct: number;
+    crm_before_first_list?: number;
   };
   lag: {
     mean_months_lip_to_prospect: number | null;
@@ -76,6 +89,7 @@ export interface ProbateMetrics {
   };
   primary_reasons: CountShareRow[];
   secondary_reasons: CountShareRow[];
+  crm_before_first_list?: CrmBeforeFirstListRow[];
   rows: ProbateRow[];
   warnings: string[];
   methodology_note: string;

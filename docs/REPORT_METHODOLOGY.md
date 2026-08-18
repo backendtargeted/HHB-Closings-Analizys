@@ -320,15 +320,15 @@ Canonical implementation: `backend/app/services/web_leads.py`.
 
 **Question:** On Long Island Profiles (probate) properties, who delivered the record first (LIP vs 8020), how many months until Salesforce Prospect, what % of the LIP list became Prospects, and what Primary/Secondary Reason for Selling is stated on the Transactions pipeline.
 
-**Universe:** REISift rows with at least one tag matching `Probates NY (Nassau|Queens|Suffolk) M-YYYY` (hyphen, optional leading zero). 8020-only rows are excluded. First LIP month = earliest matching tag. County is taken from that tag.
+**Universe:** REISift rows with at least one of the **38 locked** tags `Probates NY (Nassau|Queens|Suffolk) M-YYYY` (hyphen, optional leading zero; Feb 2025–Aug 2026; gaps are real). 8020-only rows are excluded. First LIP month = earliest **locked** tag on the row. County is taken from that tag.
 
 **8020 list purchase:** `List Purchased 8020 MM/YYYY`, or `List Purchased MM/YYYY` when a standalone `(8020)` token is on the same row. `(8020) CC|SMS|DM` contact tags are not list-purchase dates.
 
-**First source** (month granularity): LIP only, LIP first, 8020 first, same month. **That first list is the QL credit** when the row matches a Qualified Lead.
+**First source** (month granularity): LIP only, LIP first, 8020 first, same month. **That first list is the QL credit** when the row matches a Qualified Lead **on or after** the first-list month.
 
-**Prospect:** Salesforce Total Qualified Leads row matched by street+city+state+zip, then street+city+zip / street+zip, then phone. **Create Date** is when marketing called or texted that list and pushed the lead into CRM (clock, not source). **Campaign** is how they worked it. Opportunities are a later funnel count. Reasons are **not** read from QL or Opportunities.
+**Prospect:** Salesforce Total Qualified Leads row matched by street+city+state+zip, then street+city+zip / street+zip, then phone. Among matches, take the **earliest Create Date on or after the first-list month**. A QL whose only Create Date is earlier is **not** a conversion from this list (diagnostic: In CRM before first list). **Campaign** is how they worked a counted Prospect. Opportunities are a later funnel count. Reasons are **not** read from QL or Opportunities.
 
-**Lag:** calendar months from the **first-list month** to Prospect Create Date. Negative lag is timing only; credit stays with first list.
+**Lag:** calendar months from the **first-list month** to that Prospect Create Date. Counted Prospects have lag ≥ 0.
 
 **Reason to sell:** Transactions pipeline **Primary Reason for Selling** and **Secondary Reason for Selling** after address match. Blank is a bucket. Unmatched transactions have no reason.
 

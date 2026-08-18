@@ -57,12 +57,14 @@ const MethodologySection = () => {
           </p>
           <p>
             <strong className="text-stone-800">Gate 5 probate:</strong> Universe is REISift rows tagged{' '}
-            <code className="bg-stone-100 px-1 rounded">Probates NY Nassau|Queens|Suffolk M-YYYY</code>.
+            <code className="bg-stone-100 px-1 rounded">Probates NY Nassau|Queens|Suffolk M-YYYY</code>
+            {' '}(38 locked tags, Feb 2025–Aug 2026).
             8020 is a competing list provider on the same row (
             <code className="bg-stone-100 px-1 rounded">List Purchased 8020</code>
-            ). First list is the QL credit when the row matches a Prospect. Create Date is lag
-            only. Campaign is extra. Primary/Secondary Reason for Selling comes only from the
-            Transactions pipeline after address match.
+            ). First list is the QL credit when the row matches a Prospect whose Create Date is
+            on or after that first-list month. Earlier CRM rows are not conversions. Campaign is
+            extra. Primary/Secondary Reason for Selling comes only from the Transactions pipeline
+            after address match.
           </p>
           <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">
             Full methodology: repo{' '}
