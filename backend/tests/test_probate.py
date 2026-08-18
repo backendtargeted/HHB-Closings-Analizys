@@ -71,6 +71,11 @@ def test_normalize_campaign_blank_and_smarter_contact():
     assert normalize_campaign("Smarter Contact 1 - RES") == "RES SMS"
     assert normalize_campaign("Smarter Contact 1-RES") == "RES SMS"
     assert normalize_campaign("smarter contact 1 – RES") == "RES SMS"
+    assert normalize_campaign("Smarter Contact 2 - RES") == "RES SMS"
+    assert normalize_campaign("Smarter Contact 3 - RES") == "RES SMS"
+    assert normalize_campaign("Smarter Contact 4 - RES") == "RES SMS"
+    assert normalize_campaign("Launchcontrol") == "RES SMS"
+    assert normalize_campaign("Launch Control - RES") == "RES SMS"
     assert normalize_campaign("VA - Cold Calling (RES)") == "VA - Cold Calling (RES)"
 
 
@@ -484,6 +489,14 @@ def test_campaign_smarter_contact_rollup_and_blank(tmp_path):
                     "Phone 1": "",
                     "Tags": "Probates NY Nassau 04-2025",
                 },
+                {
+                    "Property address": "40 D St",
+                    "Property city": "Freeport",
+                    "Property state": "NY",
+                    "Property zip": "11523",
+                    "Phone 1": "",
+                    "Tags": "Probates NY Nassau 04-2025",
+                },
             ]
         ),
     )
@@ -504,7 +517,7 @@ def test_campaign_smarter_contact_rollup_and_blank(tmp_path):
                     "City": "Freeport",
                     "State/Province": "NY",
                     "Zip/Postal Code": "11521",
-                    "Campaign": "Smarter Contact 1-RES",
+                    "Campaign": "Smarter Contact 4 - RES",
                     "Create Date": "2025-05-01",
                 },
                 {
@@ -512,6 +525,14 @@ def test_campaign_smarter_contact_rollup_and_blank(tmp_path):
                     "City": "Freeport",
                     "State/Province": "NY",
                     "Zip/Postal Code": "11522",
+                    "Campaign": "Launchcontrol",
+                    "Create Date": "2025-05-01",
+                },
+                {
+                    "Street": "40 D St",
+                    "City": "Freeport",
+                    "State/Province": "NY",
+                    "Zip/Postal Code": "11523",
                     "Campaign": "",
                     "Create Date": "2025-05-01",
                 },
@@ -519,8 +540,9 @@ def test_campaign_smarter_contact_rollup_and_blank(tmp_path):
         ),
     )
     result = analyze(reisift, ql)
-    assert result.prospect_matched == 3
+    assert result.prospect_matched == 4
     labels = {item["label"]: item["count"] for item in result.campaigns}
-    assert labels["RES SMS"] == 2
+    assert labels["RES SMS"] == 3
     assert labels["No Campaign in Salesforce"] == 1
     assert all("Smarter Contact" not in (item["label"] or "") for item in result.campaigns)
+    assert all("Launchcontrol" not in (item["label"] or "") for item in result.campaigns)

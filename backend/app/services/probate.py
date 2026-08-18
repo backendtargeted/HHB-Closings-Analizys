@@ -146,7 +146,8 @@ SECONDARY_REASON_CANDIDATES = [
 
 BLANK_REASON = "(blank)"
 BLANK_CAMPAIGN = "No Campaign in Salesforce"
-SMARTER_CONTACT_1_RES_RE = re.compile(r"smarter\s+contact\s+1\s*[-–—]?\s*res", re.I)
+SMARTER_CONTACT_RES_RE = re.compile(r"smarter\s+contact(?:\s+\d+)?\s*[-–—]?\s*res", re.I)
+LAUNCHCONTROL_RE = re.compile(r"launch\s*control", re.I)
 
 
 def _split_tag_tokens(tags_str: object) -> List[str]:
@@ -329,13 +330,13 @@ def _reason_value(raw: object) -> str:
 
 
 def normalize_campaign(raw: object) -> str:
-    """Blank → No Campaign in Salesforce. All Smarter Contact 1 - RES variants → RES SMS."""
+    """Blank → No Campaign in Salesforce. Smarter Contact N - RES and Launchcontrol → RES SMS."""
     if raw is None or (isinstance(raw, float) and pd.isna(raw)):
         return BLANK_CAMPAIGN
     text = re.sub(r"\s+", " ", str(raw).strip())
     if not text or text.lower() in ("nan", "(blank)", "none", "(none)"):
         return BLANK_CAMPAIGN
-    if SMARTER_CONTACT_1_RES_RE.search(text):
+    if SMARTER_CONTACT_RES_RE.search(text) or LAUNCHCONTROL_RE.search(text):
         return "RES SMS"
     return text
 

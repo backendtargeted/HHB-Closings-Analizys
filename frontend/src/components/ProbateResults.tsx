@@ -49,7 +49,8 @@ function displayCampaign(raw: string): string {
   if (!text || text === '(blank)' || text.toLowerCase() === 'nan') {
     return 'No Campaign in Salesforce';
   }
-  if (/smarter\s+contact\s+1/i.test(text) && /res/i.test(text)) return 'RES SMS';
+  if (/smarter\s+contact/i.test(text) && /res/i.test(text)) return 'RES SMS';
+  if (/launch\s*control/i.test(text)) return 'RES SMS';
   return text;
 }
 
