@@ -74,15 +74,14 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
   const m = result.metrics;
   const warnings = result.warnings ?? m.warnings ?? [];
 
-  const alreadyProspect = useMemo(
-    () => m.lag_buckets.find((b) => b.bucket === 'Prospect before LIP')?.count ?? 0,
-    [m.lag_buckets]
-  );
-  const afterLip = m.match.prospect_matched - alreadyProspect;
-  const afterLipPct =
-    m.inputs.lip_universe > 0
-      ? Math.round((10000 * Math.max(afterLip, 0)) / m.inputs.lip_universe) / 100
-      : 0;
+  const alreadyProspect = m.match.prospect_already_in_sf ?? 0;
+  const afterLip = m.match.prospect_after_lip ?? 0;
+  const afterLipPct = m.match.prospect_after_lip_rate_pct ?? 0;
+  const after8020 = m.match.prospect_after_8020 ?? 0;
+  const after8020Pct = m.match.prospect_after_8020_rate_pct ?? 0;
+  const alreadyPct = m.match.prospect_already_in_sf_rate_pct ?? 0;
+  const prospectSource = m.prospect_source ?? [];
+  const otherCampaigns = m.other_campaigns ?? [];
 
   const firstSourceChart = useMemo(
     () =>
@@ -92,6 +91,22 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
         prospects: r.prospects ?? 0,
       })),
     [m.first_source]
+  );
+  const prospectSourceChart = useMemo(
+    () =>
+      prospectSource.map((r) => ({
+        name: r.label ?? r.key ?? '',
+        count: r.count ?? 0,
+      })),
+    [prospectSource]
+  );
+  const campaignChart = useMemo(
+    () =>
+      otherCampaigns.map((r) => ({
+        name: r.label ?? '',
+        count: r.count ?? 0,
+      })),
+    [otherCampaigns]
   );
   const lagChart = useMemo(
     () =>
@@ -112,7 +127,7 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
   const funnelChart = useMemo(
     () => [
       { name: 'LIP listed', count: m.funnel.lip },
-      { name: 'Prospect', count: m.funnel.prospect },
+      { name: 'QL overlap', count: m.funnel.prospect },
       { name: 'Opportunity', count: m.funnel.opportunity },
       { name: 'Transaction', count: m.funnel.transaction },
     ],
@@ -135,6 +150,8 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
       row.address,
       row.county,
       row.first_source_label,
+      row.prospect_source_label,
+      row.ql_campaign,
       row.lip_month,
       row.txn_primary_reason,
       row.txn_secondary_reason,
@@ -154,7 +171,13 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
             {' · '}
             {m.inputs.lip_universe.toLocaleString()} LIP properties
             {' · '}
-            {m.match.prospect_rate_pct}% became Prospects
+            {m.match.prospect_matched.toLocaleString()} QL overlap
+            {' · '}
+            {afterLip.toLocaleString()} after LIP
+            {' · '}
+            {after8020.toLocaleString()} after 8020
+            {' · '}
+            {alreadyProspect.toLocaleString()} already in Salesforce
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -197,14 +220,24 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="LIP universe" value={m.inputs.lip_universe.toLocaleString()} />
         <Stat
-          label="Prospects (any QL match)"
+          label="QL overlap (any campaign)"
           value={`${m.match.prospect_matched.toLocaleString()} (${m.match.prospect_rate_pct}%)`}
         />
         <Stat
-          label="Prospect after LIP tag"
-          value={`${Math.max(afterLip, 0).toLocaleString()} (${afterLipPct}%)`}
+          label="After LIP"
+          value={`${afterLip.toLocaleString()} (${afterLipPct}%)`}
         />
-        <Stat label="Median months to Prospect" value={fmt(m.lag.median_months_lip_to_prospect)} />
+        <Stat
+          label="After 8020"
+          value={`${after8020.toLocaleString()} (${after8020Pct}%)`}
+        />
+        <Stat
+          label="Already in Salesforce"
+          value={`${alreadyProspect.toLocaleString()} (${alreadyPct}%)`}
+        />
+        <Stat label="Median months after LIP" value={fmt(m.lag.median_months_lip_to_prospect)} />
+        <Stat label="Mean months after LIP" value={fmt(m.lag.mean_months_lip_to_prospect)} />
+        <Stat label="Median months after 8020" value={fmt(m.lag.median_months_8020_to_prospect)} />
         <Stat
           label="Opportunities"
           value={`${m.match.opp_matched.toLocaleString()} (${m.match.opp_rate_pct}%)`}
@@ -213,22 +246,20 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
           label="Transactions"
           value={`${m.match.txn_matched.toLocaleString()} (${m.match.txn_rate_pct}%)`}
         />
-        <Stat label="Mean months to Prospect" value={fmt(m.lag.mean_months_lip_to_prospect)} />
-        <Stat label="Already in Salesforce" value={alreadyProspect.toLocaleString()} />
       </div>
 
       {alreadyProspect > 0 ? (
         <p className="text-sm text-amber-950 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
           {alreadyProspect.toLocaleString()} of {m.match.prospect_matched.toLocaleString()} matched
-          Prospects have a Salesforce Create Date before the first probate tag month. Negative mean/median
-          months means they were already in the CRM when the LIP drop hit.
+          Qualified Leads were already in Salesforce before both the LIP month and the 8020 list
+          month. Those are not LIP or 8020 conversions — see Campaign below.
         </p>
       ) : null}
 
       <section className="rounded-xl border border-stone-200 bg-white p-5">
         <h3 className="text-lg font-semibold text-stone-900">Funnel</h3>
         <p className="text-sm text-stone-600 mt-1">
-          8020 is a competing list provider on the same row, not a step in this funnel.
+          QL overlap is any address/phone match. It is not the same as LIP or 8020 creating the lead.
         </p>
         <div className="mt-4 h-56">
           <ResponsiveContainer width="100%" height="100%">
@@ -263,9 +294,72 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
         </div>
       </section>
 
+      <section className="rounded-xl border border-stone-200 bg-white p-5">
+        <h3 className="text-lg font-semibold text-stone-900">What created the Prospect</h3>
+        <p className="text-sm text-stone-600 mt-1">
+          After LIP if Create Date is in/after the LIP month. Else After 8020 if Create Date is
+          in/after the 8020 list month. Else already in Salesforce.
+        </p>
+        {prospectSourceChart.length > 0 ? (
+          <div className="mt-4 h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={prospectSourceChart} layout="vertical" margin={{ left: 132, right: 16 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
+                <XAxis type="number" />
+                <YAxis type="category" dataKey="name" width={124} />
+                <Tooltip />
+                <Bar dataKey="count" name="Matched QL" fill="#9f1239" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : null}
+      </section>
+
+      <CompactTable
+        title="What created the Prospect"
+        columns={['Credit', 'Count', 'Share of QL overlap', '% of LIP list']}
+        rows={prospectSource.map((r) => [
+          r.label ?? r.key ?? '',
+          r.count ?? 0,
+          `${r.share_pct}%`,
+          `${r.prospect_rate_pct ?? 0}%`,
+        ])}
+      />
+
+      {otherCampaigns.length > 0 ? (
+        <section className="rounded-xl border border-stone-200 bg-white p-5">
+          <h3 className="text-lg font-semibold text-stone-900">
+            Already in Salesforce — Campaign
+          </h3>
+          <p className="text-sm text-stone-600 mt-1">
+            Campaign on Total Qualified Leads for Prospects created before both LIP and 8020.
+          </p>
+          {campaignChart.length > 0 ? (
+            <div className="mt-4 h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={campaignChart} layout="vertical" margin={{ left: 160, right: 16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
+                  <XAxis type="number" />
+                  <YAxis type="category" dataKey="name" width={152} />
+                  <Tooltip />
+                  <Bar dataKey="count" name="Prospects" fill="#44403c" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      <CompactTable
+        title="Already in Salesforce — Campaign"
+        subtitle="From the Campaign column on Total Qualified Leads. Not LIP or 8020."
+        columns={['Campaign', 'Count', 'Share of already-in-SF']}
+        rows={reasonRows(otherCampaigns)}
+      />
+
       <CompactTable
         title="Who delivered first"
-        columns={['Source', 'Listed', 'Share', 'Prospects', 'Prospect %']}
+        columns={['Source', 'Listed', 'Share', 'QL overlap', 'Overlap %']}
         rows={m.first_source.map((r) => [
           r.label ?? r.key ?? '',
           r.count ?? 0,
@@ -292,7 +386,7 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
       <section className="rounded-xl border border-stone-200 bg-white p-5">
         <h3 className="text-lg font-semibold text-stone-900">Months LIP to Prospect</h3>
         <p className="text-sm text-stone-600 mt-1">
-          Calendar months from first probate tag to Salesforce Create Date.
+          Only Prospects credited After LIP. Already-in-Salesforce and After 8020 are excluded.
         </p>
         {lagChart.length > 0 ? (
           <div className="mt-4 h-64">
@@ -384,7 +478,9 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
                 <th className="py-2 pr-3">County</th>
                 <th className="py-2 pr-3">LIP</th>
                 <th className="py-2 pr-3">8020</th>
-                <th className="py-2 pr-3">First</th>
+                <th className="py-2 pr-3">First list</th>
+                <th className="py-2 pr-3">QL credit</th>
+                <th className="py-2 pr-3">Campaign</th>
                 <th className="py-2 pr-3">Prospect</th>
                 <th className="py-2 pr-3">Months</th>
                 <th className="py-2 pr-3">Txn primary</th>
@@ -399,6 +495,8 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
                   <td className="py-2 pr-3">{r.lip_month}</td>
                   <td className="py-2 pr-3">{r.eight_month || '—'}</td>
                   <td className="py-2 pr-3">{r.first_source_label}</td>
+                  <td className="py-2 pr-3">{r.prospect_source_label || '—'}</td>
+                  <td className="py-2 pr-3">{r.ql_campaign || '—'}</td>
                   <td className="py-2 pr-3">{r.prospect_date || '—'}</td>
                   <td className="py-2 pr-3">{fmt(r.months_lip_to_prospect)}</td>
                   <td className="py-2 pr-3">{r.txn_primary_reason || '—'}</td>

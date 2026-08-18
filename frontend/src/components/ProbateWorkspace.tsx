@@ -102,9 +102,9 @@ const ProbateWorkspace = ({ onRunComplete, onOpenResult }: ProbateWorkspaceProps
     <div className="rounded-2xl border border-rose-200/90 bg-rose-50/40 p-6 shadow-sm">
       <h2 className="text-xl font-bold text-rose-950">Probate lifecycle</h2>
       <p className="text-sm text-rose-950/80 mt-2 leading-relaxed max-w-2xl">
-        Long Island Profiles county tags vs 8020 on the same REISift row, then Salesforce Prospect
-        (Qualified Leads Create Date). Transactions supply Primary and Secondary Reason for Selling
-        after the match — they do not decide who is probate.
+        Long Island Profiles vs 8020 on the same REISift row. A Salesforce Prospect counts as After
+        LIP if Create Date is on/after the LIP month, else After 8020, else already in Salesforce
+        (QL Campaign). Transactions supply Primary/Secondary Reason for Selling after the match.
       </p>
 
       <div className="mt-6 grid gap-4 max-w-md">

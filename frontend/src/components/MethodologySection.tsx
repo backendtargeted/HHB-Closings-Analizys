@@ -52,7 +52,9 @@ const MethodologySection = () => {
             <code className="bg-stone-100 px-1 rounded">Probates NY Nassau|Queens|Suffolk M-YYYY</code>.
             8020 is a competing list provider on the same row (
             <code className="bg-stone-100 px-1 rounded">List Purchased 8020</code>
-            ). Prospect = Salesforce Qualified Leads Create Date. Primary/Secondary Reason for Selling
+            Prospect = Salesforce Qualified Leads Create Date, credited to LIP if Create Date is
+            on/after the LIP month, else 8020 if on/after the 8020 list month, else already in
+            Salesforce (broken down by QL Campaign). Primary/Secondary Reason for Selling
             comes only from the Transactions pipeline after address match.
           </p>
           <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">

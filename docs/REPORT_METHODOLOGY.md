@@ -306,13 +306,13 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 
 **8020 list purchase:** `List Purchased 8020 MM/YYYY`, or `List Purchased MM/YYYY` when a standalone `(8020)` token is on the same row. `(8020) CC|SMS|DM` contact tags are not list-purchase dates.
 
-**First source** (month granularity): LIP only, LIP first, 8020 first, same month.
+**First source** (month granularity, list delivery only): LIP only, LIP first, 8020 first, same month. This is who put the property on a list first. It is not who created the Salesforce lead.
 
-**Prospect:** Salesforce Total Qualified Leads **Create Date**, matched by street+city+state+zip, then street+city+zip / street+zip, then phone. Opportunities are a later funnel count. Reasons are **not** read from QL or Opportunities.
+**Prospect credit:** Salesforce Total Qualified Leads **Create Date**, matched by street+city+state+zip, then street+city+zip / street+zip, then phone. Credit **After LIP** if Create Date is in or after the first LIP month; else **After 8020** if Create Date is in or after the 8020 list-purchase month; else **Already in Salesforce**. Already-in-Salesforce rows are broken down by the QL **Campaign** column. Opportunities are a later funnel count. Reasons are **not** read from QL or Opportunities.
+
+**Lag:** calendar months from the credited list month to Prospect Create Date. Negative LIP lags are not treated as LIP conversions.
 
 **Reason to sell:** Transactions pipeline **Primary Reason for Selling** and **Secondary Reason for Selling** after address match. Blank is a bucket. Unmatched transactions have no reason.
-
-**Lag:** calendar months from first LIP month to Prospect Create Date. Conversion and lag are also split by first LIP month and county.
 
 Canonical implementation: `backend/app/services/probate.py`.
 

@@ -12,8 +12,12 @@ from app.services.probate import (
     FIRST_SOURCE_LIP_ONLY,
     FIRST_SOURCE_SAME,
     LOCKED_PROBATE_TAGS,
+    PROSPECT_SOURCE_LIP,
+    PROSPECT_SOURCE_8020,
+    PROSPECT_SOURCE_OTHER,
     analyze,
     classify_first_source,
+    classify_prospect_source,
     months_between,
     parse_8020_list_purchase_date,
     parse_probate_tags,
@@ -62,6 +66,14 @@ def test_first_source_and_lag_math():
     assert months_between(lip, pd.Timestamp("2025-08-20")) == 6
     assert months_between(lip, pd.Timestamp("2025-02-28")) == 0
     assert months_between(pd.Timestamp("2025-06-01"), pd.Timestamp("2025-02-01")) == -4
+    lip = pd.Timestamp("2025-05-01")
+    eight = pd.Timestamp("2025-03-01")
+    assert classify_prospect_source(pd.Timestamp("2025-06-01"), lip, eight) == PROSPECT_SOURCE_LIP
+    assert classify_prospect_source(pd.Timestamp("2025-04-01"), lip, eight) == PROSPECT_SOURCE_8020
+    assert classify_prospect_source(pd.Timestamp("2025-02-01"), lip, eight) == PROSPECT_SOURCE_OTHER
+    assert classify_prospect_source(pd.Timestamp("2025-05-20"), lip, eight) == PROSPECT_SOURCE_LIP
+    assert classify_prospect_source(pd.Timestamp("2025-01-01"), lip, None) == PROSPECT_SOURCE_OTHER
+    assert classify_prospect_source(None, lip, eight) is None
 
 
 def test_analyze_first_source_match_and_txn_reasons(tmp_path):
@@ -115,7 +127,30 @@ def test_analyze_first_source_match_and_txn_reasons(tmp_path):
                     "Zip/Postal Code": "11520",
                     "Phone": "5165550101",
                     "Lead Source": "Cold Calling",
+                    "Campaign": "VA - Cold Calling (RES)",
                     "Create Date": "2025-08-15",
+                    "Primary Reason for Selling": "Should not be used",
+                },
+                {
+                    "Street": "20 Oak Ave",
+                    "City": "Patchogue",
+                    "State/Province": "NY",
+                    "Zip/Postal Code": "11772",
+                    "Phone": "",
+                    "Lead Source": "Direct Mail",
+                    "Campaign": "Check Mailer (In-House)",
+                    "Create Date": "2025-04-01",
+                    "Primary Reason for Selling": "Should not be used",
+                },
+                {
+                    "Street": "30 Pine Rd",
+                    "City": "Hicksville",
+                    "State/Province": "NY",
+                    "Zip/Postal Code": "11801",
+                    "Phone": "5165550999",
+                    "Lead Source": "PPC",
+                    "Campaign": "PPC - Google",
+                    "Create Date": "2025-01-15",
                     "Primary Reason for Selling": "Should not be used",
                 },
                 {
@@ -163,7 +198,10 @@ def test_analyze_first_source_match_and_txn_reasons(tmp_path):
     result = analyze(reisift, ql, opps, txn)
     assert result.reisift_rows_ingested == 4
     assert result.lip_universe == 3
-    assert result.prospect_matched == 1
+    assert result.prospect_matched == 3
+    assert result.prospect_after_lip == 1
+    assert result.prospect_after_8020 == 1
+    assert result.prospect_already_in_sf == 1
     assert result.opp_matched == 1
     assert result.txn_matched == 1
     assert result.funnel["lip"] == 3
@@ -171,6 +209,8 @@ def test_analyze_first_source_match_and_txn_reasons(tmp_path):
 
     maple = next(r for r in result.rows if r.address.startswith("10 Maple"))
     assert maple.first_source == FIRST_SOURCE_LIP_FIRST
+    assert maple.prospect_source == PROSPECT_SOURCE_LIP
+    assert maple.ql_campaign == "VA - Cold Calling (RES)"
     assert maple.county == "Nassau"
     assert maple.months_lip_to_prospect == 6
     assert maple.txn_primary_reason == "Estate"
@@ -178,10 +218,16 @@ def test_analyze_first_source_match_and_txn_reasons(tmp_path):
 
     oak = next(r for r in result.rows if r.address.startswith("20 Oak"))
     assert oak.first_source == FIRST_SOURCE_8020_FIRST
-    assert oak.prospect_matched is False
+    assert oak.prospect_matched is True
+    assert oak.prospect_source == PROSPECT_SOURCE_8020
+    assert oak.months_lip_to_prospect == -1
+    assert oak.months_eight_to_prospect == 1
 
     pine = next(r for r in result.rows if r.address.startswith("30 Pine"))
     assert pine.first_source == FIRST_SOURCE_LIP_ONLY
+    assert pine.prospect_source == PROSPECT_SOURCE_OTHER
+    assert pine.ql_campaign == "PPC - Google"
+    assert any(item["label"] == "PPC - Google" for item in result.other_campaigns)
 
     assert all(not r.address.startswith("40 Elm") for r in result.rows)
     assert any(item["label"] == "Estate" for item in result.primary_reasons)
@@ -217,6 +263,7 @@ def test_phone_fallback_and_same_month(tmp_path):
                     "Zip/Postal Code": "11751",
                     "Phone": "16315552222",
                     "Lead Source": "Direct Mail",
+                    "Campaign": "Postcard Offer (75%)",
                     "Create Date": "2025-02-10",
                 }
             ]
@@ -228,6 +275,7 @@ def test_phone_fallback_and_same_month(tmp_path):
     assert row.first_source == FIRST_SOURCE_SAME
     assert row.prospect_matched is True
     assert row.prospect_match_via == "phone"
+    assert row.prospect_source == PROSPECT_SOURCE_LIP
     assert row.months_lip_to_prospect == 0
 
 
