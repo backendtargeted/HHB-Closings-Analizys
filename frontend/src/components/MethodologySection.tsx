@@ -58,7 +58,7 @@ const MethodologySection = () => {
           <p>
             <strong className="text-stone-800">Gate 5 probate:</strong> Universe is REISift rows tagged{' '}
             <code className="bg-stone-100 px-1 rounded">Probates NY Nassau|Queens|Suffolk M-YYYY</code>
-            {' '}(38 locked tags, Feb 2025–Aug 2026).
+            {' '}(38 locked tags; Nassau from Apr 2025, including Nassau/Queens 3-2026 with no drop).
             8020 is a competing list provider on the same row (
             <code className="bg-stone-100 px-1 rounded">List Purchased 8020</code>
             ). First list is the QL credit when the row matches a Prospect whose Create Date is

@@ -113,8 +113,9 @@ const ProbateWorkspace = ({ onRunComplete, onOpenResult }: ProbateWorkspaceProps
           18-month universe — {LOCKED_PROBATE_TAGS.length} locked tags
         </summary>
         <p className="text-xs text-rose-950/80 mt-2">
-          Only rows with at least one of these tags are included. Gaps are real (no Nassau 11-2025;
-          Queens starts Feb 2026). First LIP month is the earliest locked tag on the row.
+          Only rows with at least one of these tags are included. Nassau starts Apr 2025; Queens
+          starts Feb 2026. Nassau 3-2026 and Queens 3-2026 stay in the set even with no drop.
+          First LIP month is the earliest locked tag on the row.
         </p>
         <ul className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 text-xs text-rose-950 font-mono">
           {LOCKED_PROBATE_TAGS.map((tag) => (

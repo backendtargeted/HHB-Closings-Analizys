@@ -47,22 +47,22 @@ STANDALONE_8020_TOKEN_RE = re.compile(r"^\(8020\)$", re.I)
 COUNTIES = ("Nassau", "Queens", "Suffolk")
 
 LOCKED_PROBATE_TAGS: Tuple[str, ...] = (
-    "Probates NY Nassau 02-2025",
-    "Probates NY Nassau 03-2025",
     "Probates NY Nassau 04-2025",
     "Probates NY Nassau 05-2025",
     "Probates NY Nassau 06-2025",
     "Probates NY Nassau 07-2025",
     "Probates NY Nassau 08-2025",
     "Probates NY Nassau 09-2025",
-    "Probates NY Nassau 1-2026",
     "Probates NY Nassau 10-2025",
+    "Probates NY Nassau 1-2026",
     "Probates NY Nassau 2-2026",
+    "Probates NY Nassau 3-2026",
     "Probates NY Nassau 4-2026",
     "Probates NY Nassau 5-2026",
     "Probates NY Nassau 7-2026",
     "Probates NY Nassau 8-2026",
     "Probates NY Queens 2-2026",
+    "Probates NY Queens 3-2026",
     "Probates NY Queens 4-2026",
     "Probates NY Queens 5-2026",
     "Probates NY Queens 7-2026",
@@ -75,9 +75,9 @@ LOCKED_PROBATE_TAGS: Tuple[str, ...] = (
     "Probates NY Suffolk 07-2025",
     "Probates NY Suffolk 08-2025",
     "Probates NY Suffolk 09-2025",
-    "Probates NY Suffolk 1-2026",
     "Probates NY Suffolk 10-2025",
     "Probates NY Suffolk 12-2025",
+    "Probates NY Suffolk 1-2026",
     "Probates NY Suffolk 2-2026",
     "Probates NY Suffolk 3-2026",
     "Probates NY Suffolk 4-2026",
@@ -962,7 +962,7 @@ def analyze(
     if universe == 0:
         warnings.append(
             "No REISift rows had a locked Probates NY Nassau/Queens/Suffolk tag "
-            "(Feb 2025–Aug 2026, 38 tags)."
+            "(38 tags; Nassau from Apr 2025)."
         )
 
     prospect_n = sum(1 for r in rows if r.prospect_matched)
@@ -1039,7 +1039,8 @@ def analyze(
 
     methodology = (
         "Universe = REISift rows with at least one locked Probates NY Nassau/Queens/Suffolk "
-        "M-YYYY tag (38 tags, Feb 2025–Aug 2026; gaps are real). First LIP month = earliest "
+        "M-YYYY tag (38 tags; Nassau from Apr 2025, including Nassau/Queens 3-2026 with no drop). "
+        "First LIP month = earliest "
         "locked tag on the row. 8020 list purchase = List Purchased 8020 MM/YYYY, or List "
         "Purchased MM/YYYY when a standalone (8020) token is on the same row. First list on "
         "the row is the QL credit (LIP only / LIP first / 8020 first / Same month). A Prospect "

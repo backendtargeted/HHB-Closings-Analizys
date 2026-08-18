@@ -39,6 +39,12 @@ def test_parse_probate_tags_hyphen_and_leading_zero():
     assert parse_probate_tags("Probates NY County 3-2025") == []
     assert parse_probate_tags("Probates NY Nassau 03/2025") == []
     assert len(LOCKED_PROBATE_TAGS) == 38
+    assert "Probates NY Nassau 02-2025" not in LOCKED_PROBATE_TAGS
+    assert "Probates NY Nassau 03-2025" not in LOCKED_PROBATE_TAGS
+    assert "Probates NY Nassau 3-2026" in LOCKED_PROBATE_TAGS
+    assert "Probates NY Queens 3-2026" in LOCKED_PROBATE_TAGS
+    assert row_has_probate_tag("Probates NY Nassau 02-2025") is False
+    assert row_has_probate_tag("Probates NY Nassau 3-2026") is True
     assert all(parse_probate_tags(tag) for tag in LOCKED_PROBATE_TAGS)
     assert row_has_probate_tag("Probates NY Nassau 11-2025") is False
     assert parse_probate_tags("Probates NY Nassau 11-2025") != []
@@ -80,7 +86,7 @@ def test_analyze_first_source_match_and_txn_reasons(tmp_path):
                     "Property state": "NY",
                     "Property zip": "11520",
                     "Phone 1": "5165550101",
-                    "Tags": "Probates NY Nassau 02-2025,List Purchased 8020 4/2025",
+                    "Tags": "Probates NY Nassau 04-2025,List Purchased 8020 6/2025",
                 },
                 {
                     "Property address": "20 Oak Ave",
@@ -96,7 +102,7 @@ def test_analyze_first_source_match_and_txn_reasons(tmp_path):
                     "Property state": "NY",
                     "Property zip": "11801",
                     "Phone 1": "5165550999",
-                    "Tags": "Probates NY Nassau 03-2025",
+                    "Tags": "Probates NY Nassau 04-2025",
                 },
                 {
                     "Property address": "40 Elm St",
@@ -203,7 +209,7 @@ def test_analyze_first_source_match_and_txn_reasons(tmp_path):
     assert maple.prospect_source == FIRST_SOURCE_LIP_FIRST
     assert maple.ql_campaign == "VA - Cold Calling (RES)"
     assert maple.county == "Nassau"
-    assert maple.months_lip_to_prospect == 6
+    assert maple.months_lip_to_prospect == 4
     assert maple.txn_primary_reason == "Estate"
     assert maple.txn_secondary_reason == "Tired Landlord"
 
@@ -395,7 +401,7 @@ def test_early_and_later_ql_uses_on_or_after_create_date(tmp_path):
                     "Property state": "NY",
                     "Property zip": "11801",
                     "Phone 1": "5165550999",
-                    "Tags": "Probates NY Nassau 03-2025",
+                    "Tags": "Probates NY Nassau 04-2025",
                 }
             ]
         ),
@@ -433,6 +439,6 @@ def test_early_and_later_ql_uses_on_or_after_create_date(tmp_path):
     assert row.prospect_source == FIRST_SOURCE_LIP_ONLY
     assert row.ql_campaign == "VA - Cold Calling (RES)"
     assert row.prospect_date == "2025-06-10"
-    assert row.months_winner_to_prospect == 3
+    assert row.months_winner_to_prospect == 2
     assert result.crm_before_first_list_count == 0
     assert all(item["label"] != "PPC - Google" for item in result.campaigns)

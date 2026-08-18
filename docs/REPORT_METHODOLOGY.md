@@ -320,7 +320,7 @@ Canonical implementation: `backend/app/services/web_leads.py`.
 
 **Question:** On Long Island Profiles (probate) properties, who delivered the record first (LIP vs 8020), how many months until Salesforce Prospect, what % of the LIP list became Prospects, and what Primary/Secondary Reason for Selling is stated on the Transactions pipeline.
 
-**Universe:** REISift rows with at least one of the **38 locked** tags `Probates NY (Nassau|Queens|Suffolk) M-YYYY` (hyphen, optional leading zero; Feb 2025–Aug 2026; gaps are real). 8020-only rows are excluded. First LIP month = earliest **locked** tag on the row. County is taken from that tag.
+**Universe:** REISift rows with at least one of the **38 locked** tags `Probates NY (Nassau|Queens|Suffolk) M-YYYY` (hyphen, optional leading zero). Nassau starts Apr 2025 (not Feb/Mar 2025). Queens starts Feb 2026. **Nassau 3-2026** and **Queens 3-2026** stay in the locked set even when those drops have no rows. Other gaps are real. 8020-only rows are excluded. First LIP month = earliest **locked** tag on the row. County is taken from that tag.
 
 **8020 list purchase:** `List Purchased 8020 MM/YYYY`, or `List Purchased MM/YYYY` when a standalone `(8020)` token is on the same row. `(8020) CC|SMS|DM` contact tags are not list-purchase dates.
 
