@@ -324,7 +324,7 @@ Canonical implementation: `backend/app/services/web_leads.py`.
 
 **8020 list purchase:** `List Purchased 8020 MM/YYYY`, or `List Purchased MM/YYYY` when a standalone `(8020)` token is on the same row. `(8020) CC|SMS|DM` contact tags are not list-purchase dates.
 
-**First source** (month granularity): LIP only, LIP first, 8020 first, same month. **That first list is the QL credit** when the row matches a Qualified Lead **on or after** the first-list month.
+**First source** (month granularity): LIP Probates only, LIP Probates first, 8020 first, same month. **That first list is the QL credit** when the row matches a Qualified Lead **on or after** the first-list month.
 
 **Prospect:** Salesforce Total Qualified Leads row matched by street+city+state+zip, then street+city+zip / street+zip, then phone. Among matches, take the **earliest Create Date on or after the first-list month**. A QL whose only Create Date is earlier is **not** a conversion from this list (diagnostic: In CRM before first list). **Campaign** is how they worked a counted Prospect. Opportunities are a later funnel count. Reasons are **not** read from QL or Opportunities.
 

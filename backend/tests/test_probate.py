@@ -16,6 +16,7 @@ from app.services.probate import (
     classify_first_source,
     first_probate_hit,
     months_between,
+    normalize_campaign,
     parse_8020_list_purchase_date,
     parse_probate_tags,
     result_from_metrics_dict,
@@ -61,6 +62,16 @@ def test_parse_8020_list_purchase_not_contact_tags():
     contact_only = "List Purchased 1/2025,(8020) CC - 2/2025"
     assert parse_8020_list_purchase_date(contact_only) is None
     assert parse_8020_list_purchase_date("Probates NY Nassau 02-2025") is None
+
+
+def test_normalize_campaign_blank_and_smarter_contact():
+    assert normalize_campaign("") == "No Campaign in Salesforce"
+    assert normalize_campaign(None) == "No Campaign in Salesforce"
+    assert normalize_campaign("(blank)") == "No Campaign in Salesforce"
+    assert normalize_campaign("Smarter Contact 1 - RES") == "RES SMS"
+    assert normalize_campaign("Smarter Contact 1-RES") == "RES SMS"
+    assert normalize_campaign("smarter contact 1 – RES") == "RES SMS"
+    assert normalize_campaign("VA - Cold Calling (RES)") == "VA - Cold Calling (RES)"
 
 
 def test_first_source_and_lag_math():
@@ -442,3 +453,74 @@ def test_early_and_later_ql_uses_on_or_after_create_date(tmp_path):
     assert row.months_winner_to_prospect == 2
     assert result.crm_before_first_list_count == 0
     assert all(item["label"] != "PPC - Google" for item in result.campaigns)
+
+
+def test_campaign_smarter_contact_rollup_and_blank(tmp_path):
+    reisift = _write_csv(
+        tmp_path / "reisift.csv",
+        pd.DataFrame(
+            [
+                {
+                    "Property address": "10 A St",
+                    "Property city": "Freeport",
+                    "Property state": "NY",
+                    "Property zip": "11520",
+                    "Phone 1": "",
+                    "Tags": "Probates NY Nassau 04-2025",
+                },
+                {
+                    "Property address": "20 B St",
+                    "Property city": "Freeport",
+                    "Property state": "NY",
+                    "Property zip": "11521",
+                    "Phone 1": "",
+                    "Tags": "Probates NY Nassau 04-2025",
+                },
+                {
+                    "Property address": "30 C St",
+                    "Property city": "Freeport",
+                    "Property state": "NY",
+                    "Property zip": "11522",
+                    "Phone 1": "",
+                    "Tags": "Probates NY Nassau 04-2025",
+                },
+            ]
+        ),
+    )
+    ql = _write_csv(
+        tmp_path / "ql.csv",
+        pd.DataFrame(
+            [
+                {
+                    "Street": "10 A St",
+                    "City": "Freeport",
+                    "State/Province": "NY",
+                    "Zip/Postal Code": "11520",
+                    "Campaign": "Smarter Contact 1 - RES",
+                    "Create Date": "2025-05-01",
+                },
+                {
+                    "Street": "20 B St",
+                    "City": "Freeport",
+                    "State/Province": "NY",
+                    "Zip/Postal Code": "11521",
+                    "Campaign": "Smarter Contact 1-RES",
+                    "Create Date": "2025-05-01",
+                },
+                {
+                    "Street": "30 C St",
+                    "City": "Freeport",
+                    "State/Province": "NY",
+                    "Zip/Postal Code": "11522",
+                    "Campaign": "",
+                    "Create Date": "2025-05-01",
+                },
+            ]
+        ),
+    )
+    result = analyze(reisift, ql)
+    assert result.prospect_matched == 3
+    labels = {item["label"]: item["count"] for item in result.campaigns}
+    assert labels["RES SMS"] == 2
+    assert labels["No Campaign in Salesforce"] == 1
+    assert all("Smarter Contact" not in (item["label"] or "") for item in result.campaigns)

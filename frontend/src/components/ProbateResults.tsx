@@ -3,6 +3,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  LabelList,
   Legend,
   ResponsiveContainer,
   Tooltip,
@@ -27,6 +28,90 @@ interface ProbateResultsProps {
 function fmt(n: number | null | undefined): string {
   if (n === null || n === undefined) return '—';
   return String(n);
+}
+
+function displaySourceLabel(raw: string): string {
+  const map: Record<string, string> = {
+    'LIP only': 'LIP Probates only',
+    'LIP first': 'LIP Probates first',
+    lip_only: 'LIP Probates only',
+    lip_first: 'LIP Probates first',
+  };
+  if (map[raw]) return map[raw];
+  if (raw.startsWith('LIP ') && !raw.startsWith('LIP Probates')) {
+    return `LIP Probates ${raw.slice(4)}`;
+  }
+  return raw;
+}
+
+function displayCampaign(raw: string): string {
+  const text = (raw || '').trim();
+  if (!text || text === '(blank)' || text.toLowerCase() === 'nan') {
+    return 'No Campaign in Salesforce';
+  }
+  if (/smarter\s+contact\s+1/i.test(text) && /res/i.test(text)) return 'RES SMS';
+  return text;
+}
+
+function yAxisWidth(labels: string[]): number {
+  const longest = labels.reduce((max, label) => Math.max(max, label.length), 0);
+  return Math.min(260, Math.max(112, Math.round(longest * 7.5)));
+}
+
+function barPlotHeight(rows: number, rowPx = 40): number {
+  return Math.max(200, rows * rowPx + 24);
+}
+
+function VerticalBars({
+  data,
+  series,
+  grouped = false,
+}: {
+  data: Array<{ name: string; [key: string]: string | number }>;
+  series: Array<{ key: string; name: string; color: string }>;
+  grouped?: boolean;
+}) {
+  if (data.length === 0) return null;
+  const labels = data.map((d) => d.name);
+  const width = yAxisWidth(labels);
+  const height = barPlotHeight(data.length, grouped ? 56 : 42);
+  return (
+    <div className="mt-4 w-full" style={{ height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ left: 4, right: 40, top: 8, bottom: 8 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" horizontal={false} />
+          <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+          <YAxis
+            type="category"
+            dataKey="name"
+            width={width}
+            interval={0}
+            tick={{ fontSize: 12, fill: '#1c1917' }}
+          />
+          <Tooltip />
+          {grouped ? <Legend /> : null}
+          {series.map((s) => (
+            <Bar
+              key={s.key}
+              dataKey={s.key}
+              name={s.name}
+              fill={s.color}
+              radius={[0, 4, 4, 0]}
+              maxBarSize={22}
+            >
+              {!grouped ? (
+                <LabelList dataKey={s.key} position="right" fontSize={11} fill="#44403c" />
+              ) : null}
+            </Bar>
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
 }
 
 const CompactTable = ({
@@ -83,20 +168,22 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
   const firstSourceChart = useMemo(
     () =>
       m.first_source.map((r) => ({
-        name: r.label ?? r.key ?? '',
+        name: displaySourceLabel(r.label ?? r.key ?? ''),
         listed: r.count ?? 0,
         prospects: r.prospects ?? 0,
       })),
     [m.first_source]
   );
-  const campaignChart = useMemo(
-    () =>
-      campaigns.map((r) => ({
-        name: r.label ?? '',
-        count: r.count ?? 0,
-      })),
-    [campaigns]
-  );
+  const campaignChart = useMemo(() => {
+    const rolled = new Map<string, number>();
+    for (const r of campaigns) {
+      const name = displayCampaign(r.label ?? '');
+      rolled.set(name, (rolled.get(name) ?? 0) + (r.count ?? 0));
+    }
+    return [...rolled.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }));
+  }, [campaigns]);
   const lagChart = useMemo(
     () =>
       m.lag_buckets
@@ -115,7 +202,7 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
   );
   const funnelChart = useMemo(
     () => [
-      { name: 'LIP listed', count: m.funnel.lip },
+      { name: 'LIP Probates listed', count: m.funnel.lip },
       { name: 'Prospect', count: m.funnel.prospect },
       { name: 'Opportunity', count: m.funnel.opportunity },
       { name: 'Transaction', count: m.funnel.transaction },
@@ -128,6 +215,22 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
     const mode = await copyReportShareUrl(result.job_id, 'probate');
     setShareStatus(mode === 'copied' ? 'Report link copied.' : 'Copy the report link from the prompt.');
   };
+
+  const campaignTableRows = useMemo(() => {
+    const rolled = new Map<string, number>();
+    for (const r of campaigns) {
+      const name = displayCampaign(r.label ?? '');
+      rolled.set(name, (rolled.get(name) ?? 0) + (r.count ?? 0));
+    }
+    const total = [...rolled.values()].reduce((sum, n) => sum + n, 0);
+    return [...rolled.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, count]) => [
+        label,
+        count,
+        `${total > 0 ? Math.round((10000 * count) / total) / 100 : 0}%`,
+      ]);
+  }, [campaigns]);
 
   const reasonRows = (items: CountShareRow[]) =>
     items.map((r) => [r.label ?? '', r.count ?? 0, `${r.share_pct}%`]);
@@ -157,7 +260,7 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
           <p className="text-sm text-stone-600 mt-1">
             {m.date_window_start} → {m.date_window_end}
             {' · '}
-            {m.inputs.lip_universe.toLocaleString()} LIP properties
+            {m.inputs.lip_universe.toLocaleString()} LIP Probates properties
             {' · '}
             {m.match.prospect_matched.toLocaleString()} Prospects ({m.match.prospect_rate_pct}%)
           </p>
@@ -200,7 +303,7 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
       <p className="text-sm text-stone-600">{m.methodology_note}</p>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Stat label="LIP universe" value={m.inputs.lip_universe.toLocaleString()} />
+        <Stat label="LIP Probates universe" value={m.inputs.lip_universe.toLocaleString()} />
         <Stat
           label="Became Prospect"
           value={`${m.match.prospect_matched.toLocaleString()} (${m.match.prospect_rate_pct}%)`}
@@ -227,17 +330,10 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
           First list is the source. A Prospect is a QL whose Create Date is on or after that
           first-list month.
         </p>
-        <div className="mt-4 h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={funnelChart} layout="vertical" margin={{ left: 88, right: 16 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
-              <XAxis type="number" />
-              <YAxis type="category" dataKey="name" width={80} />
-              <Tooltip />
-              <Bar dataKey="count" name="Properties" fill="#9f1239" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <VerticalBars
+          data={funnelChart}
+          series={[{ key: 'count', name: 'Properties', color: '#9f1239' }]}
+        />
       </section>
 
       <section className="rounded-xl border border-stone-200 bg-white p-5">
@@ -245,26 +341,21 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
         <p className="text-sm text-stone-600 mt-1">
           QL credit is this first list. Same REISift row: Long Island Profiles vs List Purchased 8020.
         </p>
-        <div className="mt-4 h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={firstSourceChart} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="listed" name="Listed" fill="#1c1917" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="prospects" name="Prospects" fill="#be123c" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <VerticalBars
+          data={firstSourceChart}
+          grouped
+          series={[
+            { key: 'listed', name: 'Listed', color: '#1c1917' },
+            { key: 'prospects', name: 'Prospects', color: '#be123c' },
+          ]}
+        />
       </section>
 
       <CompactTable
         title="Who delivered first"
         columns={['Source / QL credit', 'Listed', 'Share', 'Prospects', 'Prospect %']}
         rows={m.first_source.map((r) => [
-          r.label ?? r.key ?? '',
+          displaySourceLabel(r.label ?? r.key ?? ''),
           r.count ?? 0,
           `${r.share_pct}%`,
           r.prospects ?? 0,
@@ -293,17 +384,10 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
           Prospects. Earlier CRM rows are not conversions.
         </p>
         {lagChart.length > 0 ? (
-          <div className="mt-4 h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={lagChart} margin={{ top: 8, right: 16, left: 8, bottom: 24 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
-                <XAxis dataKey="name" interval={0} angle={-20} textAnchor="end" height={48} />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" name="Prospects" fill="#9f1239" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <VerticalBars
+            data={lagChart}
+            series={[{ key: 'count', name: 'Prospects', color: '#9f1239' }]}
+          />
         ) : null}
       </section>
 
@@ -322,17 +406,10 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
           source.
         </p>
         {campaignChart.length > 0 ? (
-          <div className="mt-4 h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={campaignChart} layout="vertical" margin={{ left: 160, right: 16 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
-                <XAxis type="number" />
-                <YAxis type="category" dataKey="name" width={152} />
-                <Tooltip />
-                <Bar dataKey="count" name="Prospects" fill="#44403c" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <VerticalBars
+            data={campaignChart}
+            series={[{ key: 'count', name: 'Prospects', color: '#44403c' }]}
+          />
         ) : null}
       </section>
 
@@ -340,33 +417,28 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
         title="Campaign"
         subtitle="From the Campaign column on Total Qualified Leads. Extra context, not QL credit."
         columns={['Campaign', 'Count', 'Share of Prospects']}
-        rows={reasonRows(campaigns)}
+        rows={campaignTableRows}
       />
 
       <section className="rounded-xl border border-stone-200 bg-white p-5">
-        <h3 className="text-lg font-semibold text-stone-900">Listed by first LIP month</h3>
+        <h3 className="text-lg font-semibold text-stone-900">Listed by first LIP Probates month</h3>
         <p className="text-sm text-stone-600 mt-1">
           Drop size that month. Recent months have had less time to become Prospects.
         </p>
         {monthChart.length > 0 ? (
-          <div className="mt-4 h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthChart} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
-                <XAxis dataKey="name" interval={0} angle={-45} textAnchor="end" height={64} />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="listed" name="Listed" fill="#44403c" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="prospects" name="Prospects" fill="#be123c" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <VerticalBars
+            data={monthChart}
+            grouped
+            series={[
+              { key: 'listed', name: 'Listed', color: '#44403c' },
+              { key: 'prospects', name: 'Prospects', color: '#be123c' },
+            ]}
+          />
         ) : null}
       </section>
 
       <CompactTable
-        title="By first LIP month"
+        title="By first LIP Probates month"
         columns={['Month', 'Listed', 'Prospects', 'Prospect %', 'Txns', 'Mean months']}
         rows={m.cohorts.map((r) => [
           r.lip_month ?? '',
@@ -380,8 +452,8 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
 
       <CompactTable
         title="In CRM before first list"
-        subtitle="Address or phone matched a Qualified Lead, but Create Date is before the first LIP/8020 list month. Not a conversion from this list. Not source credit."
-        columns={['Address', 'County', 'LIP', '8020', 'CRM date', 'Match', 'Campaign']}
+        subtitle="Address or phone matched a Qualified Lead, but Create Date is before the first LIP Probates/8020 list month. Not a conversion from this list. Not source credit."
+        columns={['Address', 'County', 'LIP Probates', '8020', 'CRM date', 'Match', 'Campaign']}
         rows={(m.crm_before_first_list ?? []).map((r: CrmBeforeFirstListRow) => [
           r.address ?? '',
           r.county ?? '',
@@ -389,7 +461,7 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
           r.eight_month || '—',
           r.prospect_date || '—',
           r.prospect_match_via || '—',
-          r.ql_campaign || '—',
+          r.ql_campaign ? displayCampaign(r.ql_campaign) : '—',
         ])}
       />
 
@@ -423,7 +495,7 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
               <tr className="border-b text-left text-stone-500">
                 <th className="py-2 pr-3">Address</th>
                 <th className="py-2 pr-3">County</th>
-                <th className="py-2 pr-3">LIP</th>
+                <th className="py-2 pr-3">LIP Probates</th>
                 <th className="py-2 pr-3">8020</th>
                 <th className="py-2 pr-3">QL credit</th>
                 <th className="py-2 pr-3">Campaign</th>
@@ -441,9 +513,11 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
                   <td className="py-2 pr-3">{r.lip_month}</td>
                   <td className="py-2 pr-3">{r.eight_month || '—'}</td>
                   <td className="py-2 pr-3">
-                    {r.prospect_matched ? r.first_source_label : '—'}
+                    {r.prospect_matched ? displaySourceLabel(r.first_source_label) : '—'}
                   </td>
-                  <td className="py-2 pr-3">{r.ql_campaign || '—'}</td>
+                  <td className="py-2 pr-3">
+                    {r.prospect_matched ? displayCampaign(r.ql_campaign) : '—'}
+                  </td>
                   <td className="py-2 pr-3">{r.prospect_date || '—'}</td>
                   <td className="py-2 pr-3">{fmt(r.months_winner_to_prospect)}</td>
                   <td className="py-2 pr-3">{r.txn_primary_reason || '—'}</td>

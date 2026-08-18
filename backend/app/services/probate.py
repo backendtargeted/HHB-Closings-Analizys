@@ -93,8 +93,8 @@ FIRST_SOURCE_8020_FIRST = "eight_first"
 FIRST_SOURCE_SAME = "same_month"
 
 FIRST_SOURCE_LABELS: Dict[str, str] = {
-    FIRST_SOURCE_LIP_ONLY: "LIP only",
-    FIRST_SOURCE_LIP_FIRST: "LIP first",
+    FIRST_SOURCE_LIP_ONLY: "LIP Probates only",
+    FIRST_SOURCE_LIP_FIRST: "LIP Probates first",
     FIRST_SOURCE_8020_FIRST: "8020 first",
     FIRST_SOURCE_SAME: "Same month",
 }
@@ -145,6 +145,8 @@ SECONDARY_REASON_CANDIDATES = [
 ]
 
 BLANK_REASON = "(blank)"
+BLANK_CAMPAIGN = "No Campaign in Salesforce"
+SMARTER_CONTACT_1_RES_RE = re.compile(r"smarter\s+contact\s+1\s*[-–—]?\s*res", re.I)
 
 
 def _split_tag_tokens(tags_str: object) -> List[str]:
@@ -326,6 +328,18 @@ def _reason_value(raw: object) -> str:
     return text
 
 
+def normalize_campaign(raw: object) -> str:
+    """Blank → No Campaign in Salesforce. All Smarter Contact 1 - RES variants → RES SMS."""
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return BLANK_CAMPAIGN
+    text = re.sub(r"\s+", " ", str(raw).strip())
+    if not text or text.lower() in ("nan", "(blank)", "none", "(none)"):
+        return BLANK_CAMPAIGN
+    if SMARTER_CONTACT_1_RES_RE.search(text):
+        return "RES SMS"
+    return text
+
+
 def _discover_cols(df: pd.DataFrame, spec: Dict[str, List[str]]) -> Dict[str, Optional[str]]:
     return {k: find_column_name(df, v) for k, v in spec.items()}
 
@@ -462,7 +476,7 @@ def _build_match_index(
         secondaries.append(
             _reason_value(row.get(secondary_col, "")) if secondary_col else BLANK_REASON
         )
-        campaigns.append(_reason_value(row.get(campaign_col, "")) if campaign_col else "")
+        campaigns.append(normalize_campaign(row.get(campaign_col, "")) if campaign_col else BLANK_CAMPAIGN)
     return MatchIndex(
         by_full=by_full,
         by_no_state=by_no_state,
@@ -889,7 +903,7 @@ def analyze(
         ql_campaign = ql_hit.campaign if ql_hit else ""
         bucket = ""
         if ql_hit:
-            campaign_counter[ql_campaign or BLANK_REASON] += 1
+            campaign_counter[ql_campaign] += 1
             if months_winner is not None:
                 bucket = lag_bucket_label(months_winner)
                 lag_values.append(months_winner)
@@ -1040,10 +1054,10 @@ def analyze(
     methodology = (
         "Universe = REISift rows with at least one locked Probates NY Nassau/Queens/Suffolk "
         "M-YYYY tag (38 tags; Nassau from Apr 2025, including Nassau/Queens 3-2026 with no drop). "
-        "First LIP month = earliest "
+        "First LIP Probates month = earliest "
         "locked tag on the row. 8020 list purchase = List Purchased 8020 MM/YYYY, or List "
         "Purchased MM/YYYY when a standalone (8020) token is on the same row. First list on "
-        "the row is the QL credit (LIP only / LIP first / 8020 first / Same month). A Prospect "
+        "the row is the QL credit (LIP Probates only / LIP Probates first / 8020 first / Same month). A Prospect "
         "is a Total Qualified Leads match whose Create Date is on or after that first-list "
         "month (earliest such hit). An earlier CRM row is not this list's conversion. "
         "Campaign is how the team worked a counted Prospect. Lag is calendar months from the "
@@ -1098,7 +1112,7 @@ def build_export_workbook(result: ProbateResult) -> bytes:
             {"metric": "Date window start", "value": result.date_window_start},
             {"metric": "Date window end", "value": result.date_window_end},
             {"metric": "REISift rows ingested", "value": result.reisift_rows_ingested},
-            {"metric": "LIP / probate universe", "value": result.lip_universe},
+            {"metric": "LIP Probates universe", "value": result.lip_universe},
             {"metric": "Prospect matched", "value": result.prospect_matched},
             {"metric": "Prospect % of LIP list", "value": result.prospect_rate_pct},
             {
