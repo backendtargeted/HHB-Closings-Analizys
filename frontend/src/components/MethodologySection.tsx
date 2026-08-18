@@ -47,6 +47,14 @@ const MethodologySection = () => {
           <p>
             <strong className="text-stone-800">Summary stats:</strong> Match rate = deals with a matched CSV row. Channel totals sum per-deal counts across matched deals. Month-granular 8020 tags use the first of the month internally; SF tags use calendar days.
           </p>
+          <p>
+            <strong className="text-stone-800">Gate 5 probate:</strong> Universe is REISift rows tagged{' '}
+            <code className="bg-stone-100 px-1 rounded">Probates NY Nassau|Queens|Suffolk M-YYYY</code>.
+            8020 is a competing list provider on the same row (
+            <code className="bg-stone-100 px-1 rounded">List Purchased 8020</code>
+            ). Prospect = Salesforce Qualified Leads Create Date. Primary/Secondary Reason for Selling
+            comes only from the Transactions pipeline after address match.
+          </p>
           <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">
             Full methodology: repo{' '}
             <code className="bg-stone-100 px-1 rounded">docs/REPORT_METHODOLOGY.md</code> and operator{' '}

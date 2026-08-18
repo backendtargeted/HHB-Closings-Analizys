@@ -1,0 +1,291 @@
+"""Tests for Gate 5 probate lifecycle."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+
+from app.services.probate import (
+    FIRST_SOURCE_8020_FIRST,
+    FIRST_SOURCE_LIP_FIRST,
+    FIRST_SOURCE_LIP_ONLY,
+    FIRST_SOURCE_SAME,
+    LOCKED_PROBATE_TAGS,
+    analyze,
+    classify_first_source,
+    months_between,
+    parse_8020_list_purchase_date,
+    parse_probate_tags,
+    result_from_metrics_dict,
+    row_has_probate_tag,
+)
+
+
+def _write_csv(path: Path, df: pd.DataFrame) -> str:
+    df.to_csv(path, index=False)
+    return str(path)
+
+
+def test_parse_probate_tags_hyphen_and_leading_zero():
+    tags = "Probates NY Nassau 02-2025,Probates NY Suffolk 1-2026,(8020) CC - 3/2025"
+    hits = parse_probate_tags(tags)
+    assert [h["county"] for h in hits] == ["Nassau", "Suffolk"]
+    assert hits[0]["date"] == pd.Timestamp("2025-02-01")
+    assert hits[1]["date"] == pd.Timestamp("2026-01-01")
+    assert row_has_probate_tag(tags) is True
+    assert row_has_probate_tag("List Purchased 8020 2/2025") is False
+    assert parse_probate_tags("Probates NY County 3-2025") == []
+    assert parse_probate_tags("Probates NY Nassau 03/2025") == []
+    assert len(LOCKED_PROBATE_TAGS) == 38
+    assert all(parse_probate_tags(tag) for tag in LOCKED_PROBATE_TAGS)
+
+
+def test_parse_8020_list_purchase_not_contact_tags():
+    assert parse_8020_list_purchase_date("List Purchased 8020 3/2025") == pd.Timestamp(
+        "2025-03-01"
+    )
+    combined = "List Purchased 1/2025,(8020)"
+    assert parse_8020_list_purchase_date(combined) == pd.Timestamp("2025-01-01")
+    contact_only = "List Purchased 1/2025,(8020) CC - 2/2025"
+    assert parse_8020_list_purchase_date(contact_only) is None
+    assert parse_8020_list_purchase_date("Probates NY Nassau 02-2025") is None
+
+
+def test_first_source_and_lag_math():
+    lip = pd.Timestamp("2025-02-01")
+    eight = pd.Timestamp("2025-04-01")
+    assert classify_first_source(lip, None) == FIRST_SOURCE_LIP_ONLY
+    assert classify_first_source(lip, eight) == FIRST_SOURCE_LIP_FIRST
+    assert classify_first_source(eight, lip) == FIRST_SOURCE_8020_FIRST
+    assert classify_first_source(lip, pd.Timestamp("2025-02-15")) == FIRST_SOURCE_SAME
+    assert months_between(lip, pd.Timestamp("2025-08-20")) == 6
+    assert months_between(lip, pd.Timestamp("2025-02-28")) == 0
+    assert months_between(pd.Timestamp("2025-06-01"), pd.Timestamp("2025-02-01")) == -4
+
+
+def test_analyze_first_source_match_and_txn_reasons(tmp_path):
+    reisift = _write_csv(
+        tmp_path / "reisift.csv",
+        pd.DataFrame(
+            [
+                {
+                    "Property address": "10 Maple St",
+                    "Property city": "Freeport",
+                    "Property state": "NY",
+                    "Property zip": "11520",
+                    "Phone 1": "5165550101",
+                    "Tags": "Probates NY Nassau 02-2025,List Purchased 8020 4/2025",
+                },
+                {
+                    "Property address": "20 Oak Ave",
+                    "Property city": "Patchogue",
+                    "Property state": "NY",
+                    "Property zip": "11772",
+                    "Phone 1": "",
+                    "Tags": "List Purchased 8020 3/2025,Probates NY Suffolk 05-2025",
+                },
+                {
+                    "Property address": "30 Pine Rd",
+                    "Property city": "Hicksville",
+                    "Property state": "NY",
+                    "Property zip": "11801",
+                    "Phone 1": "5165550999",
+                    "Tags": "Probates NY Nassau 03-2025",
+                },
+                {
+                    "Property address": "40 Elm St",
+                    "Property city": "Queens",
+                    "Property state": "NY",
+                    "Property zip": "11354",
+                    "Phone 1": "",
+                    "Tags": "List Purchased 8020 2/2025,(8020) CC - 3/2025",
+                },
+            ]
+        ),
+    )
+    ql = _write_csv(
+        tmp_path / "ql.csv",
+        pd.DataFrame(
+            [
+                {
+                    "Street": "10 Maple St",
+                    "City": "Freeport",
+                    "State/Province": "NY",
+                    "Zip/Postal Code": "11520",
+                    "Phone": "5165550101",
+                    "Lead Source": "Cold Calling",
+                    "Create Date": "2025-08-15",
+                    "Primary Reason for Selling": "Should not be used",
+                },
+                {
+                    "Street": "99 Missing Ln",
+                    "City": "Nowhere",
+                    "State/Province": "NY",
+                    "Zip/Postal Code": "11111",
+                    "Phone": "5165550000",
+                    "Lead Source": "SMS",
+                    "Create Date": "2025-03-01",
+                    "Primary Reason for Selling": "Estate",
+                },
+            ]
+        ),
+    )
+    opps = _write_csv(
+        tmp_path / "opps.csv",
+        pd.DataFrame(
+            [
+                {
+                    "Address (Street)": "10 Maple St",
+                    "Address (City)": "Freeport",
+                    "Address (ZIP/Postal Code)": "11520",
+                    "Created Date": "2025-09-01",
+                    "Primary Reason for Selling": "Opp reason ignored",
+                }
+            ]
+        ),
+    )
+    txn = _write_csv(
+        tmp_path / "txn.csv",
+        pd.DataFrame(
+            [
+                {
+                    "Address (Street)": "10 Maple St",
+                    "Address (ZIP/Postal Code)": "11520-1234",
+                    "Closed Date": "2025-10-02",
+                    "Primary Reason for Selling": "Estate",
+                    "Secondary Reason for Selling": "Tired Landlord",
+                }
+            ]
+        ),
+    )
+
+    result = analyze(reisift, ql, opps, txn)
+    assert result.reisift_rows_ingested == 4
+    assert result.lip_universe == 3
+    assert result.prospect_matched == 1
+    assert result.opp_matched == 1
+    assert result.txn_matched == 1
+    assert result.funnel["lip"] == 3
+    assert result.funnel["transaction"] == 1
+
+    maple = next(r for r in result.rows if r.address.startswith("10 Maple"))
+    assert maple.first_source == FIRST_SOURCE_LIP_FIRST
+    assert maple.county == "Nassau"
+    assert maple.months_lip_to_prospect == 6
+    assert maple.txn_primary_reason == "Estate"
+    assert maple.txn_secondary_reason == "Tired Landlord"
+
+    oak = next(r for r in result.rows if r.address.startswith("20 Oak"))
+    assert oak.first_source == FIRST_SOURCE_8020_FIRST
+    assert oak.prospect_matched is False
+
+    pine = next(r for r in result.rows if r.address.startswith("30 Pine"))
+    assert pine.first_source == FIRST_SOURCE_LIP_ONLY
+
+    assert all(not r.address.startswith("40 Elm") for r in result.rows)
+    assert any(item["label"] == "Estate" for item in result.primary_reasons)
+    assert any(item["label"] == "Tired Landlord" for item in result.secondary_reasons)
+    assert all(item["label"] != "Should not be used" for item in result.primary_reasons)
+    assert all(item["label"] != "Opp reason ignored" for item in result.primary_reasons)
+
+
+def test_phone_fallback_and_same_month(tmp_path):
+    reisift = _write_csv(
+        tmp_path / "reisift.csv",
+        pd.DataFrame(
+            [
+                {
+                    "Property address": "",
+                    "Property city": "",
+                    "Property state": "NY",
+                    "Property zip": "",
+                    "Phone 1": "6315552222",
+                    "Tags": "Probates NY Suffolk 02-2025,List Purchased 8020 2/2025",
+                }
+            ]
+        ),
+    )
+    ql = _write_csv(
+        tmp_path / "ql.csv",
+        pd.DataFrame(
+            [
+                {
+                    "Street": "Hidden",
+                    "City": "Islip",
+                    "State/Province": "NY",
+                    "Zip/Postal Code": "11751",
+                    "Phone": "16315552222",
+                    "Lead Source": "Direct Mail",
+                    "Create Date": "2025-02-10",
+                }
+            ]
+        ),
+    )
+    result = analyze(reisift, ql)
+    assert result.lip_universe == 1
+    row = result.rows[0]
+    assert row.first_source == FIRST_SOURCE_SAME
+    assert row.prospect_matched is True
+    assert row.prospect_match_via == "phone"
+    assert row.months_lip_to_prospect == 0
+
+
+def test_result_roundtrip():
+    result = result_from_metrics_dict(
+        {
+            "date_window_start": "2025-02-01",
+            "date_window_end": "2026-08-01",
+            "inputs": {"reisift_rows_ingested": 10, "lip_universe": 2},
+            "match": {
+                "prospect_matched": 1,
+                "prospect_rate_pct": 50.0,
+                "opp_matched": 0,
+                "opp_rate_pct": 0.0,
+                "txn_matched": 0,
+                "txn_rate_pct": 0.0,
+            },
+            "lag": {
+                "mean_months_lip_to_prospect": 4.0,
+                "median_months_lip_to_prospect": 4.0,
+            },
+            "first_source": [],
+            "counties": [],
+            "cohorts": [],
+            "lag_buckets": [],
+            "funnel": {"lip": 2, "prospect": 1, "opportunity": 0, "transaction": 0},
+            "primary_reasons": [],
+            "secondary_reasons": [],
+            "rows": [
+                {
+                    "address": "10 Maple",
+                    "address_key": "k",
+                    "county": "Nassau",
+                    "counties": ["Nassau"],
+                    "lip_month": "2025-02",
+                    "eight_month": "",
+                    "first_source": FIRST_SOURCE_LIP_ONLY,
+                    "first_source_label": "LIP only",
+                    "prospect_date": "2025-06-01",
+                    "prospect_matched": True,
+                    "prospect_match_via": "address",
+                    "months_lip_to_prospect": 4,
+                    "months_eight_to_prospect": None,
+                    "months_winner_to_prospect": 4,
+                    "lag_bucket": "4-6 months",
+                    "opp_matched": False,
+                    "opp_created_date": "",
+                    "txn_matched": False,
+                    "txn_closed_date": "",
+                    "txn_primary_reason": "",
+                    "txn_secondary_reason": "",
+                    "tags": "Probates NY Nassau 02-2025",
+                }
+            ],
+            "warnings": [],
+            "methodology_note": "test",
+        }
+    )
+    assert result.lip_universe == 2
+    assert len(result.rows) == 1
+    assert result.rows[0].county == "Nassau"

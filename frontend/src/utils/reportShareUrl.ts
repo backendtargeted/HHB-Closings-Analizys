@@ -3,7 +3,8 @@ export type ReportShareType =
   | 'qualified_leads'
   | 'monthly_consolidated'
   | 'marketing_ramp'
-  | 'web_leads';
+  | 'web_leads'
+  | 'probate';
 
 export function buildReportShareUrl(
   jobId: string,

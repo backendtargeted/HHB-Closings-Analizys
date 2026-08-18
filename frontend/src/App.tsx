@@ -11,17 +11,22 @@ import MarketingRampWorkspace from './components/MarketingRampWorkspace';
 import MarketingRampResults from './components/MarketingRampResults';
 import WebLeadsWorkspace from './components/WebLeadsWorkspace';
 import WebLeadsResults from './components/WebLeadsResults';
+import ProbateWorkspace from './components/ProbateWorkspace';
+import ProbateResults from './components/ProbateResults';
 import SavedReports, { SavedReportsPanel } from './components/SavedReports';
 import {
   downloadQualifiedLeadsExport,
   downloadMonthlyConsolidatedExport,
   downloadMarketingRampExport,
   downloadWebLeadsExport,
+  downloadProbateExport,
   getAnalysisResults,
   getQualifiedLeadsJob,
   getMonthlyConsolidatedJob,
   getMarketingRampJob,
   getWebLeadsJob,
+  getProbateJob,
+  listReports,
 } from './services/api';
 import type { AnalysisCompleteResponse } from './types/analysis';
 import type { QualifiedLeadsAnalyzeResponse } from './types/qualifiedLeads';
@@ -31,6 +36,8 @@ import type { MarketingRampCompletedResponse } from './types/marketingRamp';
 import { asMarketingRampCompleted } from './types/marketingRamp';
 import type { WebLeadsCompletedResponse } from './types/webLeads';
 import { asWebLeadsCompleted } from './types/webLeads';
+import type { ProbateCompletedResponse } from './types/probate';
+import { asProbateCompleted } from './types/probate';
 
 const QL_CHANNEL_LABELS: Record<string, string> = {
   CC: 'Cold Calling',
@@ -45,7 +52,7 @@ const QL_CHANNEL_LABELS: Record<string, string> = {
 function App() {
   const setReportQueryParam = (
     jobId: string | null,
-    reportType?: 'attribution' | 'qualified_leads' | 'monthly_consolidated' | 'marketing_ramp' | 'web_leads'
+    reportType?: 'attribution' | 'qualified_leads' | 'monthly_consolidated' | 'marketing_ramp' | 'web_leads' | 'probate'
   ) => {
     const url = new URL(window.location.href);
     if (jobId) {
@@ -60,7 +67,7 @@ function App() {
     window.history.replaceState({}, '', url.toString());
   };
 
-  const [gate, setGate] = useState<GateMode>('monthlyConsolidated');
+  const [gate, setGate] = useState<GateMode>('probate');
   const [loadedSavedReport, setLoadedSavedReport] = useState<AnalysisCompleteResponse | null>(null);
   const [loadedQualifiedReport, setLoadedQualifiedReport] =
     useState<QualifiedLeadsAnalyzeResponse | null>(null);
@@ -70,16 +77,20 @@ function App() {
     useState<MarketingRampCompletedResponse | null>(null);
   const [loadedWebLeadsReport, setLoadedWebLeadsReport] =
     useState<WebLeadsCompletedResponse | null>(null);
+  const [loadedProbateReport, setLoadedProbateReport] =
+    useState<ProbateCompletedResponse | null>(null);
   const [savedReportsRefresh, setSavedReportsRefresh] = useState(0);
   const [qlExporting, setQlExporting] = useState(false);
   const [mcrExporting, setMcrExporting] = useState(false);
   const [mrExporting, setMrExporting] = useState(false);
   const [wlExporting, setWlExporting] = useState(false);
+  const [pbExporting, setPbExporting] = useState(false);
 
   const showQualifiedResults = loadedQualifiedReport !== null;
   const showMonthlyResults = loadedMonthlyReport !== null;
   const showMarketingResults = loadedMarketingReport !== null;
   const showWebLeadsResults = loadedWebLeadsReport !== null;
+  const showProbateResults = loadedProbateReport !== null;
   const showLegacyAttribution = loadedSavedReport !== null;
 
   const handleNewRun = () => {
@@ -88,7 +99,7 @@ function App() {
     setLoadedMonthlyReport(null);
     setLoadedMarketingReport(null);
     setLoadedWebLeadsReport(null);
-    setGate('monthlyConsolidated');
+    setLoadedProbateReport(null);
     setReportQueryParam(null);
   };
 
@@ -98,6 +109,7 @@ function App() {
     setLoadedMonthlyReport(null);
     setLoadedMarketingReport(null);
     setLoadedWebLeadsReport(null);
+    setLoadedProbateReport(null);
     setReportQueryParam(data.job_id, 'attribution');
   };
 
@@ -107,6 +119,7 @@ function App() {
     setLoadedMonthlyReport(null);
     setLoadedMarketingReport(null);
     setLoadedWebLeadsReport(null);
+    setLoadedProbateReport(null);
     setReportQueryParam(data.job_id, 'qualified_leads');
   };
 
@@ -116,6 +129,7 @@ function App() {
     setLoadedQualifiedReport(null);
     setLoadedMarketingReport(null);
     setLoadedWebLeadsReport(null);
+    setLoadedProbateReport(null);
     setGate('monthlyConsolidated');
     setReportQueryParam(data.job_id, 'monthly_consolidated');
   };
@@ -126,6 +140,7 @@ function App() {
     setLoadedQualifiedReport(null);
     setLoadedMonthlyReport(null);
     setLoadedWebLeadsReport(null);
+    setLoadedProbateReport(null);
     setGate('marketingRamp');
     setReportQueryParam(data.job_id, 'marketing_ramp');
   };
@@ -136,8 +151,24 @@ function App() {
     setLoadedQualifiedReport(null);
     setLoadedMonthlyReport(null);
     setLoadedMarketingReport(null);
+    setLoadedProbateReport(null);
     setGate('webLeads');
     setReportQueryParam(data.job_id, 'web_leads');
+  };
+
+  const handleOpenProbateReport = (data: ProbateCompletedResponse) => {
+    setLoadedProbateReport(data);
+    setLoadedSavedReport(null);
+    setLoadedQualifiedReport(null);
+    setLoadedMonthlyReport(null);
+    setLoadedMarketingReport(null);
+    setLoadedWebLeadsReport(null);
+    setGate('probate');
+    setReportQueryParam(data.job_id, 'probate');
+  };
+
+  const handleProbateRunComplete = () => {
+    setSavedReportsRefresh((k) => k + 1);
   };
 
   const handleWebLeadsRunComplete = () => {
@@ -223,76 +254,133 @@ function App() {
     }
   };
 
+  const handleExportProbate = async (jobId: string) => {
+    setPbExporting(true);
+    try {
+      const blob = await downloadProbateExport(jobId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `probate_${jobId}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Export failed');
+    } finally {
+      setPbExporting(false);
+    }
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const reportId = params.get('report');
-    if (!reportId) return;
-
     const reportType = params.get('type');
     let isCancelled = false;
-    const loadSharedReport = async () => {
-      const tryLoad = async () => {
-        if (reportType === 'qualified_leads') {
-          return { kind: 'qualified_leads' as const, data: await getQualifiedLeadsJob(reportId) };
-        }
-        if (reportType === 'monthly_consolidated') {
-          return {
-            kind: 'monthly_consolidated' as const,
-            data: asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(reportId)),
-          };
-        }
-        if (reportType === 'marketing_ramp') {
-          return {
-            kind: 'marketing_ramp' as const,
-            data: asMarketingRampCompleted(await getMarketingRampJob(reportId)),
-          };
-        }
-        if (reportType === 'web_leads') {
-          return {
-            kind: 'web_leads' as const,
-            data: asWebLeadsCompleted(await getWebLeadsJob(reportId)),
-          };
-        }
-        if (reportType === 'attribution') {
-          return { kind: 'attribution' as const, data: await getAnalysisResults(reportId) };
-        }
+
+    const applyLoaded = (loaded: {
+      kind:
+        | 'qualified_leads'
+        | 'monthly_consolidated'
+        | 'marketing_ramp'
+        | 'web_leads'
+        | 'probate'
+        | 'attribution';
+      data: unknown;
+    }) => {
+      if (loaded.kind === 'qualified_leads') {
+        setLoadedQualifiedReport(loaded.data as QualifiedLeadsAnalyzeResponse);
+      } else if (loaded.kind === 'monthly_consolidated') {
+        setLoadedMonthlyReport(loaded.data as MonthlyConsolidatedCompletedResponse);
+        setGate('monthlyConsolidated');
+      } else if (loaded.kind === 'marketing_ramp') {
+        setLoadedMarketingReport(loaded.data as MarketingRampCompletedResponse);
+        setGate('marketingRamp');
+      } else if (loaded.kind === 'web_leads') {
+        setLoadedWebLeadsReport(loaded.data as WebLeadsCompletedResponse);
+        setGate('webLeads');
+      } else if (loaded.kind === 'probate') {
+        setLoadedProbateReport(loaded.data as ProbateCompletedResponse);
+        setGate('probate');
+      } else {
+        setLoadedSavedReport(loaded.data as AnalysisCompleteResponse);
+      }
+    };
+
+    const tryLoad = async (id: string, type: string | null) => {
+      if (type === 'qualified_leads') {
+        return { kind: 'qualified_leads' as const, data: await getQualifiedLeadsJob(id) };
+      }
+      if (type === 'monthly_consolidated') {
+        return {
+          kind: 'monthly_consolidated' as const,
+          data: asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(id)),
+        };
+      }
+      if (type === 'marketing_ramp') {
+        return {
+          kind: 'marketing_ramp' as const,
+          data: asMarketingRampCompleted(await getMarketingRampJob(id)),
+        };
+      }
+      if (type === 'web_leads') {
+        return {
+          kind: 'web_leads' as const,
+          data: asWebLeadsCompleted(await getWebLeadsJob(id)),
+        };
+      }
+      if (type === 'probate') {
+        return {
+          kind: 'probate' as const,
+          data: asProbateCompleted(await getProbateJob(id)),
+        };
+      }
+      if (type === 'attribution') {
+        return { kind: 'attribution' as const, data: await getAnalysisResults(id) };
+      }
+      try {
+        return {
+          kind: 'marketing_ramp' as const,
+          data: asMarketingRampCompleted(await getMarketingRampJob(id)),
+        };
+      } catch {
         try {
           return {
-            kind: 'marketing_ramp' as const,
-            data: asMarketingRampCompleted(await getMarketingRampJob(reportId)),
+            kind: 'monthly_consolidated' as const,
+            data: asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(id)),
           };
         } catch {
           try {
-            return {
-              kind: 'monthly_consolidated' as const,
-              data: asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(reportId)),
-            };
+            return { kind: 'qualified_leads' as const, data: await getQualifiedLeadsJob(id) };
           } catch {
             try {
-              return { kind: 'qualified_leads' as const, data: await getQualifiedLeadsJob(reportId) };
+              return {
+                kind: 'probate' as const,
+                data: asProbateCompleted(await getProbateJob(id)),
+              };
             } catch {
-              return { kind: 'attribution' as const, data: await getAnalysisResults(reportId) };
+              return { kind: 'attribution' as const, data: await getAnalysisResults(id) };
             }
           }
         }
-      };
+      }
+    };
+
+    const loadSharedReport = async () => {
       try {
-        const loaded = await tryLoad();
-        if (isCancelled) return;
-        if (loaded.kind === 'qualified_leads') {
-          setLoadedQualifiedReport(loaded.data);
-        } else if (loaded.kind === 'monthly_consolidated') {
-          setLoadedMonthlyReport(loaded.data);
-          setGate('monthlyConsolidated');
-        } else if (loaded.kind === 'marketing_ramp') {
-          setLoadedMarketingReport(loaded.data);
-          setGate('marketingRamp');
-        } else if (loaded.kind === 'web_leads') {
-          setLoadedWebLeadsReport(loaded.data);
-          setGate('webLeads');
-        } else {
-          setLoadedSavedReport(loaded.data);
+        if (reportId) {
+          const loaded = await tryLoad(reportId, reportType);
+          if (isCancelled) return;
+          applyLoaded(loaded);
+          return;
         }
+        const res = await listReports();
+        const latest = (res.reports ?? []).find((r) => r.report_type === 'probate');
+        if (!latest || isCancelled) return;
+        const data = asProbateCompleted(await getProbateJob(latest.job_id));
+        if (isCancelled) return;
+        setLoadedProbateReport(data);
+        setGate('probate');
+        setReportQueryParam(data.job_id, 'probate');
       } catch {
         // Invalid/missing report IDs are ignored so the landing flow still works.
       }
@@ -309,14 +397,16 @@ function App() {
     !showQualifiedResults &&
     !showLegacyAttribution &&
     !showMarketingResults &&
-    !showWebLeadsResults;
+    !showWebLeadsResults &&
+    !showProbateResults;
 
   const showAnyReport =
     showMarketingResults ||
     showMonthlyResults ||
     showQualifiedResults ||
     showLegacyAttribution ||
-    showWebLeadsResults;
+    showWebLeadsResults ||
+    showProbateResults;
 
   const workspaceTabId =
     gate === 'pastPatches'
@@ -325,6 +415,8 @@ function App() {
         ? 'tab-gate3'
         : gate === 'webLeads'
           ? 'tab-gate4'
+          : gate === 'probate'
+            ? 'tab-gate5'
           : 'tab-gate2';
 
   const savedReportsSidebar = (
@@ -335,6 +427,7 @@ function App() {
         onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
         onOpenMarketingRampReport={handleOpenMarketingReport}
         onOpenWebLeadsReport={handleOpenWebLeadsReport}
+        onOpenProbateReport={handleOpenProbateReport}
         refreshKey={savedReportsRefresh}
       />
     </aside>
@@ -355,7 +448,7 @@ function App() {
             <div className="min-w-0">
               <h1 className="text-3xl font-bold text-white drop-shadow-sm">HHB Marketing Reports</h1>
               <p className="text-gray-200 mt-1">
-                Gate 1: ingest · Gate 2: consolidated · Gate 3: marketing ramp · Gate 4: web leads
+                Gate 1: ingest · Gate 2: consolidated · Gate 3: marketing ramp · Gate 4: web leads · Gate 5: probate
               </p>
             </div>
           </div>
@@ -372,7 +465,25 @@ function App() {
         <div className="mb-6">
           {!showAnyReport ? <MethodologySection /> : null}
         </div>
-        {showWebLeadsResults && loadedWebLeadsReport ? (
+        {showProbateResults && loadedProbateReport ? (
+          <div className="space-y-6">
+            <ProbateResults
+              result={loadedProbateReport}
+              onNewRun={handleNewRun}
+              onExport={() => handleExportProbate(loadedProbateReport.job_id)}
+              exporting={pbExporting}
+            />
+            <SavedReportsPanel
+              onOpenAttributionReport={handleOpenSavedReport}
+              onOpenQualifiedLeadsReport={handleOpenQualifiedReport}
+              onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
+              onOpenMarketingRampReport={handleOpenMarketingReport}
+              onOpenWebLeadsReport={handleOpenWebLeadsReport}
+              onOpenProbateReport={handleOpenProbateReport}
+              refreshKey={savedReportsRefresh}
+            />
+          </div>
+        ) : showWebLeadsResults && loadedWebLeadsReport ? (
           <div className="space-y-6">
             <WebLeadsResults
               result={loadedWebLeadsReport}
@@ -386,6 +497,7 @@ function App() {
               onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
               onOpenMarketingRampReport={handleOpenMarketingReport}
               onOpenWebLeadsReport={handleOpenWebLeadsReport}
+              onOpenProbateReport={handleOpenProbateReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -404,6 +516,7 @@ function App() {
               onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
               onOpenMarketingRampReport={handleOpenMarketingReport}
               onOpenWebLeadsReport={handleOpenWebLeadsReport}
+              onOpenProbateReport={handleOpenProbateReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -422,6 +535,7 @@ function App() {
               onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
               onOpenMarketingRampReport={handleOpenMarketingReport}
               onOpenWebLeadsReport={handleOpenWebLeadsReport}
+              onOpenProbateReport={handleOpenProbateReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -441,6 +555,7 @@ function App() {
               onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
               onOpenMarketingRampReport={handleOpenMarketingReport}
               onOpenWebLeadsReport={handleOpenWebLeadsReport}
+              onOpenProbateReport={handleOpenProbateReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -454,6 +569,7 @@ function App() {
               onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
               onOpenMarketingRampReport={handleOpenMarketingReport}
               onOpenWebLeadsReport={handleOpenWebLeadsReport}
+              onOpenProbateReport={handleOpenProbateReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -476,6 +592,11 @@ function App() {
                 <WebLeadsWorkspace
                   onRunComplete={handleWebLeadsRunComplete}
                   onOpenResult={handleOpenWebLeadsReport}
+                />
+              ) : gate === 'probate' ? (
+                <ProbateWorkspace
+                  onRunComplete={handleProbateRunComplete}
+                  onOpenResult={handleOpenProbateReport}
                 />
               ) : (
                 <MonthlyConsolidatedWorkspace

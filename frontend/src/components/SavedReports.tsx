@@ -6,11 +6,13 @@ import {
   getMonthlyConsolidatedJob,
   getMarketingRampJob,
   getWebLeadsJob,
+  getProbateJob,
   deleteAnalysis,
   deleteQualifiedLeadsJob,
   deleteMonthlyConsolidatedJob,
   deleteMarketingRampJob,
   deleteWebLeadsJob,
+  deleteProbateJob,
 } from '../services/api';
 import type { AnalysisCompleteResponse } from '../types/analysis';
 import type { QualifiedLeadsAnalyzeResponse } from '../types/qualifiedLeads';
@@ -20,6 +22,8 @@ import type { MarketingRampCompletedResponse } from '../types/marketingRamp';
 import { asMarketingRampCompleted } from '../types/marketingRamp';
 import type { WebLeadsCompletedResponse } from '../types/webLeads';
 import { asWebLeadsCompleted } from '../types/webLeads';
+import type { ProbateCompletedResponse } from '../types/probate';
+import { asProbateCompleted } from '../types/probate';
 import type { SavedReportItem } from '../types/reports';
 
 interface SavedReportsProps {
@@ -28,6 +32,7 @@ interface SavedReportsProps {
   onOpenMonthlyConsolidatedReport?: (data: MonthlyConsolidatedCompletedResponse) => void;
   onOpenMarketingRampReport?: (data: MarketingRampCompletedResponse) => void;
   onOpenWebLeadsReport?: (data: WebLeadsCompletedResponse) => void;
+  onOpenProbateReport?: (data: ProbateCompletedResponse) => void;
   refreshKey?: number;
 }
 
@@ -48,6 +53,7 @@ const typeLabel = (t: SavedReportItem['report_type']) => {
   if (t === 'monthly_consolidated') return 'Monthly report';
   if (t === 'marketing_ramp') return 'Marketing ramp';
   if (t === 'web_leads') return 'Web leads';
+  if (t === 'probate') return 'Probate';
   return 'Attribution (legacy)';
 };
 
@@ -57,6 +63,7 @@ const SavedReports = ({
   onOpenMonthlyConsolidatedReport,
   onOpenMarketingRampReport,
   onOpenWebLeadsReport,
+  onOpenProbateReport,
   refreshKey = 0,
 }: SavedReportsProps) => {
   const [reports, setReports] = useState<SavedReportItem[]>([]);
@@ -87,14 +94,16 @@ const SavedReports = ({
         (r) =>
           r.report_type === 'monthly_consolidated' ||
           r.report_type === 'marketing_ramp' ||
-          r.report_type === 'web_leads'
+          r.report_type === 'web_leads' ||
+          r.report_type === 'probate'
       );
     }
     return reports.filter(
       (r) =>
         r.report_type !== 'monthly_consolidated' &&
         r.report_type !== 'marketing_ramp' &&
-        r.report_type !== 'web_leads'
+        r.report_type !== 'web_leads' &&
+        r.report_type !== 'probate'
     );
   }, [reports, filter]);
 
@@ -113,6 +122,11 @@ const SavedReports = ({
         onOpenWebLeadsReport(data);
       } else if (item.report_type === 'web_leads') {
         alert('Web leads report handler not configured');
+      } else if (item.report_type === 'probate' && onOpenProbateReport) {
+        const data = asProbateCompleted(await getProbateJob(item.job_id));
+        onOpenProbateReport(data);
+      } else if (item.report_type === 'probate') {
+        alert('Probate report handler not configured');
       } else if (item.report_type === 'monthly_consolidated' && onOpenMonthlyConsolidatedReport) {
         const data = asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(item.job_id));
         onOpenMonthlyConsolidatedReport(data);
@@ -137,6 +151,8 @@ const SavedReports = ({
         await deleteMarketingRampJob(item.job_id);
       } else if (item.report_type === 'web_leads') {
         await deleteWebLeadsJob(item.job_id);
+      } else if (item.report_type === 'probate') {
+        await deleteProbateJob(item.job_id);
       } else if (item.report_type === 'monthly_consolidated') {
         await deleteMonthlyConsolidatedJob(item.job_id);
       } else {
@@ -179,7 +195,7 @@ const SavedReports = ({
       {filteredReports.length === 0 ? (
         <div className="text-stone-500 text-sm">
           {filter === 'monthly'
-            ? 'No monthly workflow reports yet. Run Gate 2, Gate 3, or Gate 4 to save one.'
+            ? 'No monthly workflow reports yet. Run Gate 2–5 to save one.'
             : 'No reports in this filter.'}
         </div>
       ) : (
@@ -201,6 +217,9 @@ const SavedReports = ({
                     ? ` · ${r.date_window_start} – ${r.date_window_end}`
                     : ''}
                   {r.report_type === 'web_leads' && r.date_window_start
+                    ? ` · ${r.date_window_start} – ${r.date_window_end}`
+                    : ''}
+                  {r.report_type === 'probate' && r.date_window_start
                     ? ` · ${r.date_window_start} – ${r.date_window_end}`
                     : ''}
                   {r.report_type === 'attribution' && r.as_of ? ` · as-of ${r.as_of}` : ''}

@@ -6,9 +6,12 @@ import unittest
 from pathlib import Path
 
 from app.services.report_store import (
+    REPORT_TYPE_PROBATE,
     REPORT_TYPE_QUALIFIED_LEADS,
     list_report_index,
+    load_probate_report,
     load_qualified_leads_report,
+    save_probate_report,
     save_qualified_leads_report,
 )
 
@@ -32,6 +35,28 @@ class TestReportStore(unittest.TestCase):
             loaded = load_qualified_leads_report("job-1", root)
             self.assertIsNotNone(loaded)
             self.assertEqual(len(loaded["rows"]), 1)
+
+    def test_save_and_list_probate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            save_probate_report(
+                "pb-1",
+                metrics={
+                    "date_window_start": "2025-02-01",
+                    "date_window_end": "2026-08-01",
+                    "inputs": {"lip_universe": 12, "reisift_rows_ingested": 40},
+                    "match": {"prospect_matched": 3, "prospect_rate_pct": 25.0},
+                },
+                created_at="2026-08-18T12:00:00+00:00",
+                reports_dir=root,
+            )
+            items = list_report_index(root)
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0]["report_type"], REPORT_TYPE_PROBATE)
+            self.assertIn("12", items[0]["summary"])
+            loaded = load_probate_report("pb-1", root)
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded["metrics"]["inputs"]["lip_universe"], 12)
 
 
 if __name__ == "__main__":

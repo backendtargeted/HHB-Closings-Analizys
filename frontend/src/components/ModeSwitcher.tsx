@@ -1,7 +1,7 @@
 export type WorkspaceMode = 'regular' | 'pastPatches' | 'qualifiedLeads' | 'monthlyConsolidated';
 
 /** Primary workflow modes shown in the workflow picker. */
-export type GateMode = 'pastPatches' | 'monthlyConsolidated' | 'marketingRamp' | 'webLeads';
+export type GateMode = 'pastPatches' | 'monthlyConsolidated' | 'marketingRamp' | 'webLeads' | 'probate';
 
 interface ModeSwitcherProps {
   mode: GateMode;
@@ -15,7 +15,7 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
         Monthly workflow
       </p>
       <div
-        className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4"
+        className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
         role="tablist"
         aria-label="Monthly workflow gates"
       >
@@ -133,6 +133,34 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
             </div>
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-violet-200/80 text-violet-950">
               Web
+            </span>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'probate'}
+          id="tab-gate5"
+          aria-controls="panel-workspace"
+          onClick={() => onChange('probate')}
+          className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-700 focus-visible:ring-offset-2 ${
+            mode === 'probate'
+              ? 'border-rose-600/80 bg-rose-50/90 shadow-md ring-1 ring-rose-600/20'
+              : 'border-stone-200 bg-white/80 hover:border-rose-200 hover:bg-rose-50/40'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-rose-800 mb-1">Gate 5</p>
+              <h2 className="text-lg font-bold text-rose-950 tracking-tight">Probate lifecycle</h2>
+              <p className="text-rose-950/80 text-sm mt-2 leading-relaxed">
+                Long Island Profiles vs 8020 on the same REISift row, time to Salesforce Prospect,
+                and Transactions reason for selling.
+              </p>
+            </div>
+            <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-rose-200/80 text-rose-950">
+              Probate
             </span>
           </div>
         </button>

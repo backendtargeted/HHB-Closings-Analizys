@@ -30,6 +30,12 @@ import type {
   WebLeadsJobStatus,
 } from '../types/webLeads';
 import { asWebLeadsCompleted } from '../types/webLeads';
+import type {
+  ProbateAnalyzeResponse,
+  ProbateCompletedResponse,
+  ProbateJobStatus,
+} from '../types/probate';
+import { asProbateCompleted } from '../types/probate';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -750,4 +756,161 @@ export const downloadWebLeadsExport = async (jobId: string): Promise<Blob> => {
 
 export const deleteWebLeadsJob = async (jobId: string): Promise<void> => {
   await api.delete(`/web-leads/${jobId}`);
+};
+
+export async function pollProbateJob(
+  jobId: string,
+  onProgress?: (pct: number, message: string) => void
+): Promise<ProbateCompletedResponse> {
+  const deadline = Date.now() + 30 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const status = await getProbateJobStatus(jobId);
+    const serverPct = status.progress ?? 0;
+    const uiPct =
+      serverPct >= 10 ? 90 + Math.round(((serverPct - 10) / 90) * 9) : 90;
+    onProgress?.(Math.min(99, uiPct), status.message || 'Analyzing…');
+    if (status.status === 'completed') {
+      return asProbateCompleted(await getProbateJob(jobId));
+    }
+    if (status.status === 'failed') {
+      throw new Error(status.message || 'Analysis failed');
+    }
+    await sleep(1000);
+  }
+  throw new Error('Analysis timed out after 30 minutes');
+}
+
+async function analyzeProbateDirect(
+  reisiftFile: File,
+  qlFile: File,
+  oppsFile?: File,
+  txnFile?: File,
+  onProgress?: (pct: number, message: string) => void
+): Promise<ProbateCompletedResponse> {
+  const form = new FormData();
+  form.append('reisift_file', reisiftFile);
+  form.append('qualified_leads_file', qlFile);
+  if (oppsFile) form.append('opportunities_file', oppsFile);
+  if (txnFile) form.append('transactions_file', txnFile);
+
+  const totalBytes =
+    reisiftFile.size + qlFile.size + (oppsFile?.size ?? 0) + (txnFile?.size ?? 0);
+  onProgress?.(0, 'Uploading report files…');
+
+  const response = await api.post<{ job_id: string; status: string; message: string }>(
+    '/probate/analyze',
+    form,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: DIRECT_UPLOAD_TIMEOUT_MS,
+      onUploadProgress: (evt) => {
+        if (!evt.total && !totalBytes) {
+          return;
+        }
+        const loaded = evt.loaded ?? 0;
+        const total = evt.total && evt.total > 0 ? evt.total : totalBytes;
+        const pct = Math.min(85, Math.round((loaded / total) * 85));
+        onProgress?.(pct, 'Uploading report files…');
+      },
+    }
+  );
+  onProgress?.(88, 'Files received — analyzing…');
+  const result = await pollProbateJob(response.data.job_id, onProgress);
+  onProgress?.(100, 'Done');
+  return result;
+}
+
+async function analyzeProbateResumable(
+  reisiftFile: File,
+  qlFile: File,
+  oppsFile?: File,
+  txnFile?: File,
+  onProgress?: (pct: number, message: string) => void
+): Promise<ProbateCompletedResponse> {
+  onProgress?.(0, `Uploading ${reisiftFile.name} (chunked fallback)…`);
+  const reisiftPath = await uploadFileResumable('reisift', reisiftFile, (pct, msg) => {
+    onProgress?.(Math.round(pct * 0.4), msg);
+  });
+  onProgress?.(40, `Uploading ${qlFile.name}…`);
+  const qlPath = await uploadFileResumable('qualified_leads', qlFile, (pct, msg) => {
+    onProgress?.(40 + Math.round(pct * 0.3), msg);
+  });
+  let oppsPath: string | undefined;
+  if (oppsFile) {
+    onProgress?.(70, `Uploading ${oppsFile.name}…`);
+    oppsPath = await uploadFileResumable('closings', oppsFile, (pct, msg) => {
+      onProgress?.(70 + Math.round(pct * 0.1), msg);
+    });
+  }
+  let txnPath: string | undefined;
+  if (txnFile) {
+    onProgress?.(80, `Uploading ${txnFile.name}…`);
+    txnPath = await uploadFileResumable('closings', txnFile, (pct, msg) => {
+      onProgress?.(80 + Math.round(pct * 0.1), msg);
+    });
+  }
+  onProgress?.(90, 'Starting analysis…');
+  const started = await analyzeProbateFromPaths(reisiftPath, qlPath, oppsPath, txnPath);
+  const result = await pollProbateJob(started.job_id, onProgress);
+  onProgress?.(100, 'Done');
+  return result;
+}
+
+export const analyzeProbate = async (
+  reisiftFile: File,
+  qlFile: File,
+  oppsFile?: File,
+  txnFile?: File,
+  onProgress?: (pct: number, message: string) => void
+): Promise<ProbateCompletedResponse> => {
+  try {
+    return await analyzeProbateDirect(reisiftFile, qlFile, oppsFile, txnFile, onProgress);
+  } catch (err) {
+    if (!shouldFallbackToResumableUpload(err)) {
+      throw err;
+    }
+    onProgress?.(
+      0,
+      'Direct upload interrupted — retrying in smaller pieces (proxy timeout)…'
+    );
+    return analyzeProbateResumable(reisiftFile, qlFile, oppsFile, txnFile, onProgress);
+  }
+};
+
+export const analyzeProbateFromPaths = async (
+  reisiftPath: string,
+  qlPath: string,
+  oppsPath?: string,
+  txnPath?: string
+): Promise<{ job_id: string; status: string; message: string }> => {
+  const body: Record<string, unknown> = {
+    reisift_path: reisiftPath,
+    qualified_leads_path: qlPath,
+  };
+  if (oppsPath) body.opportunities_path = oppsPath;
+  if (txnPath) body.transactions_path = txnPath;
+  const response = await api.post<{ job_id: string; status: string; message: string }>(
+    '/probate/analyze',
+    body
+  );
+  return response.data;
+};
+
+export const getProbateJobStatus = async (jobId: string): Promise<ProbateJobStatus> => {
+  const response = await api.get<ProbateJobStatus>(`/probate/${jobId}/status`);
+  return response.data;
+};
+
+export const getProbateJob = async (jobId: string): Promise<ProbateAnalyzeResponse> => {
+  const response = await api.get<ProbateAnalyzeResponse>(`/probate/${jobId}`);
+  return response.data;
+};
+
+export const downloadProbateExport = async (jobId: string): Promise<Blob> => {
+  const response = await api.get(`/probate/${jobId}/export`, { responseType: 'blob' });
+  return response.data;
+};
+
+export const deleteProbateJob = async (jobId: string): Promise<void> => {
+  await api.delete(`/probate/${jobId}`);
 };

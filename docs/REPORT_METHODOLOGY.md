@@ -268,6 +268,7 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 | Cadence probes | `backend/app/services/cadence_from_history.py` |
 | Dedupe tests | `backend/tests/test_parse_tags_dedupe.py` |
 | Monthly consolidated (Gate 2) | `backend/app/services/monthly_consolidated.py` |
+| Gate 5 probate | `backend/app/services/probate.py` |
 | Open pipeline / stuck-at-stage | `lifecycle.py` — `compute_stage_funnel_open`, `aggregate_stuck_at_stage` |
 | Tag-derived lead source | `monthly_consolidated.py` — `derive_tag_lead_source` |
 
@@ -294,3 +295,24 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 **Parallel consolidated report:** Gate 3 analyze also runs Gate 2 (`monthly_consolidated.analyze`) on the same REISift + QL files. Consolidated cohort remains the **full REISift export** (not filtered to the ramp date window). Results are embedded in the Gate 3 API response and persisted with the marketing ramp report.
 
 **Export:** Unified XLSX reuses Gate 2 workbook sheets and appends a **Marketing Ramp** sheet with per-address journey columns.
+
+---
+
+## 18. Gate 5 probate lifecycle
+
+**Question:** On Long Island Profiles (probate) properties, who delivered the record first (LIP vs 8020), how many months until Salesforce Prospect, what % of the LIP list became Prospects, and what Primary/Secondary Reason for Selling is stated on the Transactions pipeline.
+
+**Universe:** REISift rows with at least one tag matching `Probates NY (Nassau|Queens|Suffolk) M-YYYY` (hyphen, optional leading zero). 8020-only rows are excluded. First LIP month = earliest matching tag. County is taken from that tag.
+
+**8020 list purchase:** `List Purchased 8020 MM/YYYY`, or `List Purchased MM/YYYY` when a standalone `(8020)` token is on the same row. `(8020) CC|SMS|DM` contact tags are not list-purchase dates.
+
+**First source** (month granularity): LIP only, LIP first, 8020 first, same month.
+
+**Prospect:** Salesforce Total Qualified Leads **Create Date**, matched by street+city+state+zip, then street+city+zip / street+zip, then phone. Opportunities are a later funnel count. Reasons are **not** read from QL or Opportunities.
+
+**Reason to sell:** Transactions pipeline **Primary Reason for Selling** and **Secondary Reason for Selling** after address match. Blank is a bucket. Unmatched transactions have no reason.
+
+**Lag:** calendar months from first LIP month to Prospect Create Date. Conversion and lag are also split by first LIP month and county.
+
+Canonical implementation: `backend/app/services/probate.py`.
+

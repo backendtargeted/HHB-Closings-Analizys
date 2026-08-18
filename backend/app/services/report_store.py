@@ -21,6 +21,7 @@ REPORT_TYPE_QUALIFIED_LEADS = "qualified_leads"
 REPORT_TYPE_MONTHLY_CONSOLIDATED = "monthly_consolidated"
 REPORT_TYPE_MARKETING_RAMP = "marketing_ramp"
 REPORT_TYPE_WEB_LEADS = "web_leads"
+REPORT_TYPE_PROBATE = "probate"
 
 
 class ReportsDirectoryError(RuntimeError):
@@ -314,6 +315,15 @@ def _summary_for_web_leads(metrics: Dict[str, Any]) -> str:
     return f"{total:,} website QL · {matched:,} matched · {prior_pct}% prior history"
 
 
+def _summary_for_probate(metrics: Dict[str, Any]) -> str:
+    inputs = metrics.get("inputs") or {}
+    match = metrics.get("match") or {}
+    universe = inputs.get("lip_universe", 0)
+    prospects = match.get("prospect_matched", 0)
+    rate = match.get("prospect_rate_pct", 0)
+    return f"{universe:,} LIP · {prospects:,} prospects · {rate}% of list"
+
+
 def list_report_index(reports_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
     """Scan REPORTS_DIR for all saved report JSON files."""
     root = reports_dir or get_reports_dir()
@@ -397,6 +407,23 @@ def list_report_index(reports_dir: Optional[Path] = None) -> List[Dict[str, Any]
                     "date_window_end": metrics.get("date_window_end"),
                     "website_ql_total": inputs.get("website_ql_total", 0),
                     "reisift_matched": match.get("matched", 0),
+                }
+            )
+        elif rtype == REPORT_TYPE_PROBATE:
+            metrics = data.get("metrics") or {}
+            inputs = metrics.get("inputs") or {}
+            match = metrics.get("match") or {}
+            items.append(
+                {
+                    "job_id": job_id,
+                    "report_type": rtype,
+                    "status": "completed",
+                    "created_at": created_at,
+                    "summary": _summary_for_probate(metrics),
+                    "date_window_start": metrics.get("date_window_start"),
+                    "date_window_end": metrics.get("date_window_end"),
+                    "cohort_rows": inputs.get("lip_universe", 0),
+                    "reisift_matched": match.get("prospect_matched", 0),
                 }
             )
         elif _is_attribution_payload(data):
@@ -508,6 +535,41 @@ def load_web_leads_report(
 ) -> Optional[Dict[str, Any]]:
     root = reports_dir or get_reports_dir()
     path = root / "web_leads" / f"{job_id}.json"
+    if not path.is_file():
+        return None
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    return {
+        "job_id": job_id,
+        "metrics": data.get("metrics", {}),
+        "created_at": data.get("created_at"),
+    }
+
+
+def save_probate_report(
+    job_id: str,
+    metrics: Dict[str, Any],
+    created_at: Optional[str] = None,
+    reports_dir: Optional[Path] = None,
+) -> Path:
+    root = reports_dir or get_reports_dir()
+    path = root / "probate" / f"{job_id}.json"
+    ts = created_at or datetime.now(timezone.utc).isoformat()
+    payload = {
+        "report_type": REPORT_TYPE_PROBATE,
+        "job_id": job_id,
+        "created_at": ts,
+        "metrics": metrics,
+    }
+    _write_json(path, payload)
+    return path
+
+
+def load_probate_report(
+    job_id: str, reports_dir: Optional[Path] = None
+) -> Optional[Dict[str, Any]]:
+    root = reports_dir or get_reports_dir()
+    path = root / "probate" / f"{job_id}.json"
     if not path.is_file():
         return None
     with open(path, encoding="utf-8") as fh:

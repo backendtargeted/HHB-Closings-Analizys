@@ -3,7 +3,8 @@ export type ReportType =
   | 'qualified_leads'
   | 'monthly_consolidated'
   | 'marketing_ramp'
-  | 'web_leads';
+  | 'web_leads'
+  | 'probate';
 
 export interface SavedReportItem {
   job_id: string;
