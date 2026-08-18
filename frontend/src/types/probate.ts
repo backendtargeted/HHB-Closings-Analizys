@@ -53,12 +53,6 @@ export interface ProbateMetrics {
   match: {
     prospect_matched: number;
     prospect_rate_pct: number;
-    prospect_after_lip?: number;
-    prospect_after_lip_rate_pct?: number;
-    prospect_after_8020?: number;
-    prospect_after_8020_rate_pct?: number;
-    prospect_already_in_sf?: number;
-    prospect_already_in_sf_rate_pct?: number;
     opp_matched: number;
     opp_rate_pct: number;
     txn_matched: number;
@@ -67,11 +61,9 @@ export interface ProbateMetrics {
   lag: {
     mean_months_lip_to_prospect: number | null;
     median_months_lip_to_prospect: number | null;
-    mean_months_8020_to_prospect?: number | null;
-    median_months_8020_to_prospect?: number | null;
   };
   first_source: CountShareRow[];
-  prospect_source?: CountShareRow[];
+  campaigns?: CountShareRow[];
   other_campaigns?: CountShareRow[];
   counties: CountShareRow[];
   cohorts: CountShareRow[];

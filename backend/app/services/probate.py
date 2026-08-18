@@ -2,8 +2,9 @@
 Gate 5 — Probate lifecycle.
 
 Long Island Profiles (probate county tags) vs 8020 as competing list providers
-on the same REISift row, then Salesforce Prospect (QL Create Date), then
-Transactions Primary/Secondary Reason for Selling.
+on the same REISift row. First list is the QL credit. Salesforce Create Date is
+when marketing called or texted that list and pushed the lead into CRM (a clock,
+not a source). Transactions supply Primary/Secondary Reason for Selling.
 """
 
 from __future__ import annotations
@@ -98,17 +99,8 @@ FIRST_SOURCE_LABELS: Dict[str, str] = {
     FIRST_SOURCE_SAME: "Same month",
 }
 
-PROSPECT_SOURCE_LIP = "after_lip"
-PROSPECT_SOURCE_8020 = "after_8020"
-PROSPECT_SOURCE_OTHER = "already_in_sf"
-
-PROSPECT_SOURCE_LABELS: Dict[str, str] = {
-    PROSPECT_SOURCE_LIP: "After LIP",
-    PROSPECT_SOURCE_8020: "After 8020",
-    PROSPECT_SOURCE_OTHER: "Already in Salesforce",
-}
-
 LAG_BUCKETS: Tuple[Tuple[str, Optional[int], Optional[int]], ...] = (
+    ("Before list month", None, -1),
     ("Same month", 0, 0),
     ("1-3 months", 1, 3),
     ("4-6 months", 4, 6),
@@ -263,31 +255,11 @@ def months_between(
     return (b.year - a.year) * 12 + (b.month - a.month)
 
 
-def created_on_or_after_list(
-    create: Optional[pd.Timestamp], list_date: Optional[pd.Timestamp]
-) -> bool:
-    lag = months_between(list_date, create)
-    return lag is not None and lag >= 0
-
-
-def classify_prospect_source(
-    create: Optional[pd.Timestamp],
-    lip_date: Optional[pd.Timestamp],
-    eight_date: Optional[pd.Timestamp],
-) -> Optional[str]:
-    """Credit LIP if Create Date is on/after the LIP month; else 8020; else already in SF."""
-    if create is None or pd.isna(create):
-        return None
-    if created_on_or_after_list(create, lip_date):
-        return PROSPECT_SOURCE_LIP
-    if created_on_or_after_list(create, eight_date):
-        return PROSPECT_SOURCE_8020
-    return PROSPECT_SOURCE_OTHER
-
-
 def lag_bucket_label(months: Optional[int]) -> str:
-    if months is None or months < 0:
+    if months is None:
         return "Unknown"
+    if months < 0:
+        return "Before list month"
     for label, lo, hi in LAG_BUCKETS:
         if lo is None:
             continue
@@ -610,14 +582,8 @@ class ProbateResult:
     txn_rate_pct: float
     mean_months_lip_to_prospect: Optional[float]
     median_months_lip_to_prospect: Optional[float]
-    mean_months_8020_to_prospect: Optional[float]
-    median_months_8020_to_prospect: Optional[float]
-    prospect_after_lip: int
-    prospect_after_8020: int
-    prospect_already_in_sf: int
     first_source: List[Dict[str, Any]]
-    prospect_source: List[Dict[str, Any]]
-    other_campaigns: List[Dict[str, Any]]
+    campaigns: List[Dict[str, Any]]
     counties: List[Dict[str, Any]]
     cohorts: List[Dict[str, Any]]
     lag_buckets: List[Dict[str, Any]]
@@ -640,14 +606,6 @@ class ProbateResult:
             "match": {
                 "prospect_matched": self.prospect_matched,
                 "prospect_rate_pct": self.prospect_rate_pct,
-                "prospect_after_lip": self.prospect_after_lip,
-                "prospect_after_lip_rate_pct": _pct(self.prospect_after_lip, self.lip_universe),
-                "prospect_after_8020": self.prospect_after_8020,
-                "prospect_after_8020_rate_pct": _pct(self.prospect_after_8020, self.lip_universe),
-                "prospect_already_in_sf": self.prospect_already_in_sf,
-                "prospect_already_in_sf_rate_pct": _pct(
-                    self.prospect_already_in_sf, self.lip_universe
-                ),
                 "opp_matched": self.opp_matched,
                 "opp_rate_pct": self.opp_rate_pct,
                 "txn_matched": self.txn_matched,
@@ -656,12 +614,9 @@ class ProbateResult:
             "lag": {
                 "mean_months_lip_to_prospect": self.mean_months_lip_to_prospect,
                 "median_months_lip_to_prospect": self.median_months_lip_to_prospect,
-                "mean_months_8020_to_prospect": self.mean_months_8020_to_prospect,
-                "median_months_8020_to_prospect": self.median_months_8020_to_prospect,
             },
             "first_source": self.first_source,
-            "prospect_source": self.prospect_source,
-            "other_campaigns": self.other_campaigns,
+            "campaigns": self.campaigns,
             "counties": self.counties,
             "cohorts": self.cohorts,
             "lag_buckets": self.lag_buckets,
@@ -692,14 +647,8 @@ def result_from_metrics_dict(metrics: Dict[str, Any]) -> ProbateResult:
         txn_rate_pct=float(match.get("txn_rate_pct") or 0),
         mean_months_lip_to_prospect=lag.get("mean_months_lip_to_prospect"),
         median_months_lip_to_prospect=lag.get("median_months_lip_to_prospect"),
-        mean_months_8020_to_prospect=lag.get("mean_months_8020_to_prospect"),
-        median_months_8020_to_prospect=lag.get("median_months_8020_to_prospect"),
-        prospect_after_lip=int(match.get("prospect_after_lip") or 0),
-        prospect_after_8020=int(match.get("prospect_after_8020") or 0),
-        prospect_already_in_sf=int(match.get("prospect_already_in_sf") or 0),
         first_source=list(metrics.get("first_source") or []),
-        prospect_source=list(metrics.get("prospect_source") or []),
-        other_campaigns=list(metrics.get("other_campaigns") or []),
+        campaigns=list(metrics.get("campaigns") or metrics.get("other_campaigns") or []),
         counties=list(metrics.get("counties") or []),
         cohorts=list(metrics.get("cohorts") or []),
         lag_buckets=list(metrics.get("lag_buckets") or []),
@@ -827,11 +776,9 @@ def analyze(
 
     rows: List[ProbateRow] = []
     lip_dates: List[pd.Timestamp] = []
-    lip_lag_values: List[int] = []
-    eight_lag_values: List[int] = []
+    lag_values: List[int] = []
     first_source_counter: Counter[str] = Counter()
-    prospect_source_counter: Counter[str] = Counter()
-    other_campaign_counter: Counter[str] = Counter()
+    campaign_counter: Counter[str] = Counter()
     county_counter: Counter[str] = Counter()
     lag_counter: Counter[str] = Counter()
     cohort_stats: Dict[str, Dict[str, Any]] = {}
@@ -873,26 +820,16 @@ def analyze(
         if eight_date is not None and eight_date < lip_date:
             winner_date = eight_date
         months_winner = months_between(winner_date, prospect_date)
-        prospect_source = ""
-        prospect_source_label = ""
-        ql_campaign = ""
+        prospect_source = source if ql_hit else ""
+        prospect_source_label = FIRST_SOURCE_LABELS[source] if ql_hit else ""
+        ql_campaign = ql_hit.campaign if ql_hit else ""
         bucket = ""
         if ql_hit:
-            ql_campaign = ql_hit.campaign
-            prospect_source = (
-                classify_prospect_source(prospect_date, lip_date, eight_date)
-                or PROSPECT_SOURCE_OTHER
-            )
-            prospect_source_label = PROSPECT_SOURCE_LABELS[prospect_source]
-            prospect_source_counter[prospect_source] += 1
-            if prospect_source == PROSPECT_SOURCE_LIP and months_lip is not None:
-                bucket = lag_bucket_label(months_lip)
-                lip_lag_values.append(months_lip)
+            campaign_counter[ql_campaign or BLANK_REASON] += 1
+            if months_winner is not None:
+                bucket = lag_bucket_label(months_winner)
+                lag_values.append(months_winner)
                 lag_counter[bucket] += 1
-            elif prospect_source == PROSPECT_SOURCE_8020 and months_eight is not None:
-                eight_lag_values.append(months_eight)
-            else:
-                other_campaign_counter[ql_campaign or BLANK_REASON] += 1
 
         if txn_hit:
             primary_counter[txn_hit.primary_reason] += 1
@@ -908,8 +845,8 @@ def analyze(
             stats["prospects"] += 1
         if txn_hit:
             stats["txns"] += 1
-        if prospect_source == PROSPECT_SOURCE_LIP and months_lip is not None:
-            stats["lags"].append(months_lip)
+        if ql_hit and months_winner is not None:
+            stats["lags"].append(months_winner)
 
         rows.append(
             ProbateRow(
@@ -950,13 +887,9 @@ def analyze(
         )
 
     prospect_n = sum(1 for r in rows if r.prospect_matched)
-    after_lip_n = prospect_source_counter.get(PROSPECT_SOURCE_LIP, 0)
-    after_8020_n = prospect_source_counter.get(PROSPECT_SOURCE_8020, 0)
-    already_n = prospect_source_counter.get(PROSPECT_SOURCE_OTHER, 0)
     opp_n = sum(1 for r in rows if r.opp_matched)
     txn_n = sum(1 for r in rows if r.txn_matched)
-    mean_lag, median_lag = _mean_median(lip_lag_values)
-    mean_eight_lag, median_eight_lag = _mean_median(eight_lag_values)
+    mean_lag, median_lag = _mean_median(lag_values)
 
     first_source_table = [
         {
@@ -977,18 +910,6 @@ def analyze(
             FIRST_SOURCE_SAME,
         )
         if first_source_counter.get(key, 0) or True
-    ]
-
-    prospect_source_table = [
-        {
-            "key": key,
-            "label": PROSPECT_SOURCE_LABELS[key],
-            "count": prospect_source_counter.get(key, 0),
-            "share_pct": _pct(prospect_source_counter.get(key, 0), prospect_n),
-            "prospects": prospect_source_counter.get(key, 0),
-            "prospect_rate_pct": _pct(prospect_source_counter.get(key, 0), universe),
-        }
-        for key in (PROSPECT_SOURCE_LIP, PROSPECT_SOURCE_8020, PROSPECT_SOURCE_OTHER)
     ]
 
     county_table = [
@@ -1012,7 +933,7 @@ def analyze(
             {
                 "bucket": label,
                 "count": count,
-                "share_pct": _pct(count, after_lip_n),
+                "share_pct": _pct(count, prospect_n),
             }
         )
 
@@ -1041,12 +962,12 @@ def analyze(
         "Universe = REISift rows with a Probates NY Nassau/Queens/Suffolk M-YYYY tag "
         "(Long Island Profiles county drop). First LIP month = earliest of those tags. "
         "8020 list purchase = List Purchased 8020 MM/YYYY, or List Purchased MM/YYYY when a "
-        "standalone (8020) token is on the same row. First source compares those two list "
-        "months on the same row. A matched Qualified Lead is credited After LIP if Create Date "
-        "is in or after the LIP month; otherwise After 8020 if Create Date is in or after the "
-        "8020 list-purchase month; otherwise Already in Salesforce, broken down by the QL "
-        "Campaign column. Lag months are only counted for the credited list. Reason for selling "
-        "is read only from the Transactions pipeline Primary/Secondary columns after address match."
+        "standalone (8020) token is on the same row. First list on the row is the QL credit "
+        "(LIP only / LIP first / 8020 first / Same month). Salesforce Create Date is when "
+        "marketing called or texted that list and pushed the lead into CRM — a clock, not a "
+        "source. Campaign is how the team worked it. Lag is calendar months from the first-list "
+        "month to Create Date. Reason for selling is read only from the Transactions pipeline "
+        "Primary/Secondary columns after address match."
     )
 
     report(96, "Finishing summary…")
@@ -1063,14 +984,8 @@ def analyze(
         txn_rate_pct=_pct(txn_n, universe),
         mean_months_lip_to_prospect=mean_lag,
         median_months_lip_to_prospect=median_lag,
-        mean_months_8020_to_prospect=mean_eight_lag,
-        median_months_8020_to_prospect=median_eight_lag,
-        prospect_after_lip=after_lip_n,
-        prospect_after_8020=after_8020_n,
-        prospect_already_in_sf=already_n,
         first_source=first_source_table,
-        prospect_source=prospect_source_table,
-        other_campaigns=_counter_table(other_campaign_counter, already_n),
+        campaigns=_counter_table(campaign_counter, prospect_n),
         counties=county_table,
         cohorts=cohorts,
         lag_buckets=lag_table,
@@ -1101,28 +1016,17 @@ def build_export_workbook(result: ProbateResult) -> bytes:
             {"metric": "Date window end", "value": result.date_window_end},
             {"metric": "REISift rows ingested", "value": result.reisift_rows_ingested},
             {"metric": "LIP / probate universe", "value": result.lip_universe},
-            {"metric": "Prospect matched (any QL)", "value": result.prospect_matched},
+            {"metric": "Prospect matched", "value": result.prospect_matched},
             {"metric": "Prospect % of LIP list", "value": result.prospect_rate_pct},
-            {"metric": "After LIP", "value": result.prospect_after_lip},
-            {"metric": "After 8020", "value": result.prospect_after_8020},
-            {"metric": "Already in Salesforce", "value": result.prospect_already_in_sf},
             {"metric": "Opportunities matched", "value": result.opp_matched},
             {"metric": "Transactions matched", "value": result.txn_matched},
             {
-                "metric": "Mean months LIP to Prospect (After LIP only)",
+                "metric": "Mean months first list to CRM push",
                 "value": result.mean_months_lip_to_prospect,
             },
             {
-                "metric": "Median months LIP to Prospect (After LIP only)",
+                "metric": "Median months first list to CRM push",
                 "value": result.median_months_lip_to_prospect,
-            },
-            {
-                "metric": "Mean months 8020 to Prospect (After 8020 only)",
-                "value": result.mean_months_8020_to_prospect,
-            },
-            {
-                "metric": "Median months 8020 to Prospect (After 8020 only)",
-                "value": result.median_months_8020_to_prospect,
             },
             {"metric": "Methodology", "value": result.methodology_note},
         ]
@@ -1134,13 +1038,9 @@ def build_export_workbook(result: ProbateResult) -> bytes:
             pd.DataFrame(result.first_source).to_excel(
                 writer, sheet_name="First Source", index=False
             )
-        if result.prospect_source:
-            pd.DataFrame(result.prospect_source).to_excel(
-                writer, sheet_name="Prospect Source", index=False
-            )
-        if result.other_campaigns:
-            pd.DataFrame(result.other_campaigns).to_excel(
-                writer, sheet_name="Already-in-SF Campaigns", index=False
+        if result.campaigns:
+            pd.DataFrame(result.campaigns).to_excel(
+                writer, sheet_name="Campaign", index=False
             )
         if result.counties:
             pd.DataFrame(result.counties).to_excel(writer, sheet_name="County", index=False)

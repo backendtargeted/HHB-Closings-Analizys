@@ -48,14 +48,21 @@ const MethodologySection = () => {
             <strong className="text-stone-800">Summary stats:</strong> Match rate = deals with a matched CSV row. Channel totals sum per-deal counts across matched deals. Month-granular 8020 tags use the first of the month internally; SF tags use calendar days.
           </p>
           <p>
+            <strong className="text-stone-800">Salesforce Create Date (all gates):</strong> When
+            marketing called or texted that LIP / 8020 / CourtAlerts list and pushed the lead into
+            the CRM. Clock, not source. First list is the credit. Campaign / Lead Source is extra.
+            Never compare Create Date to list month to relabel credit as already in Salesforce,
+            After LIP, or After 8020. Create Date may still filter a report window (Gates 2–4) or
+            compute lag (Gates 3 and 5).
+          </p>
+          <p>
             <strong className="text-stone-800">Gate 5 probate:</strong> Universe is REISift rows tagged{' '}
             <code className="bg-stone-100 px-1 rounded">Probates NY Nassau|Queens|Suffolk M-YYYY</code>.
             8020 is a competing list provider on the same row (
             <code className="bg-stone-100 px-1 rounded">List Purchased 8020</code>
-            Prospect = Salesforce Qualified Leads Create Date, credited to LIP if Create Date is
-            on/after the LIP month, else 8020 if on/after the 8020 list month, else already in
-            Salesforce (broken down by QL Campaign). Primary/Secondary Reason for Selling
-            comes only from the Transactions pipeline after address match.
+            ). First list is the QL credit when the row matches a Prospect. Create Date is lag
+            only. Campaign is extra. Primary/Secondary Reason for Selling comes only from the
+            Transactions pipeline after address match.
           </p>
           <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">
             Full methodology: repo{' '}

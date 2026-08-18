@@ -420,19 +420,6 @@ def probate_get(job_id: str):
                 ),
                 400,
             )
-        metrics = snap.get("metrics")
-        if metrics:
-            return jsonify(
-                _sanitize_for_json(
-                    {
-                        "job_id": job_id,
-                        "status": "completed",
-                        "metrics": metrics,
-                        "warnings": snap.get("warnings") or metrics.get("warnings", []),
-                        "created_at": snap.get("created_at"),
-                    }
-                )
-            )
 
     loaded = load_probate_report(job_id)
     if loaded:
@@ -451,6 +438,21 @@ def probate_get(job_id: str):
                 }
             )
         )
+
+    if snap:
+        metrics = snap.get("metrics")
+        if metrics:
+            return jsonify(
+                _sanitize_for_json(
+                    {
+                        "job_id": job_id,
+                        "status": "completed",
+                        "metrics": metrics,
+                        "warnings": snap.get("warnings") or metrics.get("warnings", []),
+                        "created_at": snap.get("created_at"),
+                    }
+                )
+            )
     return jsonify({"detail": "Job not found"}), 404
 
 

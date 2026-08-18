@@ -73,15 +73,7 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
   const [search, setSearch] = useState('');
   const m = result.metrics;
   const warnings = result.warnings ?? m.warnings ?? [];
-
-  const alreadyProspect = m.match.prospect_already_in_sf ?? 0;
-  const afterLip = m.match.prospect_after_lip ?? 0;
-  const afterLipPct = m.match.prospect_after_lip_rate_pct ?? 0;
-  const after8020 = m.match.prospect_after_8020 ?? 0;
-  const after8020Pct = m.match.prospect_after_8020_rate_pct ?? 0;
-  const alreadyPct = m.match.prospect_already_in_sf_rate_pct ?? 0;
-  const prospectSource = m.prospect_source ?? [];
-  const otherCampaigns = m.other_campaigns ?? [];
+  const campaigns = m.campaigns ?? m.other_campaigns ?? [];
 
   const firstSourceChart = useMemo(
     () =>
@@ -92,21 +84,13 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
       })),
     [m.first_source]
   );
-  const prospectSourceChart = useMemo(
-    () =>
-      prospectSource.map((r) => ({
-        name: r.label ?? r.key ?? '',
-        count: r.count ?? 0,
-      })),
-    [prospectSource]
-  );
   const campaignChart = useMemo(
     () =>
-      otherCampaigns.map((r) => ({
+      campaigns.map((r) => ({
         name: r.label ?? '',
         count: r.count ?? 0,
       })),
-    [otherCampaigns]
+    [campaigns]
   );
   const lagChart = useMemo(
     () =>
@@ -127,7 +111,7 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
   const funnelChart = useMemo(
     () => [
       { name: 'LIP listed', count: m.funnel.lip },
-      { name: 'QL overlap', count: m.funnel.prospect },
+      { name: 'Prospect', count: m.funnel.prospect },
       { name: 'Opportunity', count: m.funnel.opportunity },
       { name: 'Transaction', count: m.funnel.transaction },
     ],
@@ -150,7 +134,6 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
       row.address,
       row.county,
       row.first_source_label,
-      row.prospect_source_label,
       row.ql_campaign,
       row.lip_month,
       row.txn_primary_reason,
@@ -171,13 +154,7 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
             {' · '}
             {m.inputs.lip_universe.toLocaleString()} LIP properties
             {' · '}
-            {m.match.prospect_matched.toLocaleString()} QL overlap
-            {' · '}
-            {afterLip.toLocaleString()} after LIP
-            {' · '}
-            {after8020.toLocaleString()} after 8020
-            {' · '}
-            {alreadyProspect.toLocaleString()} already in Salesforce
+            {m.match.prospect_matched.toLocaleString()} Prospects ({m.match.prospect_rate_pct}%)
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -220,24 +197,11 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="LIP universe" value={m.inputs.lip_universe.toLocaleString()} />
         <Stat
-          label="QL overlap (any campaign)"
+          label="Became Prospect"
           value={`${m.match.prospect_matched.toLocaleString()} (${m.match.prospect_rate_pct}%)`}
         />
-        <Stat
-          label="After LIP"
-          value={`${afterLip.toLocaleString()} (${afterLipPct}%)`}
-        />
-        <Stat
-          label="After 8020"
-          value={`${after8020.toLocaleString()} (${after8020Pct}%)`}
-        />
-        <Stat
-          label="Already in Salesforce"
-          value={`${alreadyProspect.toLocaleString()} (${alreadyPct}%)`}
-        />
-        <Stat label="Median months after LIP" value={fmt(m.lag.median_months_lip_to_prospect)} />
-        <Stat label="Mean months after LIP" value={fmt(m.lag.mean_months_lip_to_prospect)} />
-        <Stat label="Median months after 8020" value={fmt(m.lag.median_months_8020_to_prospect)} />
+        <Stat label="Median months to CRM" value={fmt(m.lag.median_months_lip_to_prospect)} />
+        <Stat label="Mean months to CRM" value={fmt(m.lag.mean_months_lip_to_prospect)} />
         <Stat
           label="Opportunities"
           value={`${m.match.opp_matched.toLocaleString()} (${m.match.opp_rate_pct}%)`}
@@ -248,18 +212,10 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
         />
       </div>
 
-      {alreadyProspect > 0 ? (
-        <p className="text-sm text-amber-950 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-          {alreadyProspect.toLocaleString()} of {m.match.prospect_matched.toLocaleString()} matched
-          Qualified Leads were already in Salesforce before both the LIP month and the 8020 list
-          month. Those are not LIP or 8020 conversions — see Campaign below.
-        </p>
-      ) : null}
-
       <section className="rounded-xl border border-stone-200 bg-white p-5">
         <h3 className="text-lg font-semibold text-stone-900">Funnel</h3>
         <p className="text-sm text-stone-600 mt-1">
-          QL overlap is any address/phone match. It is not the same as LIP or 8020 creating the lead.
+          First list is the source. Create Date is when the team pushed the lead into Salesforce.
         </p>
         <div className="mt-4 h-56">
           <ResponsiveContainer width="100%" height="100%">
@@ -277,7 +233,7 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
       <section className="rounded-xl border border-stone-200 bg-white p-5">
         <h3 className="text-lg font-semibold text-stone-900">Who delivered first</h3>
         <p className="text-sm text-stone-600 mt-1">
-          Same REISift row: Long Island Profiles county tag vs List Purchased 8020.
+          QL credit is this first list. Same REISift row: Long Island Profiles vs List Purchased 8020.
         </p>
         <div className="mt-4 h-64">
           <ResponsiveContainer width="100%" height="100%">
@@ -294,72 +250,9 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
         </div>
       </section>
 
-      <section className="rounded-xl border border-stone-200 bg-white p-5">
-        <h3 className="text-lg font-semibold text-stone-900">What created the Prospect</h3>
-        <p className="text-sm text-stone-600 mt-1">
-          After LIP if Create Date is in/after the LIP month. Else After 8020 if Create Date is
-          in/after the 8020 list month. Else already in Salesforce.
-        </p>
-        {prospectSourceChart.length > 0 ? (
-          <div className="mt-4 h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={prospectSourceChart} layout="vertical" margin={{ left: 132, right: 16 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
-                <XAxis type="number" />
-                <YAxis type="category" dataKey="name" width={124} />
-                <Tooltip />
-                <Bar dataKey="count" name="Matched QL" fill="#9f1239" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        ) : null}
-      </section>
-
-      <CompactTable
-        title="What created the Prospect"
-        columns={['Credit', 'Count', 'Share of QL overlap', '% of LIP list']}
-        rows={prospectSource.map((r) => [
-          r.label ?? r.key ?? '',
-          r.count ?? 0,
-          `${r.share_pct}%`,
-          `${r.prospect_rate_pct ?? 0}%`,
-        ])}
-      />
-
-      {otherCampaigns.length > 0 ? (
-        <section className="rounded-xl border border-stone-200 bg-white p-5">
-          <h3 className="text-lg font-semibold text-stone-900">
-            Already in Salesforce — Campaign
-          </h3>
-          <p className="text-sm text-stone-600 mt-1">
-            Campaign on Total Qualified Leads for Prospects created before both LIP and 8020.
-          </p>
-          {campaignChart.length > 0 ? (
-            <div className="mt-4 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={campaignChart} layout="vertical" margin={{ left: 160, right: 16 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
-                  <XAxis type="number" />
-                  <YAxis type="category" dataKey="name" width={152} />
-                  <Tooltip />
-                  <Bar dataKey="count" name="Prospects" fill="#44403c" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-
-      <CompactTable
-        title="Already in Salesforce — Campaign"
-        subtitle="From the Campaign column on Total Qualified Leads. Not LIP or 8020."
-        columns={['Campaign', 'Count', 'Share of already-in-SF']}
-        rows={reasonRows(otherCampaigns)}
-      />
-
       <CompactTable
         title="Who delivered first"
-        columns={['Source', 'Listed', 'Share', 'QL overlap', 'Overlap %']}
+        columns={['Source / QL credit', 'Listed', 'Share', 'Prospects', 'Prospect %']}
         rows={m.first_source.map((r) => [
           r.label ?? r.key ?? '',
           r.count ?? 0,
@@ -384,9 +277,10 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
       />
 
       <section className="rounded-xl border border-stone-200 bg-white p-5">
-        <h3 className="text-lg font-semibold text-stone-900">Months LIP to Prospect</h3>
+        <h3 className="text-lg font-semibold text-stone-900">Months first list to CRM push</h3>
         <p className="text-sm text-stone-600 mt-1">
-          Only Prospects credited After LIP. Already-in-Salesforce and After 8020 are excluded.
+          Calendar months from the first-list month to Salesforce Create Date. Negative means the
+          CRM push is dated before that list tag month — still credited to first list.
         </p>
         {lagChart.length > 0 ? (
           <div className="mt-4 h-64">
@@ -404,11 +298,39 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
       </section>
 
       <CompactTable
-        title="Months LIP to Prospect"
+        title="Months first list to CRM push"
         columns={['Bucket', 'Prospects', 'Share']}
         rows={m.lag_buckets
           .filter((r) => (r.count ?? 0) > 0)
           .map((r) => [r.bucket ?? '', r.count ?? 0, `${r.share_pct}%`])}
+      />
+
+      <section className="rounded-xl border border-stone-200 bg-white p-5">
+        <h3 className="text-lg font-semibold text-stone-900">Campaign</h3>
+        <p className="text-sm text-stone-600 mt-1">
+          How the team worked the matched Prospect (Total Qualified Leads Campaign). Not the list
+          source.
+        </p>
+        {campaignChart.length > 0 ? (
+          <div className="mt-4 h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={campaignChart} layout="vertical" margin={{ left: 160, right: 16 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
+                <XAxis type="number" />
+                <YAxis type="category" dataKey="name" width={152} />
+                <Tooltip />
+                <Bar dataKey="count" name="Prospects" fill="#44403c" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : null}
+      </section>
+
+      <CompactTable
+        title="Campaign"
+        subtitle="From the Campaign column on Total Qualified Leads. Extra context, not QL credit."
+        columns={['Campaign', 'Count', 'Share of Prospects']}
+        rows={reasonRows(campaigns)}
       />
 
       <section className="rounded-xl border border-stone-200 bg-white p-5">
@@ -478,7 +400,6 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
                 <th className="py-2 pr-3">County</th>
                 <th className="py-2 pr-3">LIP</th>
                 <th className="py-2 pr-3">8020</th>
-                <th className="py-2 pr-3">First list</th>
                 <th className="py-2 pr-3">QL credit</th>
                 <th className="py-2 pr-3">Campaign</th>
                 <th className="py-2 pr-3">Prospect</th>
@@ -494,11 +415,12 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
                   <td className="py-2 pr-3">{r.county}</td>
                   <td className="py-2 pr-3">{r.lip_month}</td>
                   <td className="py-2 pr-3">{r.eight_month || '—'}</td>
-                  <td className="py-2 pr-3">{r.first_source_label}</td>
-                  <td className="py-2 pr-3">{r.prospect_source_label || '—'}</td>
+                  <td className="py-2 pr-3">
+                    {r.prospect_matched ? r.first_source_label : '—'}
+                  </td>
                   <td className="py-2 pr-3">{r.ql_campaign || '—'}</td>
                   <td className="py-2 pr-3">{r.prospect_date || '—'}</td>
-                  <td className="py-2 pr-3">{fmt(r.months_lip_to_prospect)}</td>
+                  <td className="py-2 pr-3">{fmt(r.months_winner_to_prospect)}</td>
                   <td className="py-2 pr-3">{r.txn_primary_reason || '—'}</td>
                   <td className="py-2 pr-3">{r.txn_secondary_reason || '—'}</td>
                 </tr>

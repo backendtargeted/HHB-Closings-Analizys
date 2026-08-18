@@ -4,6 +4,10 @@ This document describes **how closings / contact attribution reports are compute
 
 **Canonical implementation:** `backend/app/services/analysis.py`, `backend/app/services/lifecycle.py`, `backend/app/services/marketing_mapper.py`.
 
+**Salesforce Create Date (all gates):** Create Date is when marketing called or texted that LIP / 8020 / CourtAlerts list and pushed the lead into the CRM. It is a **clock**, not a source. The list provider is the credit (first list on the row wins). Campaign / Lead Source is how they worked it — extra, not a replacement for the list. Never compare Create Date to list month to relabel credit as “Already in Salesforce,” “After LIP,” or “After 8020.”
+
+Allowed clock uses: Gate 1 does not credit from Create Date. Gate 2 / legacy QL — Create Date **window** = which QLs fall in the month. Gate 3 — same window, plus `days_list_to_create_date` **lag**. Gate 4 — Create Date is the web-lead / CourtAlerts cohort **anchor**; prior list tags are history, not a rewrite of that credit. Gate 5 — lag from first-list month to CRM push.
+
 ---
 
 ## 1. Purpose and data flow
@@ -268,6 +272,8 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 | Cadence probes | `backend/app/services/cadence_from_history.py` |
 | Dedupe tests | `backend/tests/test_parse_tags_dedupe.py` |
 | Monthly consolidated (Gate 2) | `backend/app/services/monthly_consolidated.py` |
+| Marketing ramp (Gate 3) | `backend/app/services/marketing_ramp.py` |
+| Web leads (Gate 4) | `backend/app/services/web_leads.py` |
 | Gate 5 probate | `backend/app/services/probate.py` |
 | Open pipeline / stuck-at-stage | `lifecycle.py` — `compute_stage_funnel_open`, `aggregate_stuck_at_stage` |
 | Tag-derived lead source | `monthly_consolidated.py` — `derive_tag_lead_source` |
@@ -275,6 +281,8 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 ---
 
 ## 16. Gate 2 consolidated report additions
+
+**Create Date:** QL **window** only (which qualified leads fall in the month / full-file span). List tags and first list remain the source credit. Create Date is not a competing source.
 
 **Tag-derived lead source:** For each REISift cohort row, parse `Tags` chronologically. First `(8020) CC/SMS/DM` contact wins; if none, `LIST` when a `List Purchased 8020` tag exists; otherwise `NONE`. This is separate from Salesforce `Lead Source` on the qualified-leads export.
 
@@ -285,6 +293,8 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 ---
 
 ## 17. Gate 3 marketing ramp (unified monthly report)
+
+**Create Date:** Window for which QLs are in the population, and `days_list_to_create_date` **lag** from list to CRM push. List provider is still the credit. Do not treat Create Date as a source.
 
 **Population:** Union of qualified leads (Create Date in window) and closings (Date Closed in window, Closed Lost excluded), deduplicated by normalized address. Closing-only rows use **No Clear Source** for Salesforce channel attribution.
 
@@ -298,7 +308,15 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 
 ---
 
-## 18. Gate 5 probate lifecycle
+## 18. Gate 4 web leads / CourtAlerts
+
+**Create Date:** Cohort **anchor** (when that web or CourtAlerts lead was pushed into Salesforce). Prior LIP / 8020 / other list tags on the REISift row are **history**, not a rewrite of web-lead credit. Create Date is not compared to list month to steal or reassign source.
+
+Canonical implementation: `backend/app/services/web_leads.py`.
+
+---
+
+## 19. Gate 5 probate lifecycle
 
 **Question:** On Long Island Profiles (probate) properties, who delivered the record first (LIP vs 8020), how many months until Salesforce Prospect, what % of the LIP list became Prospects, and what Primary/Secondary Reason for Selling is stated on the Transactions pipeline.
 
@@ -306,11 +324,11 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 
 **8020 list purchase:** `List Purchased 8020 MM/YYYY`, or `List Purchased MM/YYYY` when a standalone `(8020)` token is on the same row. `(8020) CC|SMS|DM` contact tags are not list-purchase dates.
 
-**First source** (month granularity, list delivery only): LIP only, LIP first, 8020 first, same month. This is who put the property on a list first. It is not who created the Salesforce lead.
+**First source** (month granularity): LIP only, LIP first, 8020 first, same month. **That first list is the QL credit** when the row matches a Qualified Lead.
 
-**Prospect credit:** Salesforce Total Qualified Leads **Create Date**, matched by street+city+state+zip, then street+city+zip / street+zip, then phone. Credit **After LIP** if Create Date is in or after the first LIP month; else **After 8020** if Create Date is in or after the 8020 list-purchase month; else **Already in Salesforce**. Already-in-Salesforce rows are broken down by the QL **Campaign** column. Opportunities are a later funnel count. Reasons are **not** read from QL or Opportunities.
+**Prospect:** Salesforce Total Qualified Leads row matched by street+city+state+zip, then street+city+zip / street+zip, then phone. **Create Date** is when marketing called or texted that list and pushed the lead into CRM (clock, not source). **Campaign** is how they worked it. Opportunities are a later funnel count. Reasons are **not** read from QL or Opportunities.
 
-**Lag:** calendar months from the credited list month to Prospect Create Date. Negative LIP lags are not treated as LIP conversions.
+**Lag:** calendar months from the **first-list month** to Prospect Create Date. Negative lag is timing only; credit stays with first list.
 
 **Reason to sell:** Transactions pipeline **Primary Reason for Selling** and **Secondary Reason for Selling** after address match. Blank is a bucket. Unmatched transactions have no reason.
 
