@@ -107,6 +107,11 @@ LAG_BUCKETS: Tuple[Tuple[str, Optional[int], Optional[int]], ...] = (
     ("13+ months", 13, None),
 )
 
+LAG_CREDIT_LIP = "lip"
+LAG_CREDIT_EIGHT = "eight"
+LAG_CREDIT_SAME = "same"
+LAG_CREDIT_GROUPS: Tuple[str, ...] = (LAG_CREDIT_LIP, LAG_CREDIT_EIGHT, LAG_CREDIT_SAME)
+
 QL_ADDR = {
     "street": ["Street", "Mailing address", "Property address", "Property Address"],
     "city": ["City", "Mailing city", "Property city"],
@@ -288,6 +293,14 @@ def lag_bucket_label(months: Optional[int]) -> str:
         if hi is not None and lo <= months <= hi:
             return label
     return "Unknown"
+
+
+def lag_credit_group(first_source: str) -> str:
+    if first_source in (FIRST_SOURCE_LIP_ONLY, FIRST_SOURCE_LIP_FIRST):
+        return LAG_CREDIT_LIP
+    if first_source == FIRST_SOURCE_8020_FIRST:
+        return LAG_CREDIT_EIGHT
+    return LAG_CREDIT_SAME
 
 
 def _first_list_date(
@@ -580,6 +593,54 @@ def _mean_median(values: List[int]) -> Tuple[Optional[float], Optional[float]]:
     return round(float(series.mean()), 2), round(float(series.median()), 2)
 
 
+def _lag_buckets_have_split(lag_buckets: List[Dict[str, Any]]) -> bool:
+    return any("lip" in row and "eight" in row for row in lag_buckets)
+
+
+def _lag_by_source_complete(by_source: Dict[str, Any]) -> bool:
+    return all(group in by_source for group in LAG_CREDIT_GROUPS)
+
+
+def _lag_split_from_rows(
+    rows: List["ProbateRow"],
+) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]], Optional[float], Optional[float]]:
+    prospect_n = sum(1 for row in rows if row.prospect_matched)
+    bucket_counts: Dict[str, Counter[str]] = {label: Counter() for label, _lo, _hi in LAG_BUCKETS}
+    values_by_group: Dict[str, List[int]] = {group: [] for group in LAG_CREDIT_GROUPS}
+    all_values: List[int] = []
+    for row in rows:
+        if not row.prospect_matched or row.months_winner_to_prospect is None:
+            continue
+        months = row.months_winner_to_prospect
+        bucket = row.lag_bucket or lag_bucket_label(months)
+        group = lag_credit_group(row.first_source)
+        if bucket in bucket_counts:
+            bucket_counts[bucket][group] += 1
+        values_by_group[group].append(months)
+        all_values.append(months)
+    lag_table: List[Dict[str, Any]] = []
+    for label, _lo, _hi in LAG_BUCKETS:
+        counts = bucket_counts[label]
+        count = sum(counts.values())
+        lag_table.append(
+            {
+                "bucket": label,
+                "count": count,
+                "share_pct": _pct(count, prospect_n),
+                LAG_CREDIT_LIP: counts.get(LAG_CREDIT_LIP, 0),
+                LAG_CREDIT_EIGHT: counts.get(LAG_CREDIT_EIGHT, 0),
+                LAG_CREDIT_SAME: counts.get(LAG_CREDIT_SAME, 0),
+            }
+        )
+    by_source: Dict[str, Dict[str, Any]] = {}
+    for group in LAG_CREDIT_GROUPS:
+        vals = values_by_group[group]
+        mean, median = _mean_median(vals)
+        by_source[group] = {"prospects": len(vals), "mean": mean, "median": median}
+    mean_lag, median_lag = _mean_median(all_values)
+    return lag_table, by_source, mean_lag, median_lag
+
+
 @dataclass
 class ProbateRow:
     address: str
@@ -662,6 +723,7 @@ class ProbateResult:
     secondary_reasons: List[Dict[str, Any]]
     crm_before_first_list_count: int = 0
     crm_before_first_list: List[Dict[str, Any]] = field(default_factory=list)
+    lag_by_source: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     rows: List[ProbateRow] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     methodology_note: str = ""
@@ -687,6 +749,7 @@ class ProbateResult:
             "lag": {
                 "mean_months_lip_to_prospect": self.mean_months_lip_to_prospect,
                 "median_months_lip_to_prospect": self.median_months_lip_to_prospect,
+                "by_source": self.lag_by_source,
             },
             "first_source": self.first_source,
             "campaigns": self.campaigns,
@@ -708,6 +771,22 @@ def result_from_metrics_dict(metrics: Dict[str, Any]) -> ProbateResult:
     match = metrics.get("match") or {}
     lag = metrics.get("lag") or {}
     inputs = metrics.get("inputs") or {}
+    lag_buckets = list(metrics.get("lag_buckets") or [])
+    lag_by_source = dict(lag.get("by_source") or {})
+    mean_lag = lag.get("mean_months_lip_to_prospect")
+    median_lag = lag.get("median_months_lip_to_prospect")
+    if rows and (
+        not _lag_buckets_have_split(lag_buckets) or not _lag_by_source_complete(lag_by_source)
+    ):
+        derived_buckets, derived_source, derived_mean, derived_median = _lag_split_from_rows(rows)
+        if not _lag_buckets_have_split(lag_buckets):
+            lag_buckets = derived_buckets
+        if not _lag_by_source_complete(lag_by_source):
+            lag_by_source = derived_source
+        if mean_lag is None:
+            mean_lag = derived_mean
+        if median_lag is None:
+            median_lag = derived_median
     return ProbateResult(
         date_window_start=str(metrics.get("date_window_start") or ""),
         date_window_end=str(metrics.get("date_window_end") or ""),
@@ -719,18 +798,19 @@ def result_from_metrics_dict(metrics: Dict[str, Any]) -> ProbateResult:
         opp_rate_pct=float(match.get("opp_rate_pct") or 0),
         txn_matched=int(match.get("txn_matched") or 0),
         txn_rate_pct=float(match.get("txn_rate_pct") or 0),
-        mean_months_lip_to_prospect=lag.get("mean_months_lip_to_prospect"),
-        median_months_lip_to_prospect=lag.get("median_months_lip_to_prospect"),
+        mean_months_lip_to_prospect=mean_lag,
+        median_months_lip_to_prospect=median_lag,
         first_source=list(metrics.get("first_source") or []),
         campaigns=list(metrics.get("campaigns") or metrics.get("other_campaigns") or []),
         counties=list(metrics.get("counties") or []),
         cohorts=list(metrics.get("cohorts") or []),
-        lag_buckets=list(metrics.get("lag_buckets") or []),
+        lag_buckets=lag_buckets,
         funnel=dict(metrics.get("funnel") or {}),
         primary_reasons=list(metrics.get("primary_reasons") or []),
         secondary_reasons=list(metrics.get("secondary_reasons") or []),
         crm_before_first_list_count=int(match.get("crm_before_first_list") or 0),
         crm_before_first_list=list(metrics.get("crm_before_first_list") or []),
+        lag_by_source=lag_by_source,
         rows=rows,
         warnings=list(metrics.get("warnings") or []),
         methodology_note=str(metrics.get("methodology_note") or ""),
@@ -853,11 +933,9 @@ def analyze(
     rows: List[ProbateRow] = []
     crm_before_rows: List[Dict[str, Any]] = []
     lip_dates: List[pd.Timestamp] = []
-    lag_values: List[int] = []
     first_source_counter: Counter[str] = Counter()
     campaign_counter: Counter[str] = Counter()
     county_counter: Counter[str] = Counter()
-    lag_counter: Counter[str] = Counter()
     cohort_stats: Dict[str, Dict[str, Any]] = {}
     primary_counter: Counter[str] = Counter()
     secondary_counter: Counter[str] = Counter()
@@ -907,8 +985,6 @@ def analyze(
             campaign_counter[ql_campaign] += 1
             if months_winner is not None:
                 bucket = lag_bucket_label(months_winner)
-                lag_values.append(months_winner)
-                lag_counter[bucket] += 1
         elif early_hit:
             crm_before_rows.append(
                 {
@@ -983,7 +1059,7 @@ def analyze(
     prospect_n = sum(1 for r in rows if r.prospect_matched)
     opp_n = sum(1 for r in rows if r.opp_matched)
     txn_n = sum(1 for r in rows if r.txn_matched)
-    mean_lag, median_lag = _mean_median(lag_values)
+    lag_table, lag_by_source, mean_lag, median_lag = _lag_split_from_rows(rows)
 
     first_source_table = [
         {
@@ -1020,17 +1096,6 @@ def analyze(
         for county in COUNTIES
     ]
 
-    lag_table = []
-    for label, _lo, _hi in LAG_BUCKETS:
-        count = lag_counter.get(label, 0)
-        lag_table.append(
-            {
-                "bucket": label,
-                "count": count,
-                "share_pct": _pct(count, prospect_n),
-            }
-        )
-
     cohorts: List[Dict[str, Any]] = []
     for key in sorted(cohort_stats):
         stats = cohort_stats[key]
@@ -1062,7 +1127,8 @@ def analyze(
         "is a Total Qualified Leads match whose Create Date is on or after that first-list "
         "month (earliest such hit). An earlier CRM row is not this list's conversion. "
         "Campaign is how the team worked a counted Prospect. Lag is calendar months from the "
-        "first-list month to that Create Date. Reason for selling is read only from the "
+        "first-list month to that Create Date, split by first-list source (LIP Probates / 8020 / "
+        "Same month). Reason for selling is read only from the "
         "Transactions pipeline Primary/Secondary columns after address match."
     )
 
@@ -1095,6 +1161,7 @@ def analyze(
         secondary_reasons=_counter_table(secondary_counter, txn_n),
         crm_before_first_list_count=len(crm_before_rows),
         crm_before_first_list=crm_before_rows,
+        lag_by_source=lag_by_source,
         rows=rows,
         warnings=warnings,
         methodology_note=methodology,
@@ -1129,6 +1196,30 @@ def build_export_workbook(result: ProbateResult) -> bytes:
             {
                 "metric": "Median months first list to CRM push",
                 "value": result.median_months_lip_to_prospect,
+            },
+            {
+                "metric": "Mean months LIP Probates to CRM push",
+                "value": (result.lag_by_source.get(LAG_CREDIT_LIP) or {}).get("mean"),
+            },
+            {
+                "metric": "Median months LIP Probates to CRM push",
+                "value": (result.lag_by_source.get(LAG_CREDIT_LIP) or {}).get("median"),
+            },
+            {
+                "metric": "Mean months 8020 to CRM push",
+                "value": (result.lag_by_source.get(LAG_CREDIT_EIGHT) or {}).get("mean"),
+            },
+            {
+                "metric": "Median months 8020 to CRM push",
+                "value": (result.lag_by_source.get(LAG_CREDIT_EIGHT) or {}).get("median"),
+            },
+            {
+                "metric": "Mean months same-month list to CRM push",
+                "value": (result.lag_by_source.get(LAG_CREDIT_SAME) or {}).get("mean"),
+            },
+            {
+                "metric": "Median months same-month list to CRM push",
+                "value": (result.lag_by_source.get(LAG_CREDIT_SAME) or {}).get("median"),
             },
             {"metric": "Methodology", "value": result.methodology_note},
         ]

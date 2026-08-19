@@ -11,10 +11,14 @@ from app.services.probate import (
     FIRST_SOURCE_LIP_FIRST,
     FIRST_SOURCE_LIP_ONLY,
     FIRST_SOURCE_SAME,
+    LAG_CREDIT_EIGHT,
+    LAG_CREDIT_LIP,
+    LAG_CREDIT_SAME,
     LOCKED_PROBATE_TAGS,
     analyze,
     classify_first_source,
     first_probate_hit,
+    lag_credit_group,
     months_between,
     normalize_campaign,
     parse_8020_list_purchase_date,
@@ -86,6 +90,10 @@ def test_first_source_and_lag_math():
     assert classify_first_source(lip, eight) == FIRST_SOURCE_LIP_FIRST
     assert classify_first_source(eight, lip) == FIRST_SOURCE_8020_FIRST
     assert classify_first_source(lip, pd.Timestamp("2025-02-15")) == FIRST_SOURCE_SAME
+    assert lag_credit_group(FIRST_SOURCE_LIP_ONLY) == LAG_CREDIT_LIP
+    assert lag_credit_group(FIRST_SOURCE_LIP_FIRST) == LAG_CREDIT_LIP
+    assert lag_credit_group(FIRST_SOURCE_8020_FIRST) == LAG_CREDIT_EIGHT
+    assert lag_credit_group(FIRST_SOURCE_SAME) == LAG_CREDIT_SAME
     assert months_between(lip, pd.Timestamp("2025-08-20")) == 6
     assert months_between(lip, pd.Timestamp("2025-02-28")) == 0
     assert months_between(pd.Timestamp("2025-06-01"), pd.Timestamp("2025-02-01")) == -4
@@ -237,6 +245,18 @@ def test_analyze_first_source_match_and_txn_reasons(tmp_path):
     assert oak.months_eight_to_prospect == 1
     assert oak.months_winner_to_prospect == 1
 
+    buckets = {row["bucket"]: row for row in result.lag_buckets}
+    assert buckets["4-6 months"]["lip"] == 1
+    assert buckets["4-6 months"]["eight"] == 0
+    assert buckets["4-6 months"]["same"] == 0
+    assert buckets["1-3 months"]["eight"] == 1
+    assert buckets["1-3 months"]["lip"] == 0
+    assert result.lag_by_source["lip"]["prospects"] == 1
+    assert result.lag_by_source["lip"]["median"] == 4
+    assert result.lag_by_source["eight"]["prospects"] == 1
+    assert result.lag_by_source["eight"]["median"] == 1
+    assert result.lag_by_source["same"]["prospects"] == 0
+
     pine = next(r for r in result.rows if r.address.startswith("30 Pine"))
     assert pine.first_source == FIRST_SOURCE_LIP_ONLY
     assert pine.prospect_matched is False
@@ -295,6 +315,9 @@ def test_phone_fallback_and_same_month(tmp_path):
     assert row.prospect_match_via == "phone"
     assert row.prospect_source == FIRST_SOURCE_SAME
     assert row.months_lip_to_prospect == 0
+    same_bucket = next(item for item in result.lag_buckets if item["bucket"] == "Same month")
+    assert same_bucket["same"] == 1
+    assert result.lag_by_source["same"]["median"] == 0
 
 
 def test_result_roundtrip():
@@ -355,6 +378,11 @@ def test_result_roundtrip():
     assert result.lip_universe == 2
     assert len(result.rows) == 1
     assert result.rows[0].county == "Nassau"
+    four_six = next(row for row in result.lag_buckets if row["bucket"] == "4-6 months")
+    assert four_six["lip"] == 1
+    assert four_six["eight"] == 0
+    assert result.lag_by_source["lip"]["prospects"] == 1
+    assert result.lag_by_source["lip"]["median"] == 4.0
 
 
 def test_unlocked_probate_tag_excluded_from_universe(tmp_path):

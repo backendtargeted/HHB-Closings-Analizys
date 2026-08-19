@@ -328,7 +328,7 @@ Canonical implementation: `backend/app/services/web_leads.py`.
 
 **Prospect:** Salesforce Total Qualified Leads row matched by street+city+state+zip, then street+city+zip / street+zip, then phone. Among matches, take the **earliest Create Date on or after the first-list month**. A QL whose only Create Date is earlier is **not** a conversion from this list (diagnostic: In CRM before first list). **Campaign** is how they worked a counted Prospect. Opportunities are a later funnel count. Reasons are **not** read from QL or Opportunities.
 
-**Lag:** calendar months from the **first-list month** to that Prospect Create Date. Counted Prospects have lag ≥ 0.
+**Lag:** calendar months from the **first-list month** to that Prospect Create Date. Counted Prospects have lag ≥ 0. Lag buckets are split by first-list source: LIP Probates (LIP only + LIP first), 8020 first, and Same month.
 
 **Reason to sell:** Transactions pipeline **Primary Reason for Selling** and **Secondary Reason for Selling** after address match. Blank is a bucket. Unmatched transactions have no reason.
 

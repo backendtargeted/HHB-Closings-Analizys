@@ -52,6 +52,15 @@ export interface CountShareRow {
   prospect_rate_pct?: number;
   mean_months_lip_to_prospect?: number | null;
   median_months_lip_to_prospect?: number | null;
+  lip?: number;
+  eight?: number;
+  same?: number;
+}
+
+export interface LagBySourceRow {
+  prospects: number;
+  mean: number | null;
+  median: number | null;
 }
 
 export interface ProbateMetrics {
@@ -74,6 +83,11 @@ export interface ProbateMetrics {
   lag: {
     mean_months_lip_to_prospect: number | null;
     median_months_lip_to_prospect: number | null;
+    by_source?: {
+      lip?: LagBySourceRow;
+      eight?: LagBySourceRow;
+      same?: LagBySourceRow;
+    };
   };
   first_source: CountShareRow[];
   campaigns?: CountShareRow[];

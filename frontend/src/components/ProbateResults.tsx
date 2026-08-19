@@ -189,7 +189,12 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
     () =>
       m.lag_buckets
         .filter((b) => (b.count ?? 0) > 0)
-        .map((b) => ({ name: b.bucket ?? '', count: b.count ?? 0 })),
+        .map((b) => ({
+          name: b.bucket ?? '',
+          lip: b.lip ?? 0,
+          eight: b.eight ?? 0,
+          same: b.same ?? 0,
+        })),
     [m.lag_buckets]
   );
   const monthChart = useMemo(
@@ -311,6 +316,8 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
         />
         <Stat label="Median months to CRM" value={fmt(m.lag.median_months_lip_to_prospect)} />
         <Stat label="Mean months to CRM" value={fmt(m.lag.mean_months_lip_to_prospect)} />
+        <Stat label="Median LIP to CRM" value={fmt(m.lag.by_source?.lip?.median)} />
+        <Stat label="Median 8020 to CRM" value={fmt(m.lag.by_source?.eight?.median)} />
         <Stat
           label="Opportunities"
           value={`${m.match.opp_matched.toLocaleString()} (${m.match.opp_rate_pct}%)`}
@@ -382,22 +389,34 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
         <h3 className="text-lg font-semibold text-stone-900">Months first list to CRM push</h3>
         <p className="text-sm text-stone-600 mt-1">
           Calendar months from the first-list month to Salesforce Create Date for counted
-          Prospects. Earlier CRM rows are not conversions.
+          Prospects, split by who delivered first. Same-month lists are not assigned to one
+          vendor. Earlier CRM rows are not conversions.
         </p>
         {lagChart.length > 0 ? (
           <VerticalBars
             data={lagChart}
-            series={[{ key: 'count', name: 'Prospects', color: '#9f1239' }]}
+            grouped
+            series={[
+              { key: 'lip', name: 'LIP Probates', color: '#9f1239' },
+              { key: 'eight', name: '8020', color: '#44403c' },
+              { key: 'same', name: 'Same month', color: '#a8a29e' },
+            ]}
           />
         ) : null}
       </section>
 
       <CompactTable
         title="Months first list to CRM push"
-        columns={['Bucket', 'Prospects', 'Share']}
+        columns={['Bucket', 'LIP Probates', '8020', 'Same month', 'Total']}
         rows={m.lag_buckets
           .filter((r) => (r.count ?? 0) > 0)
-          .map((r) => [r.bucket ?? '', r.count ?? 0, `${r.share_pct}%`])}
+          .map((r) => [
+            r.bucket ?? '',
+            r.lip ?? 0,
+            r.eight ?? 0,
+            r.same ?? 0,
+            r.count ?? 0,
+          ])}
       />
 
       <section className="rounded-xl border border-stone-200 bg-white p-5">

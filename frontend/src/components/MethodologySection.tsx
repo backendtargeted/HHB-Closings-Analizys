@@ -64,7 +64,8 @@ const MethodologySection = () => {
             ). First list is the QL credit when the row matches a Prospect whose Create Date is
             on or after that first-list month. Earlier CRM rows are not conversions. Campaign is
             extra. Primary/Secondary Reason for Selling comes only from the Transactions pipeline
-            after address match.
+            after address match. Lag buckets (Same month / 1–3 / 4–6 / 7–12 / 13+) are split by
+            first-list source: LIP Probates, 8020, and Same month.
           </p>
           <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">
             Full methodology: repo{' '}
