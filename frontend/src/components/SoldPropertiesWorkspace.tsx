@@ -105,7 +105,8 @@ const SoldPropertiesWorkspace = ({
         Properties in your REISift records that sold (external sale month in{' '}
         <code className="text-xs">in_sold_properties_full</code>). Shows how hard you marketed them
         and how far they got in your pipeline (list → marketed → Prospect → Opportunity → contract /
-        HHB close) before that sale month.
+        HHB close) before that sale month. Rows with no contact tags are often federal Do Not Call
+        or suppression — bought onto REISift but never reached out.
       </p>
 
       <div className="mt-6 grid gap-4 max-w-md">

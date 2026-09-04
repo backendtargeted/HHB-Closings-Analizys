@@ -158,6 +158,11 @@ const SoldPropertiesResults = ({
               {card.label}
             </p>
             <p className="text-lg font-bold text-teal-950 mt-1">{card.value}</p>
+            {card.label === 'Never marketed' ? (
+              <p className="text-[10px] text-stone-500 mt-1 leading-snug">
+                Often DNC / federal Do Not Call / suppression — click to spot-check
+              </p>
+            ) : null}
           </div>
         ))}
       </div>
@@ -165,10 +170,14 @@ const SoldPropertiesResults = ({
       <div className="grid md:grid-cols-2 gap-4">
         <div className="rounded-xl border border-stone-200 bg-white p-4">
           <h3 className="text-sm font-bold text-stone-800">Pipeline depth (highest stage)</h3>
-          <p className="text-xs text-stone-500 mt-1">
+          <p className="text-xs text-stone-500 mt-1 leading-relaxed">
             Each property counted once at its furthest HHB stage. Click a stage to filter the journey
-            table. Closed with HHB = <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020</code>{' '}
-            tag on REISift — not the Opportunities file.
+            table. Closed with HHB ={' '}
+            <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020</code> tag on REISift — not the
+            Opportunities file. Never marketed = no{' '}
+            <code className="bg-stone-100 px-1 rounded">(8020) CC/SMS/DM</code> tags on/before sold
+            month; often federal Do Not Call, other DNC, or suppression imports (bought into REISift
+            but never dialed/texted/mailed).
           </p>
           <table className="mt-3 w-full text-sm">
             <thead>
@@ -280,12 +289,17 @@ const SoldPropertiesResults = ({
             </select>
           </label>
         </div>
-        {stageFilter === 'never_marketed' && (
+        {(stageFilter === 'never_marketed' || stageFilter === 'ON_LIST') && (
           <p className="text-xs text-amber-900 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-2">
-            These rows have no <code className="bg-white/80 px-1 rounded">(8020) CC/SMS/DM</code> tags
-            on/before the sold month. Spot-check Tags / Lists — often missing import, wrong address
-            row, or list-only with no contact history. Full list is also on the{' '}
-            <strong>Never Marketed</strong> XLSX sheet.
+            These REISift rows have no{' '}
+            <code className="bg-white/80 px-1 rounded">(8020) CC/SMS/DM</code> contact tags
+            on/before the sold month — so Gate 6 counts them as never marketed. That often means
+            they were bought onto a list but intentionally not dialed/texted/mailed: federal Do Not
+            Call, other DNC, or a suppression import. Spot-check{' '}
+            <code className="bg-white/80 px-1 rounded">Tags</code> /{' '}
+            <code className="bg-white/80 px-1 rounded">Lists</code> for DNC or suppression labels.
+            Less common: missing contact-tag import or history on a duplicate row. Full list is on
+            the <strong>Never Marketed</strong> XLSX sheet.
           </p>
         )}
         <div className="mt-3 overflow-x-auto max-h-[480px] overflow-y-auto">

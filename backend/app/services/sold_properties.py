@@ -836,9 +836,11 @@ def analyze(
         "(external sale, not an HHB closing). List purchase tags remain source credit; "
         "Salesforce Create Date is a clock for Prospect lag (earliest QL match on or after "
         "first list month and on or before the sold month). Marketing touches are (8020) "
-        "CC/SMS/DM tags on or before the sold month. Pipeline stages: On list → Marketed → "
-        "Prospect (QL or SF engaged tag) → Opportunity (optional file) → Under contract → "
-        "Closed with HHB. Why they sold elsewhere is out of scope."
+        "CC/SMS/DM tags on or before the sold month. Rows with no contact tags (never "
+        "marketed) are often federal Do Not Call, other DNC, or suppression imports — "
+        "bought onto REISift but intentionally not reached. Pipeline stages: On list → "
+        "Marketed → Prospect (QL or SF engaged tag) → Opportunity (optional file) → "
+        "Under contract → Closed with HHB. Why they sold elsewhere is out of scope."
     )
 
     report(100, "Done")

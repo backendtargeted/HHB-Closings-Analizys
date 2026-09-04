@@ -351,7 +351,9 @@ Canonical implementation: `backend/app/services/probate.py`.
 
 **Create Date:** Prospect **lag** only (`months_list_to_prospect`). List purchase tags remain source credit.
 
-**Export:** Summary, Journey, Pipeline Funnel, By Sold Month, Lifecycle Funnel sheets.
+**Export:** Summary, Journey, Never Marketed, Pipeline Funnel, By Sold Month, Lifecycle Funnel sheets.
+
+**Never marketed:** No `(8020) CC/SMS/DM` tags on/before sold month. Often federal Do Not Call, other DNC, or suppression imports (property bought into REISift but intentionally not reached). Spot-check Tags/Lists for DNC or suppression labels.
 
 Canonical implementation: `backend/app/services/sold_properties.py`.
 
