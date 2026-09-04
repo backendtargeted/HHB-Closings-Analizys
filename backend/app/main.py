@@ -21,6 +21,7 @@ from .api.monthly_consolidated import (
 from .api.marketing_ramp import load_marketing_ramp_from_disk, marketing_ramp_bp
 from .api.web_leads import load_web_leads_from_disk, web_leads_bp
 from .api.probate import load_probate_from_disk, probate_bp
+from .api.sold_properties import load_sold_properties_from_disk, sold_properties_bp
 from .api.qualified_leads import load_qualified_leads_from_disk, qualified_leads_bp
 from .services.report_store import REPORTS_DIR, _is_production_env, _probe_writable
 
@@ -83,6 +84,7 @@ load_monthly_consolidated_from_disk()
 load_marketing_ramp_from_disk()
 load_web_leads_from_disk()
 load_probate_from_disk()
+load_sold_properties_from_disk()
 app.config["JSON_SORT_KEYS"] = False
 
 # CORS: localhost defaults for dev; set CORS_ORIGINS for split Easypanel (comma-separated) or * for any origin.
@@ -114,6 +116,7 @@ app.register_blueprint(monthly_consolidated_bp, url_prefix="/api/monthly-consoli
 app.register_blueprint(marketing_ramp_bp, url_prefix="/api/marketing-ramp")
 app.register_blueprint(web_leads_bp, url_prefix="/api/web-leads")
 app.register_blueprint(probate_bp, url_prefix="/api/probate")
+app.register_blueprint(sold_properties_bp, url_prefix="/api/sold-properties")
 
 
 @app.route("/health", methods=["GET", "HEAD"])

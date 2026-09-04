@@ -4,7 +4,8 @@ export type ReportType =
   | 'monthly_consolidated'
   | 'marketing_ramp'
   | 'web_leads'
-  | 'probate';
+  | 'probate'
+  | 'sold_properties';
 
 export interface SavedReportItem {
   job_id: string;

@@ -193,6 +193,32 @@ Each Gate 3 analyze runs **marketing ramp** and **monthly consolidated** in para
 
 ---
 
+## Sold properties report (Gate 6)
+
+**When:** Properties already in REISift that sold externally (`in_sold_properties_full` sale month). Measure marketing intensity and how far each got in the HHB pipeline before that sale.
+
+**UI:** Docker `http://localhost:3300` → **Sold properties** (Gate 6 tab).
+
+**Implementation:** `backend/app/services/sold_properties.py`, API prefix `/api/sold-properties`.
+
+### Inputs
+
+| File | Required | Role |
+|------|----------|------|
+| **REISift export** with `in_sold_properties_full` | Yes | Cohort + Tags history |
+| **Salesforce Total Qualified Leads** | Yes | Prospect match (Create Date = clock) |
+| **Opportunities** | Optional | Opportunity stage |
+
+### Operator checklist
+
+1. Export REISift with the sold-properties column populated for matched addresses.
+2. Upload REISift + Total Qualified Leads (+ Opportunities if available).
+3. Review marketed %, pipeline depth, and journey rows; download XLSX (Summary + Journey + By Sold Month).
+
+**Execution:** Async job (202 + poll status), same pattern as Gate 5 probate. Persists under `{REPORTS_DIR}/sold_properties/{job_id}.json`.
+
+---
+
 ## Large uploads and reverse proxies (EasyPanel / Traefik)
 
 Large upload flows can fail when the **UI** nginx container or front proxy timeouts are too low (`frontend/nginx.conf`: `client_max_body_size`, `client_body_timeout`, `proxy_*_timeout`).
@@ -368,6 +394,11 @@ Module: `backend/app/services/cadence_from_history.py`. `(8020)` tags are month-
 | `GET /api/monthly-consolidated/<job_id>` | Monthly consolidated metrics JSON |
 | `GET /api/monthly-consolidated/<job_id>/export` | Multi-sheet XLSX (Summary, lists, combinations, channels, lifecycle) |
 | `DELETE /api/monthly-consolidated/<job_id>` | Remove job dir + saved JSON |
+| `POST /api/sold-properties/analyze` | Multipart: `reisift_file`, `qualified_leads_file`; optional `opportunities_file` (or JSON paths) |
+| `GET /api/sold-properties/<job_id>/status` | Poll while running |
+| `GET /api/sold-properties/<job_id>` | Sold-properties metrics JSON |
+| `GET /api/sold-properties/<job_id>/export` | Multi-sheet XLSX |
+| `DELETE /api/sold-properties/<job_id>` | Remove job dir + saved JSON |
 | `GET /api/reports` | All saved reports (attribution + qualified leads + monthly consolidated) |
 | `GET /api/reports/diagnostics` | Storage health: resolved path, writable flag, report counts by type |
 

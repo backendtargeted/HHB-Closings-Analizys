@@ -13,6 +13,8 @@ import WebLeadsWorkspace from './components/WebLeadsWorkspace';
 import WebLeadsResults from './components/WebLeadsResults';
 import ProbateWorkspace from './components/ProbateWorkspace';
 import ProbateResults from './components/ProbateResults';
+import SoldPropertiesWorkspace from './components/SoldPropertiesWorkspace';
+import SoldPropertiesResults from './components/SoldPropertiesResults';
 import SavedReports, { SavedReportsPanel } from './components/SavedReports';
 import {
   downloadQualifiedLeadsExport,
@@ -20,12 +22,14 @@ import {
   downloadMarketingRampExport,
   downloadWebLeadsExport,
   downloadProbateExport,
+  downloadSoldPropertiesExport,
   getAnalysisResults,
   getQualifiedLeadsJob,
   getMonthlyConsolidatedJob,
   getMarketingRampJob,
   getWebLeadsJob,
   getProbateJob,
+  getSoldPropertiesJob,
   listReports,
 } from './services/api';
 import type { AnalysisCompleteResponse } from './types/analysis';
@@ -38,6 +42,8 @@ import type { WebLeadsCompletedResponse } from './types/webLeads';
 import { asWebLeadsCompleted } from './types/webLeads';
 import type { ProbateCompletedResponse } from './types/probate';
 import { asProbateCompleted } from './types/probate';
+import type { SoldPropertiesCompletedResponse } from './types/soldProperties';
+import { asSoldPropertiesCompleted } from './types/soldProperties';
 
 const QL_CHANNEL_LABELS: Record<string, string> = {
   CC: 'Cold Calling',
@@ -52,7 +58,7 @@ const QL_CHANNEL_LABELS: Record<string, string> = {
 function App() {
   const setReportQueryParam = (
     jobId: string | null,
-    reportType?: 'attribution' | 'qualified_leads' | 'monthly_consolidated' | 'marketing_ramp' | 'web_leads' | 'probate'
+    reportType?: 'attribution' | 'qualified_leads' | 'monthly_consolidated' | 'marketing_ramp' | 'web_leads' | 'probate' | 'sold_properties'
   ) => {
     const url = new URL(window.location.href);
     if (jobId) {
@@ -79,18 +85,22 @@ function App() {
     useState<WebLeadsCompletedResponse | null>(null);
   const [loadedProbateReport, setLoadedProbateReport] =
     useState<ProbateCompletedResponse | null>(null);
+  const [loadedSoldPropertiesReport, setLoadedSoldPropertiesReport] =
+    useState<SoldPropertiesCompletedResponse | null>(null);
   const [savedReportsRefresh, setSavedReportsRefresh] = useState(0);
   const [qlExporting, setQlExporting] = useState(false);
   const [mcrExporting, setMcrExporting] = useState(false);
   const [mrExporting, setMrExporting] = useState(false);
   const [wlExporting, setWlExporting] = useState(false);
   const [pbExporting, setPbExporting] = useState(false);
+  const [spExporting, setSpExporting] = useState(false);
 
   const showQualifiedResults = loadedQualifiedReport !== null;
   const showMonthlyResults = loadedMonthlyReport !== null;
   const showMarketingResults = loadedMarketingReport !== null;
   const showWebLeadsResults = loadedWebLeadsReport !== null;
   const showProbateResults = loadedProbateReport !== null;
+  const showSoldPropertiesResults = loadedSoldPropertiesReport !== null;
   const showLegacyAttribution = loadedSavedReport !== null;
 
   const handleNewRun = () => {
@@ -100,6 +110,7 @@ function App() {
     setLoadedMarketingReport(null);
     setLoadedWebLeadsReport(null);
     setLoadedProbateReport(null);
+    setLoadedSoldPropertiesReport(null);
     setReportQueryParam(null);
   };
 
@@ -110,6 +121,7 @@ function App() {
     setLoadedMarketingReport(null);
     setLoadedWebLeadsReport(null);
     setLoadedProbateReport(null);
+    setLoadedSoldPropertiesReport(null);
     setReportQueryParam(data.job_id, 'attribution');
   };
 
@@ -120,6 +132,7 @@ function App() {
     setLoadedMarketingReport(null);
     setLoadedWebLeadsReport(null);
     setLoadedProbateReport(null);
+    setLoadedSoldPropertiesReport(null);
     setReportQueryParam(data.job_id, 'qualified_leads');
   };
 
@@ -130,6 +143,7 @@ function App() {
     setLoadedMarketingReport(null);
     setLoadedWebLeadsReport(null);
     setLoadedProbateReport(null);
+    setLoadedSoldPropertiesReport(null);
     setGate('monthlyConsolidated');
     setReportQueryParam(data.job_id, 'monthly_consolidated');
   };
@@ -141,6 +155,7 @@ function App() {
     setLoadedMonthlyReport(null);
     setLoadedWebLeadsReport(null);
     setLoadedProbateReport(null);
+    setLoadedSoldPropertiesReport(null);
     setGate('marketingRamp');
     setReportQueryParam(data.job_id, 'marketing_ramp');
   };
@@ -152,6 +167,7 @@ function App() {
     setLoadedMonthlyReport(null);
     setLoadedMarketingReport(null);
     setLoadedProbateReport(null);
+    setLoadedSoldPropertiesReport(null);
     setGate('webLeads');
     setReportQueryParam(data.job_id, 'web_leads');
   };
@@ -163,11 +179,28 @@ function App() {
     setLoadedMonthlyReport(null);
     setLoadedMarketingReport(null);
     setLoadedWebLeadsReport(null);
+    setLoadedSoldPropertiesReport(null);
     setGate('probate');
     setReportQueryParam(data.job_id, 'probate');
   };
 
+  const handleOpenSoldPropertiesReport = (data: SoldPropertiesCompletedResponse) => {
+    setLoadedSoldPropertiesReport(data);
+    setLoadedSavedReport(null);
+    setLoadedQualifiedReport(null);
+    setLoadedMonthlyReport(null);
+    setLoadedMarketingReport(null);
+    setLoadedWebLeadsReport(null);
+    setLoadedProbateReport(null);
+    setGate('soldProperties');
+    setReportQueryParam(data.job_id, 'sold_properties');
+  };
+
   const handleProbateRunComplete = () => {
+    setSavedReportsRefresh((k) => k + 1);
+  };
+
+  const handleSoldPropertiesRunComplete = () => {
     setSavedReportsRefresh((k) => k + 1);
   };
 
@@ -271,6 +304,23 @@ function App() {
     }
   };
 
+  const handleExportSoldProperties = async (jobId: string) => {
+    setSpExporting(true);
+    try {
+      const blob = await downloadSoldPropertiesExport(jobId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sold_properties_${jobId}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Export failed');
+    } finally {
+      setSpExporting(false);
+    }
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const reportId = params.get('report');
@@ -284,6 +334,7 @@ function App() {
         | 'marketing_ramp'
         | 'web_leads'
         | 'probate'
+        | 'sold_properties'
         | 'attribution';
       data: unknown;
     }) => {
@@ -301,6 +352,9 @@ function App() {
       } else if (loaded.kind === 'probate') {
         setLoadedProbateReport(loaded.data as ProbateCompletedResponse);
         setGate('probate');
+      } else if (loaded.kind === 'sold_properties') {
+        setLoadedSoldPropertiesReport(loaded.data as SoldPropertiesCompletedResponse);
+        setGate('soldProperties');
       } else {
         setLoadedSavedReport(loaded.data as AnalysisCompleteResponse);
       }
@@ -334,6 +388,12 @@ function App() {
           data: asProbateCompleted(await getProbateJob(id)),
         };
       }
+      if (type === 'sold_properties') {
+        return {
+          kind: 'sold_properties' as const,
+          data: asSoldPropertiesCompleted(await getSoldPropertiesJob(id)),
+        };
+      }
       if (type === 'attribution') {
         return { kind: 'attribution' as const, data: await getAnalysisResults(id) };
       }
@@ -358,7 +418,14 @@ function App() {
                 data: asProbateCompleted(await getProbateJob(id)),
               };
             } catch {
-              return { kind: 'attribution' as const, data: await getAnalysisResults(id) };
+              try {
+                return {
+                  kind: 'sold_properties' as const,
+                  data: asSoldPropertiesCompleted(await getSoldPropertiesJob(id)),
+                };
+              } catch {
+                return { kind: 'attribution' as const, data: await getAnalysisResults(id) };
+              }
             }
           }
         }
@@ -398,7 +465,8 @@ function App() {
     !showLegacyAttribution &&
     !showMarketingResults &&
     !showWebLeadsResults &&
-    !showProbateResults;
+    !showProbateResults &&
+    !showSoldPropertiesResults;
 
   const showAnyReport =
     showMarketingResults ||
@@ -406,7 +474,8 @@ function App() {
     showQualifiedResults ||
     showLegacyAttribution ||
     showWebLeadsResults ||
-    showProbateResults;
+    showProbateResults ||
+    showSoldPropertiesResults;
 
   const workspaceTabId =
     gate === 'pastPatches'
@@ -417,7 +486,9 @@ function App() {
           ? 'tab-gate4'
           : gate === 'probate'
             ? 'tab-gate5'
-          : 'tab-gate2';
+            : gate === 'soldProperties'
+              ? 'tab-gate6'
+              : 'tab-gate2';
 
   const savedReportsSidebar = (
     <aside className="rounded-2xl border border-stone-200/90 bg-white shadow-sm p-5 h-fit lg:sticky lg:top-6">
@@ -428,6 +499,7 @@ function App() {
         onOpenMarketingRampReport={handleOpenMarketingReport}
         onOpenWebLeadsReport={handleOpenWebLeadsReport}
         onOpenProbateReport={handleOpenProbateReport}
+        onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
         refreshKey={savedReportsRefresh}
       />
     </aside>
@@ -448,7 +520,8 @@ function App() {
             <div className="min-w-0">
               <h1 className="text-3xl font-bold text-white drop-shadow-sm">HHB Marketing Reports</h1>
               <p className="text-gray-200 mt-1">
-                Gate 1: ingest · Gate 2: consolidated · Gate 3: marketing ramp · Gate 4: web leads · Gate 5: probate
+                Gate 1: ingest · Gate 2: consolidated · Gate 3: marketing ramp · Gate 4: web leads ·
+                Gate 5: probate · Gate 6: sold properties
               </p>
             </div>
           </div>
@@ -465,7 +538,26 @@ function App() {
         <div className="mb-6">
           {!showAnyReport ? <MethodologySection /> : null}
         </div>
-        {showProbateResults && loadedProbateReport ? (
+        {showSoldPropertiesResults && loadedSoldPropertiesReport ? (
+          <div className="space-y-6">
+            <SoldPropertiesResults
+              result={loadedSoldPropertiesReport}
+              onNewRun={handleNewRun}
+              onExport={() => handleExportSoldProperties(loadedSoldPropertiesReport.job_id)}
+              exporting={spExporting}
+            />
+            <SavedReportsPanel
+              onOpenAttributionReport={handleOpenSavedReport}
+              onOpenQualifiedLeadsReport={handleOpenQualifiedReport}
+              onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
+              onOpenMarketingRampReport={handleOpenMarketingReport}
+              onOpenWebLeadsReport={handleOpenWebLeadsReport}
+              onOpenProbateReport={handleOpenProbateReport}
+              onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
+              refreshKey={savedReportsRefresh}
+            />
+          </div>
+        ) : showProbateResults && loadedProbateReport ? (
           <div className="space-y-6">
             <ProbateResults
               result={loadedProbateReport}
@@ -480,6 +572,7 @@ function App() {
               onOpenMarketingRampReport={handleOpenMarketingReport}
               onOpenWebLeadsReport={handleOpenWebLeadsReport}
               onOpenProbateReport={handleOpenProbateReport}
+              onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -498,6 +591,7 @@ function App() {
               onOpenMarketingRampReport={handleOpenMarketingReport}
               onOpenWebLeadsReport={handleOpenWebLeadsReport}
               onOpenProbateReport={handleOpenProbateReport}
+              onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -517,6 +611,7 @@ function App() {
               onOpenMarketingRampReport={handleOpenMarketingReport}
               onOpenWebLeadsReport={handleOpenWebLeadsReport}
               onOpenProbateReport={handleOpenProbateReport}
+              onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -536,6 +631,7 @@ function App() {
               onOpenMarketingRampReport={handleOpenMarketingReport}
               onOpenWebLeadsReport={handleOpenWebLeadsReport}
               onOpenProbateReport={handleOpenProbateReport}
+              onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -556,6 +652,7 @@ function App() {
               onOpenMarketingRampReport={handleOpenMarketingReport}
               onOpenWebLeadsReport={handleOpenWebLeadsReport}
               onOpenProbateReport={handleOpenProbateReport}
+              onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -570,6 +667,7 @@ function App() {
               onOpenMarketingRampReport={handleOpenMarketingReport}
               onOpenWebLeadsReport={handleOpenWebLeadsReport}
               onOpenProbateReport={handleOpenProbateReport}
+              onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -597,6 +695,11 @@ function App() {
                 <ProbateWorkspace
                   onRunComplete={handleProbateRunComplete}
                   onOpenResult={handleOpenProbateReport}
+                />
+              ) : gate === 'soldProperties' ? (
+                <SoldPropertiesWorkspace
+                  onRunComplete={handleSoldPropertiesRunComplete}
+                  onOpenResult={handleOpenSoldPropertiesReport}
                 />
               ) : (
                 <MonthlyConsolidatedWorkspace

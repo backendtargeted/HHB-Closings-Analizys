@@ -53,7 +53,7 @@ const MethodologySection = () => {
             the CRM. Clock, not source. First list is the credit. Campaign / Lead Source is extra.
             Never compare Create Date to list month to relabel credit as already in Salesforce,
             After LIP, or After 8020. Create Date may still filter a report window (Gates 2–4) or
-            compute lag (Gates 3 and 5).
+            compute lag (Gates 3, 5, and 6).
           </p>
           <p>
             <strong className="text-stone-800">Gate 5 probate:</strong> Universe is REISift rows tagged{' '}
@@ -66,6 +66,14 @@ const MethodologySection = () => {
             extra. Primary/Secondary Reason for Selling comes only from the Transactions pipeline
             after address match. Lag buckets (Same month / 1–3 / 4–6 / 7–12 / 13+) are split by
             first-list source: LIP Probates, 8020, and Same month.
+          </p>
+          <p>
+            <strong className="text-stone-800">Gate 6 sold properties:</strong> Cohort is REISift rows
+            with a parseable{' '}
+            <code className="bg-stone-100 px-1 rounded">in_sold_properties_full</code> sale month
+            (external sale, not an HHB closing). Measures marketing touches and pipeline depth
+            (list → marketed → Prospect → Opportunity → under contract → HHB close) on or before
+            that sold month. QL Create Date is Prospect lag only; list tags remain credit.
           </p>
           <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">
             Full methodology: repo{' '}

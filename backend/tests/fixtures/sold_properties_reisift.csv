@@ -1,0 +1,6 @@
+Property address,Property city,Property state,Property zip,Created,Lists,Tags,in_sold_properties_full
+100 Main St,Springfield,NY,11772,2025-01-05,High Equity,"List Purchased 8020 1/2025,(8020) CC - 2/2025,(8020) SMS - 3/2025,(SF) STATUS - Follow Up - 2025-03-10",6/2025
+200 Oak Ave,Springfield,NY,11772,2025-02-01,Absentee,"List Purchased 8020 2/2025,(8020) DM - 2/2025",2025-06
+300 Pine Rd,Springfield,NY,11772,2025-01-15,High Equity,"List Purchased 8020 1/2025",
+400 Elm St,Springfield,NY,11772,2024-11-01,Absentee,"List Purchased 8020 11/2024,(8020) CC - 12/2024,(SF) STATUS - converted - 2025-02-01",3/2025
+500 Maple Dr,Springfield,NY,11772,2025-03-01,High Equity,"List Purchased 8020 3/2025",not-a-month

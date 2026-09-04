@@ -1,7 +1,13 @@
 export type WorkspaceMode = 'regular' | 'pastPatches' | 'qualifiedLeads' | 'monthlyConsolidated';
 
 /** Primary workflow modes shown in the workflow picker. */
-export type GateMode = 'pastPatches' | 'monthlyConsolidated' | 'marketingRamp' | 'webLeads' | 'probate';
+export type GateMode =
+  | 'pastPatches'
+  | 'monthlyConsolidated'
+  | 'marketingRamp'
+  | 'webLeads'
+  | 'probate'
+  | 'soldProperties';
 
 interface ModeSwitcherProps {
   mode: GateMode;
@@ -161,6 +167,34 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
             </div>
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-rose-200/80 text-rose-950">
               Probate
+            </span>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'soldProperties'}
+          id="tab-gate6"
+          aria-controls="panel-workspace"
+          onClick={() => onChange('soldProperties')}
+          className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:ring-offset-2 ${
+            mode === 'soldProperties'
+              ? 'border-teal-600/80 bg-teal-50/90 shadow-md ring-1 ring-teal-600/20'
+              : 'border-stone-200 bg-white/80 hover:border-teal-200 hover:bg-teal-50/40'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-teal-800 mb-1">Gate 6</p>
+              <h2 className="text-lg font-bold text-teal-950 tracking-tight">Sold properties</h2>
+              <p className="text-teal-950/80 text-sm mt-2 leading-relaxed">
+                REISift export with in_sold_properties_full + QL → marketing intensity and pipeline
+                depth before the external sale month.
+              </p>
+            </div>
+            <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-teal-200/80 text-teal-950">
+              Sold
             </span>
           </div>
         </button>
