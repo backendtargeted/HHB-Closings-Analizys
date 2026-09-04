@@ -45,10 +45,24 @@ const SoldPropertiesResults = ({
   const [shareMsg, setShareMsg] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
 
+  const neverMarketedCount = useMemo(
+    () => m.rows.filter((r) => !r.marketed).length,
+    [m.rows]
+  );
+
   const filteredRows = useMemo(() => {
     if (stageFilter === 'all') return m.rows;
+    if (stageFilter === 'never_marketed') return m.rows.filter((r) => !r.marketed);
     return m.rows.filter((r) => r.pipeline_stage === stageFilter);
   }, [m.rows, stageFilter]);
+
+  const ccTotal = m.marketing.total_touch_counts?.CC ?? 0;
+  const smsTotal = m.marketing.total_touch_counts?.SMS ?? 0;
+  const dmTotal = m.marketing.total_touch_counts?.DM ?? 0;
+  const marketedN = m.marketing.marketed_count || 0;
+  const avgCc = marketedN ? (ccTotal / marketedN).toFixed(1) : '—';
+  const avgSms = marketedN ? (smsTotal / marketedN).toFixed(1) : '—';
+  const avgDm = marketedN ? (dmTotal / marketedN).toFixed(1) : '—';
 
   const handleShare = async () => {
     const mode = await copyReportShareUrl(result.job_id, 'sold_properties');
@@ -104,16 +118,21 @@ const SoldPropertiesResults = ({
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Cohort', value: m.inputs.cohort_rows },
-          { label: 'Marketed', value: `${m.marketing.marketed_count} (${m.marketing.marketed_pct}%)` },
+          { label: 'Cohort', value: m.inputs.cohort_rows, onClick: () => setStageFilter('all') },
+          {
+            label: 'Marketed',
+            value: `${m.marketing.marketed_count} (${m.marketing.marketed_pct}%)`,
+            onClick: undefined as (() => void) | undefined,
+          },
+          {
+            label: 'Never marketed',
+            value: `${neverMarketedCount} (${m.inputs.cohort_rows ? ((100 * neverMarketedCount) / m.inputs.cohort_rows).toFixed(1) : 0}%)`,
+            onClick: () => setStageFilter('never_marketed'),
+          },
           { label: 'Prospects', value: `${m.match.prospect_matched} (${m.match.prospect_rate_pct}%)` },
           { label: 'Opportunities', value: `${m.match.opp_matched} (${m.match.opp_rate_pct}%)` },
           { label: 'Under contract', value: m.match.under_contract_count },
           { label: 'HHB closed', value: m.match.hhb_closed_count },
-          {
-            label: 'Avg touches / marketed',
-            value: fmt(m.marketing.avg_touches_per_marketed),
-          },
           {
             label: 'Median mo list→sold',
             value: fmt(m.lag.median_months_list_to_sold),
@@ -121,7 +140,19 @@ const SoldPropertiesResults = ({
         ].map((card) => (
           <div
             key={card.label}
-            className="rounded-xl border border-teal-100 bg-white px-4 py-3 shadow-sm"
+            className={`rounded-xl border border-teal-100 bg-white px-4 py-3 shadow-sm ${
+              card.onClick ? 'cursor-pointer hover:border-teal-300' : ''
+            }`}
+            onClick={card.onClick}
+            onKeyDown={
+              card.onClick
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') card.onClick?.();
+                  }
+                : undefined
+            }
+            role={card.onClick ? 'button' : undefined}
+            tabIndex={card.onClick ? 0 : undefined}
           >
             <p className="text-[11px] uppercase tracking-wide text-stone-500 font-semibold">
               {card.label}
@@ -134,6 +165,11 @@ const SoldPropertiesResults = ({
       <div className="grid md:grid-cols-2 gap-4">
         <div className="rounded-xl border border-stone-200 bg-white p-4">
           <h3 className="text-sm font-bold text-stone-800">Pipeline depth (highest stage)</h3>
+          <p className="text-xs text-stone-500 mt-1">
+            Each property counted once at its furthest HHB stage. Click a stage to filter the journey
+            table. Closed with HHB = <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020</code>{' '}
+            tag on REISift — not the Opportunities file.
+          </p>
           <table className="mt-3 w-full text-sm">
             <thead>
               <tr className="text-left text-xs uppercase text-stone-500">
@@ -144,7 +180,13 @@ const SoldPropertiesResults = ({
             </thead>
             <tbody>
               {m.pipeline_funnel.map((row) => (
-                <tr key={row.stage} className="border-t border-stone-100">
+                <tr
+                  key={row.stage}
+                  className={`border-t border-stone-100 cursor-pointer hover:bg-teal-50/60 ${
+                    stageFilter === row.stage ? 'bg-teal-50' : ''
+                  }`}
+                  onClick={() => setStageFilter(row.stage)}
+                >
                   <td className="py-1.5">{row.label}</td>
                   <td className="py-1.5">{row.count}</td>
                   <td className="py-1.5">{row.share_pct}%</td>
@@ -154,18 +196,33 @@ const SoldPropertiesResults = ({
           </table>
         </div>
         <div className="rounded-xl border border-stone-200 bg-white p-4">
-          <h3 className="text-sm font-bold text-stone-800">Touches</h3>
+          <h3 className="text-sm font-bold text-stone-800">Touches (tag events, not unique dials)</h3>
+          <p className="text-xs text-stone-500 mt-1 leading-relaxed">
+            Totals are the sum of <code className="bg-stone-100 px-1 rounded">(8020) CC/SMS/DM</code>{' '}
+            month tags across the cohort (on/before sold month). Example: {ccTotal.toLocaleString()}{' '}
+            CC tags across {marketedN.toLocaleString()} marketed properties ≈ {avgCc} CC tags per
+            marketed property — not {ccTotal.toLocaleString()} calls on all{' '}
+            {m.inputs.cohort_rows.toLocaleString()} cohort rows.
+          </p>
           <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
-            {(['CC', 'SMS', 'DM'] as const).map((ch) => (
+            {(
+              [
+                ['CC', ccTotal, avgCc],
+                ['SMS', smsTotal, avgSms],
+                ['DM', dmTotal, avgDm],
+              ] as const
+            ).map(([ch, total, avg]) => (
               <div key={ch} className="rounded-lg bg-teal-50/80 px-3 py-2">
-                <dt className="text-xs text-stone-500">{ch}</dt>
-                <dd className="font-bold text-teal-950">
-                  {(m.marketing.total_touch_counts?.[ch] ?? 0).toLocaleString()}
-                </dd>
+                <dt className="text-xs text-stone-500">{ch} tag events</dt>
+                <dd className="font-bold text-teal-950">{total.toLocaleString()}</dd>
+                <dd className="text-[11px] text-stone-500 mt-0.5">≈ {avg} / marketed</dd>
               </div>
             ))}
           </dl>
-          <p className="text-xs text-stone-500 mt-3 leading-relaxed">{m.methodology_note}</p>
+          <p className="text-xs text-stone-500 mt-3">
+            All-channel avg per marketed:{' '}
+            <strong className="text-stone-700">{fmt(m.marketing.avg_touches_per_marketed)}</strong>
+          </p>
         </div>
       </div>
 
@@ -214,6 +271,7 @@ const SoldPropertiesResults = ({
               className="ml-1 border border-stone-300 rounded-md px-2 py-1 text-sm"
             >
               <option value="all">All</option>
+              <option value="never_marketed">Never marketed (spot-check)</option>
               {m.pipeline_funnel.map((row) => (
                 <option key={row.stage} value={row.stage}>
                   {row.label}
@@ -222,6 +280,14 @@ const SoldPropertiesResults = ({
             </select>
           </label>
         </div>
+        {stageFilter === 'never_marketed' && (
+          <p className="text-xs text-amber-900 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-2">
+            These rows have no <code className="bg-white/80 px-1 rounded">(8020) CC/SMS/DM</code> tags
+            on/before the sold month. Spot-check Tags / Lists — often missing import, wrong address
+            row, or list-only with no contact history. Full list is also on the{' '}
+            <strong>Never Marketed</strong> XLSX sheet.
+          </p>
+        )}
         <div className="mt-3 overflow-x-auto max-h-[480px] overflow-y-auto">
           <table className="w-full text-xs min-w-[1100px]">
             <thead className="sticky top-0 bg-white">
@@ -254,7 +320,7 @@ const SoldPropertiesResults = ({
           </table>
           {filteredRows.length > 500 && (
             <p className="text-xs text-stone-500 mt-2">
-              Showing first 500 rows — download XLSX for the full journey sheet.
+              Showing first 500 rows — download XLSX for the full journey / Never Marketed sheets.
             </p>
           )}
         </div>

@@ -99,6 +99,12 @@ def test_export_and_roundtrip(sp_paths):
     result = analyze(sp_paths["reisift"], sp_paths["ql"], opportunities_path=sp_paths["opps"])
     xlsx = build_export_workbook(result)
     assert len(xlsx) > 100
+    from io import BytesIO
+
+    import openpyxl
+
+    wb = openpyxl.load_workbook(BytesIO(xlsx))
+    assert "Never Marketed" in wb.sheetnames
     restored = result_from_metrics_dict(result.to_api_dict())
     assert restored.cohort_rows == result.cohort_rows
     assert len(restored.rows) == len(result.rows)

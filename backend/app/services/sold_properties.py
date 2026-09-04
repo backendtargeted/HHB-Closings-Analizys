@@ -911,10 +911,18 @@ def build_export_workbook(result: SoldPropertiesResult) -> bytes:
         summary_rows.append({"metric": "Warning", "value": w})
 
     journey = [r.to_dict() for r in result.rows]
+    never_marketed = [r.to_dict() for r in result.rows if not r.marketed]
+    summary_rows.insert(
+        5,
+        {"metric": "Never marketed count", "value": len(never_marketed)},
+    )
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         pd.DataFrame(summary_rows).to_excel(writer, sheet_name="Summary", index=False)
         pd.DataFrame(journey).to_excel(writer, sheet_name="Journey", index=False)
+        pd.DataFrame(never_marketed).to_excel(
+            writer, sheet_name="Never Marketed", index=False
+        )
         if result.pipeline_funnel:
             pd.DataFrame(result.pipeline_funnel).to_excel(
                 writer, sheet_name="Pipeline Funnel", index=False
