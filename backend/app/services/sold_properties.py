@@ -305,7 +305,7 @@ class SoldPropertyRow:
     prospect_matched: bool = False
     prospect_date: str = ""
     prospect_match_via: str = ""
-    prospect_source: str = ""  # ql | sf_tag | ""
+    prospect_source: str = ""  # ql | sf_tag | podio | ""
     opp_matched: bool = False
     opp_created_date: str = ""
     under_contract_date: str = ""
@@ -518,6 +518,24 @@ def _sf_engaged_before(parsed: List[Dict[str, Any]], sold_end: datetime) -> bool
     return False
 
 
+def _podio_crm_present(parsed: List[Dict[str, Any]]) -> bool:
+    """PodioSellerLeads is a presence flag — no sold-month date gate."""
+    return any(p.get("type") == "podio_crm" for p in parsed)
+
+
+def _first_podio_crm_date(parsed: List[Dict[str, Any]]) -> str:
+    for p in parsed:
+        if p.get("type") != "podio_crm":
+            continue
+        raw = str(p.get("date", "") or "").strip()
+        if not raw:
+            continue
+        dt = _parse_iso_dt(raw)
+        if dt is not None:
+            return dt.date().isoformat()
+    return ""
+
+
 def analyze(
     reisift_path: str,
     ql_path: str,
@@ -638,7 +656,8 @@ def analyze(
 
         prospect_from_ql = ql_hit is not None and ql_hit.date is not None
         prospect_from_sf = _sf_engaged_before(parsed, sold_end_dt)
-        prospect_matched = prospect_from_ql or prospect_from_sf
+        prospect_from_podio = _podio_crm_present(parsed)
+        prospect_matched = prospect_from_ql or prospect_from_sf or prospect_from_podio
         prospect_date = ""
         prospect_via = ""
         prospect_source = ""
@@ -660,6 +679,10 @@ def analyze(
                     prospect_via = "sf_tag"
                     prospect_source = "sf_tag"
                     break
+        elif prospect_from_podio:
+            prospect_date = _first_podio_crm_date(parsed)
+            prospect_via = "podio"
+            prospect_source = "podio"
 
         opp_hit = None
         if opp_index is not None:
@@ -839,7 +862,7 @@ def analyze(
         "CC/SMS/DM tags on or before the sold month. Rows with no contact tags (never "
         "marketed) are often federal Do Not Call, other DNC, or suppression imports — "
         "bought onto REISift but intentionally not reached. Pipeline stages: On list → "
-        "Marketed → Prospect (QL or SF engaged tag) → Opportunity (optional file) → "
+        "Marketed → Prospect (QL, SF engaged tag, or PodioSellerLeads) → Opportunity (optional file) → "
         "Under contract → Closed with HHB. Why they sold elsewhere is out of scope."
     )
 

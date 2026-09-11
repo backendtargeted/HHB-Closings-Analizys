@@ -7,7 +7,8 @@ export type GateMode =
   | 'marketingRamp'
   | 'webLeads'
   | 'probate'
-  | 'soldProperties';
+  | 'soldProperties'
+  | 'courtAlerts';
 
 interface ModeSwitcherProps {
   mode: GateMode;
@@ -195,6 +196,34 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
             </div>
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-teal-200/80 text-teal-950">
               Sold
+            </span>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'courtAlerts'}
+          id="tab-gate7"
+          aria-controls="panel-workspace"
+          onClick={() => onChange('courtAlerts')}
+          className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-700 focus-visible:ring-offset-2 ${
+            mode === 'courtAlerts'
+              ? 'border-sky-600/80 bg-sky-50/90 shadow-md ring-1 ring-sky-600/20'
+              : 'border-stone-200 bg-white/80 hover:border-sky-200 hover:bg-sky-50/40'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-sky-800 mb-1">Gate 7</p>
+              <h2 className="text-lg font-bold text-sky-950 tracking-tight">Court Alerts lifecycle</h2>
+              <p className="text-sky-950/80 text-sm mt-2 leading-relaxed">
+                Court Alerts CSV vs 8020 on the matched REISift address, time to Salesforce Prospect,
+                and Transactions reason for selling.
+              </p>
+            </div>
+            <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-sky-200/80 text-sky-950">
+              Court
             </span>
           </div>
         </button>

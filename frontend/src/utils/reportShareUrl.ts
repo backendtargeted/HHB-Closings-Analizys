@@ -5,7 +5,8 @@ export type ReportShareType =
   | 'marketing_ramp'
   | 'web_leads'
   | 'probate'
-  | 'sold_properties';
+  | 'sold_properties'
+  | 'court_alerts';
 
 export function buildReportShareUrl(
   jobId: string,

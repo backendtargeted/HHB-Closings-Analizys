@@ -1,0 +1,4 @@
+address,city,state,zip_code,county_name,created_on,action_type,first_name,last_name,index_number,plaintiff,defendant,current_status,hyperlink
+10 Maple St,Freeport,NY,11520,Nassau,2025-04-15,Foreclosure,Jane,Doe,600123/2025,Bank of Example,Jane Doe,Active,https://example.com/1
+20 Oak Ave,Patchogue,NY,11772,Suffolk County,2025-05-10,Foreclosure,John,Smith,600456/2025,Lender LLC,John Smith,Active,https://example.com/2
+30 Pine Rd,Hicksville,NY,11801,Nassau,2025-04-20,Foreclosure,Ann,Lee,600789/2025,Trust Co,Ann Lee,Active,https://example.com/3

@@ -6,7 +6,7 @@ This document describes **how closings / contact attribution reports are compute
 
 **Salesforce Create Date (all gates):** Create Date is when marketing called or texted that LIP / 8020 / CourtAlerts list and pushed the lead into the CRM. It is a **clock**, not a source. The list provider is the credit (first list on the row wins). Campaign / Lead Source is how they worked it — extra, not a replacement for the list. Never compare Create Date to list month to relabel credit as “Already in Salesforce,” “After LIP,” or “After 8020.”
 
-Allowed clock uses: Gate 1 does not credit from Create Date. Gate 2 / legacy QL — Create Date **window** = which QLs fall in the month. Gate 3 — same window, plus `days_list_to_create_date` **lag**. Gate 4 — Create Date is the web-lead / CourtAlerts cohort **anchor**; prior list tags are history, not a rewrite of that credit. Gate 5 — lag from first-list month to CRM push. Gate 6 — Prospect lag from first list month to QL Create Date (on or before external sold month).
+Allowed clock uses: Gate 1 does not credit from Create Date. Gate 2 / legacy QL — Create Date **window** = which QLs fall in the month. Gate 3 — same window, plus `days_list_to_create_date` **lag**. Gate 4 — Create Date is the web-lead / CourtAlerts cohort **anchor**; prior list tags are history, not a rewrite of that credit. Gate 5 — lag from first-list month to CRM push. Gate 6 — Prospect lag from first list month to QL Create Date (on or before external sold month). Gate 7 — same lag rules as Gate 5 (Court Alerts vs 8020 first list → Create Date).
 
 ---
 
@@ -278,6 +278,7 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 | Open pipeline / stuck-at-stage | `lifecycle.py` — `compute_stage_funnel_open`, `aggregate_stuck_at_stage` |
 | Tag-derived lead source | `monthly_consolidated.py` — `derive_tag_lead_source` |
 | Sold properties (Gate 6) | `backend/app/services/sold_properties.py` |
+| Court Alerts (Gate 7) | `backend/app/services/court_alerts.py` |
 
 ---
 
@@ -287,7 +288,7 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 
 **Tag-derived lead source:** For each REISift cohort row, parse `Tags` chronologically. First `(8020) CC/SMS/DM` contact wins; if none, `LIST` when a `List Purchased 8020` tag exists; otherwise `NONE`. This is separate from Salesforce `Lead Source` on the qualified-leads export.
 
-**Open pipeline (non-closing rows):** Cohort rows without `(CLOSED) 8020` tags are evaluated with the same lifecycle stage model, using events on or before the row `Created` date (or cohort period end). Highest stage reached is aggregated into **stuck-at-stage** counts (e.g. ENGAGED but not CONVERTED). Closing-cohort lifecycle and Top Paths remain closing-only.
+**Open pipeline (non-closing rows):** Cohort rows without `(CLOSED) 8020` tags are evaluated with the same lifecycle stage model, using events on or before the row `Created` date (or cohort period end). Highest stage reached is aggregated into **stuck-at-stage** counts (e.g. ENGAGED but not CONVERTED). `PodioSellerLeads` (exact token) counts as ENGAGED presence (pre-Salesforce CRM lead). Closing-cohort lifecycle and Top Paths remain closing-only.
 
 **List combinations:** Only **stackable distress lists** participate (excludes source/import and hygiene lists: 8020 Source List, PODIO, Appraiva, DNC, Dead Deals, Closings App, MLSLI, TBD, Buyers (Investorbase), etc.). A combination requires **≥2** stackable lists on the same row. Minimum row count = **median** of multi-list combo sizes in the cohort (floor 5). Results are grouped under the combo's **primary list** (highest closings within that stack).
 
@@ -347,7 +348,7 @@ Canonical implementation: `backend/app/services/probate.py`.
 
 **External sale anchor:** Sold month is **not** an HHB closing. Events and CRM matches are evaluated **on or before the end of the sold month**.
 
-**Pipeline stages (highest reached):** On list → Marketed (`(8020)` CC/SMS/DM) → Prospect (QL match on/after first list month, or SF engaged status tag) → Opportunity (optional Opportunities file) → Under contract (SF converted) → Closed with HHB (`(CLOSED) 8020`). Why they sold elsewhere is out of scope.
+**Pipeline stages (highest reached):** On list → Marketed (`(8020)` CC/SMS/DM) → Prospect (QL match on/after first list month, SF engaged status tag, or REISift `PodioSellerLeads` presence — pre-Salesforce CRM lead tag, not a Create Date clock) → Opportunity (optional Opportunities file, same ingest as Gate 5) → Under contract (SF converted) → Closed with HHB (`(CLOSED) 8020`). Why they sold elsewhere is out of scope.
 
 **Create Date:** Prospect **lag** only (`months_list_to_prospect`). List purchase tags remain source credit.
 
@@ -356,4 +357,24 @@ Canonical implementation: `backend/app/services/probate.py`.
 **Never marketed:** No `(8020) CC/SMS/DM` tags on/before sold month. Often federal Do Not Call, other DNC, or suppression imports (property bought into REISift but intentionally not reached). Spot-check Tags/Lists for DNC or suppression labels.
 
 Canonical implementation: `backend/app/services/sold_properties.py`.
+
+---
+
+## 21. Gate 7 Court Alerts lifecycle
+
+**Question:** On Court Alerts (foreclosure / court) properties, who delivered the record first (Court Alerts vs 8020), how many months until Salesforce Prospect, what % of the Court Alerts list became Prospects, and what Primary/Secondary Reason for Selling is stated on the Transactions pipeline.
+
+**Universe:** Rows from the Court Alerts CSV/XLSX (pgweb export) with a parseable **address** and **created_on**. List month = first of the month of `created_on`. County comes from `county_name` (optional “County” suffix stripped). This file **is** the universe — not a REISift tag filter.
+
+**REISift join:** Full export indexed by address; Tags are merged when multiple REISift rows share an address. Used for 8020 list-purchase dates and phones. Unmatched Court Alerts rows still count (Court Alerts only).
+
+**8020 list purchase:** Same as Gate 5 — `List Purchased 8020 MM/YYYY`, or `List Purchased MM/YYYY` when a standalone `(8020)` token is on the same row.
+
+**First source** (month granularity): Court Alerts only, Court Alerts first, 8020 first, same month. **That first list is the QL credit** when the row matches a Qualified Lead **on or after** the first-list month.
+
+**Prospect / lag / reasons:** Same rules as Gate 5 probate (Create Date on or after first-list month; lag buckets split by Court Alerts / 8020 / Same month; reasons from Transactions only).
+
+**Export:** Summary, Court Alerts Rows, First Source, Campaign, County, List Month, Lag Buckets, CRM Before First List, Txn reason sheets.
+
+Canonical implementation: `backend/app/services/court_alerts.py`.
 

@@ -37,6 +37,12 @@ import type {
 } from '../types/probate';
 import { asProbateCompleted } from '../types/probate';
 import type {
+  CourtAlertsAnalyzeResponse,
+  CourtAlertsCompletedResponse,
+  CourtAlertsJobStatus,
+} from '../types/courtAlerts';
+import { asCourtAlertsCompleted } from '../types/courtAlerts';
+import type {
   SoldPropertiesAnalyzeResponse,
   SoldPropertiesCompletedResponse,
   SoldPropertiesJobStatus,
@@ -1066,4 +1072,189 @@ export const downloadSoldPropertiesExport = async (jobId: string): Promise<Blob>
 
 export const deleteSoldPropertiesJob = async (jobId: string): Promise<void> => {
   await api.delete(`/sold-properties/${jobId}`);
+};
+
+export async function pollCourtAlertsJob(
+  jobId: string,
+  onProgress?: (pct: number, message: string) => void
+): Promise<CourtAlertsCompletedResponse> {
+  const deadline = Date.now() + 30 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const status = await getCourtAlertsJobStatus(jobId);
+    const serverPct = status.progress ?? 0;
+    const uiPct =
+      serverPct >= 10 ? 90 + Math.round(((serverPct - 10) / 90) * 9) : 90;
+    onProgress?.(Math.min(99, uiPct), status.message || 'Analyzing…');
+    if (status.status === 'completed') {
+      return asCourtAlertsCompleted(await getCourtAlertsJob(jobId));
+    }
+    if (status.status === 'failed') {
+      throw new Error(status.message || 'Analysis failed');
+    }
+    await sleep(1000);
+  }
+  throw new Error('Analysis timed out after 30 minutes');
+}
+
+async function analyzeCourtAlertsDirect(
+  courtAlertsFile: File,
+  reisiftFile: File,
+  qlFile: File,
+  oppsFile?: File,
+  txnFile?: File,
+  onProgress?: (pct: number, message: string) => void
+): Promise<CourtAlertsCompletedResponse> {
+  const form = new FormData();
+  form.append('court_alerts_file', courtAlertsFile);
+  form.append('reisift_file', reisiftFile);
+  form.append('qualified_leads_file', qlFile);
+  if (oppsFile) form.append('opportunities_file', oppsFile);
+  if (txnFile) form.append('transactions_file', txnFile);
+
+  const totalBytes =
+    courtAlertsFile.size +
+    reisiftFile.size +
+    qlFile.size +
+    (oppsFile?.size ?? 0) +
+    (txnFile?.size ?? 0);
+  onProgress?.(0, 'Uploading report files…');
+
+  const response = await api.post<{ job_id: string; status: string; message: string }>(
+    '/court-alerts/analyze',
+    form,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: DIRECT_UPLOAD_TIMEOUT_MS,
+      onUploadProgress: (evt) => {
+        if (!evt.total && !totalBytes) {
+          return;
+        }
+        const loaded = evt.loaded ?? 0;
+        const total = evt.total && evt.total > 0 ? evt.total : totalBytes;
+        const pct = Math.min(85, Math.round((loaded / total) * 85));
+        onProgress?.(pct, 'Uploading report files…');
+      },
+    }
+  );
+  onProgress?.(88, 'Files received — analyzing…');
+  const result = await pollCourtAlertsJob(response.data.job_id, onProgress);
+  onProgress?.(100, 'Done');
+  return result;
+}
+
+async function analyzeCourtAlertsResumable(
+  courtAlertsFile: File,
+  reisiftFile: File,
+  qlFile: File,
+  oppsFile?: File,
+  txnFile?: File,
+  onProgress?: (pct: number, message: string) => void
+): Promise<CourtAlertsCompletedResponse> {
+  onProgress?.(0, `Uploading ${courtAlertsFile.name} (chunked fallback)…`);
+  const caPath = await uploadFileResumable('closings', courtAlertsFile, (pct, msg) => {
+    onProgress?.(Math.round(pct * 0.25), msg);
+  });
+  onProgress?.(25, `Uploading ${reisiftFile.name}…`);
+  const reisiftPath = await uploadFileResumable('reisift', reisiftFile, (pct, msg) => {
+    onProgress?.(25 + Math.round(pct * 0.3), msg);
+  });
+  onProgress?.(55, `Uploading ${qlFile.name}…`);
+  const qlPath = await uploadFileResumable('qualified_leads', qlFile, (pct, msg) => {
+    onProgress?.(55 + Math.round(pct * 0.2), msg);
+  });
+  let oppsPath: string | undefined;
+  if (oppsFile) {
+    onProgress?.(75, `Uploading ${oppsFile.name}…`);
+    oppsPath = await uploadFileResumable('closings', oppsFile, (pct, msg) => {
+      onProgress?.(75 + Math.round(pct * 0.08), msg);
+    });
+  }
+  let txnPath: string | undefined;
+  if (txnFile) {
+    onProgress?.(83, `Uploading ${txnFile.name}…`);
+    txnPath = await uploadFileResumable('closings', txnFile, (pct, msg) => {
+      onProgress?.(83 + Math.round(pct * 0.07), msg);
+    });
+  }
+  onProgress?.(90, 'Starting analysis…');
+  const started = await analyzeCourtAlertsFromPaths(caPath, reisiftPath, qlPath, oppsPath, txnPath);
+  const result = await pollCourtAlertsJob(started.job_id, onProgress);
+  onProgress?.(100, 'Done');
+  return result;
+}
+
+export const analyzeCourtAlerts = async (
+  courtAlertsFile: File,
+  reisiftFile: File,
+  qlFile: File,
+  oppsFile?: File,
+  txnFile?: File,
+  onProgress?: (pct: number, message: string) => void
+): Promise<CourtAlertsCompletedResponse> => {
+  try {
+    return await analyzeCourtAlertsDirect(
+      courtAlertsFile,
+      reisiftFile,
+      qlFile,
+      oppsFile,
+      txnFile,
+      onProgress
+    );
+  } catch (err) {
+    if (!shouldFallbackToResumableUpload(err)) {
+      throw err;
+    }
+    onProgress?.(
+      0,
+      'Direct upload interrupted — retrying in smaller pieces (proxy timeout)…'
+    );
+    return analyzeCourtAlertsResumable(
+      courtAlertsFile,
+      reisiftFile,
+      qlFile,
+      oppsFile,
+      txnFile,
+      onProgress
+    );
+  }
+};
+
+export const analyzeCourtAlertsFromPaths = async (
+  courtAlertsPath: string,
+  reisiftPath: string,
+  qlPath: string,
+  oppsPath?: string,
+  txnPath?: string
+): Promise<{ job_id: string; status: string; message: string }> => {
+  const body: Record<string, unknown> = {
+    court_alerts_path: courtAlertsPath,
+    reisift_path: reisiftPath,
+    qualified_leads_path: qlPath,
+  };
+  if (oppsPath) body.opportunities_path = oppsPath;
+  if (txnPath) body.transactions_path = txnPath;
+  const response = await api.post<{ job_id: string; status: string; message: string }>(
+    '/court-alerts/analyze',
+    body
+  );
+  return response.data;
+};
+
+export const getCourtAlertsJobStatus = async (jobId: string): Promise<CourtAlertsJobStatus> => {
+  const response = await api.get<CourtAlertsJobStatus>(`/court-alerts/${jobId}/status`);
+  return response.data;
+};
+
+export const getCourtAlertsJob = async (jobId: string): Promise<CourtAlertsAnalyzeResponse> => {
+  const response = await api.get<CourtAlertsAnalyzeResponse>(`/court-alerts/${jobId}`);
+  return response.data;
+};
+
+export const downloadCourtAlertsExport = async (jobId: string): Promise<Blob> => {
+  const response = await api.get(`/court-alerts/${jobId}/export`, { responseType: 'blob' });
+  return response.data;
+};
+
+export const deleteCourtAlertsJob = async (jobId: string): Promise<void> => {
+  await api.delete(`/court-alerts/${jobId}`);
 };

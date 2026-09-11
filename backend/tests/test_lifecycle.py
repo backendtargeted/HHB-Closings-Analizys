@@ -45,6 +45,29 @@ class TestParseTags(unittest.TestCase):
         self.assertIn("list_purchase", types)
         self.assertIn("contact", types)
 
+    def test_podio_seller_leads_presence(self):
+        out = parse_tags("PodioSellerLeads")
+        podio = [x for x in out if x["type"] == "podio_crm"]
+        self.assertEqual(len(podio), 1)
+        self.assertEqual(podio[0]["label"], "PodioSellerLeads")
+        self.assertEqual(podio[0]["precision"], "none")
+        self.assertEqual(podio[0]["date"], "")
+
+    def test_podio_seller_leads_case_insensitive(self):
+        out = parse_tags("podiosellerleads")
+        self.assertEqual(len([x for x in out if x["type"] == "podio_crm"]), 1)
+
+    def test_podio_seller_leads_spaced_ignored(self):
+        out = parse_tags("Podio Seller Leads")
+        self.assertEqual([x for x in out if x["type"] == "podio_crm"], [])
+
+    def test_podio_seller_leads_dated(self):
+        out = parse_tags("PodioSellerLeads 3/2024")
+        podio = [x for x in out if x["type"] == "podio_crm"]
+        self.assertEqual(len(podio), 1)
+        self.assertEqual(podio[0]["precision"], "month")
+        self.assertTrue(podio[0]["date"].startswith("2024-03-01"))
+
 
 class TestLifecycle(unittest.TestCase):
     def test_build_events_orders_sf_before_contact_same_month(self):
@@ -78,6 +101,18 @@ class TestLifecycle(unittest.TestCase):
         self.assertIn("CC", path)
         self.assertTrue(path.endswith("CLOSED"))
         self.assertEqual(get_highest_stage(stages), "ENGAGED")
+
+    def test_podio_seller_leads_reaches_engaged(self):
+        from app.services.lifecycle import compute_stage_funnel_open
+
+        raw = parse_tags("List Purchased 8020 1/2025,PodioSellerLeads")
+        ev = build_events(raw)
+        self.assertTrue(any(e.type == "podio_crm" for e in ev))
+        stages = compute_stage_funnel_open(ev, pd.Timestamp("2025-06-30"))
+        self.assertTrue(stages["ENGAGED"]["reached"])
+        self.assertEqual(get_highest_stage(stages), "ENGAGED")
+        path = compute_ordered_path(ev, pd.Timestamp("2025-12-01"))
+        self.assertIn("PODIO", path)
 
     def test_events_before_close(self):
         raw = parse_tags("(8020) CC - 1/2025,(8020) SMS - 3/2025")

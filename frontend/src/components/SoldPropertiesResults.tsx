@@ -172,7 +172,9 @@ const SoldPropertiesResults = ({
           <h3 className="text-sm font-bold text-stone-800">Pipeline depth (highest stage)</h3>
           <p className="text-xs text-stone-500 mt-1 leading-relaxed">
             Each property counted once at its furthest HHB stage. Click a stage to filter the journey
-            table. Closed with HHB ={' '}
+            table. Prospect includes QL, SF engaged tags, or{' '}
+            <code className="bg-stone-100 px-1 rounded">PodioSellerLeads</code> (pre-Salesforce CRM
+            lead). Closed with HHB ={' '}
             <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020</code> tag on REISift — not the
             Opportunities file. Never marketed = no{' '}
             <code className="bg-stone-100 px-1 rounded">(8020) CC/SMS/DM</code> tags on/before sold

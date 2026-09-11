@@ -23,6 +23,7 @@ REPORT_TYPE_MARKETING_RAMP = "marketing_ramp"
 REPORT_TYPE_WEB_LEADS = "web_leads"
 REPORT_TYPE_PROBATE = "probate"
 REPORT_TYPE_SOLD_PROPERTIES = "sold_properties"
+REPORT_TYPE_COURT_ALERTS = "court_alerts"
 
 
 class ReportsDirectoryError(RuntimeError):
@@ -335,6 +336,15 @@ def _summary_for_sold_properties(metrics: Dict[str, Any]) -> str:
     return f"{cohort:,} sold cohort · {marketed:,} marketed · {prospects:,} prospects"
 
 
+def _summary_for_court_alerts(metrics: Dict[str, Any]) -> str:
+    inputs = metrics.get("inputs") or {}
+    match = metrics.get("match") or {}
+    universe = inputs.get("ca_universe", 0)
+    prospects = match.get("prospect_matched", 0)
+    rate = match.get("prospect_rate_pct", 0)
+    return f"{universe:,} Court Alerts · {prospects:,} prospects · {rate}% of list"
+
+
 def list_report_index(reports_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
     """Scan REPORTS_DIR for all saved report JSON files."""
     root = reports_dir or get_reports_dir()
@@ -451,6 +461,23 @@ def list_report_index(reports_dir: Optional[Path] = None) -> List[Dict[str, Any]
                     "date_window_start": metrics.get("date_window_start"),
                     "date_window_end": metrics.get("date_window_end"),
                     "cohort_rows": inputs.get("cohort_rows", 0),
+                    "reisift_matched": match.get("prospect_matched", 0),
+                }
+            )
+        elif rtype == REPORT_TYPE_COURT_ALERTS:
+            metrics = data.get("metrics") or {}
+            inputs = metrics.get("inputs") or {}
+            match = metrics.get("match") or {}
+            items.append(
+                {
+                    "job_id": job_id,
+                    "report_type": rtype,
+                    "status": "completed",
+                    "created_at": created_at,
+                    "summary": _summary_for_court_alerts(metrics),
+                    "date_window_start": metrics.get("date_window_start"),
+                    "date_window_end": metrics.get("date_window_end"),
+                    "cohort_rows": inputs.get("ca_universe", 0),
                     "reisift_matched": match.get("prospect_matched", 0),
                 }
             )
@@ -633,6 +660,41 @@ def load_sold_properties_report(
 ) -> Optional[Dict[str, Any]]:
     root = reports_dir or get_reports_dir()
     path = root / "sold_properties" / f"{job_id}.json"
+    if not path.is_file():
+        return None
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    return {
+        "job_id": job_id,
+        "metrics": data.get("metrics", {}),
+        "created_at": data.get("created_at"),
+    }
+
+
+def save_court_alerts_report(
+    job_id: str,
+    metrics: Dict[str, Any],
+    created_at: Optional[str] = None,
+    reports_dir: Optional[Path] = None,
+) -> Path:
+    root = reports_dir or get_reports_dir()
+    path = root / "court_alerts" / f"{job_id}.json"
+    ts = created_at or datetime.now(timezone.utc).isoformat()
+    payload = {
+        "report_type": REPORT_TYPE_COURT_ALERTS,
+        "job_id": job_id,
+        "created_at": ts,
+        "metrics": metrics,
+    }
+    _write_json(path, payload)
+    return path
+
+
+def load_court_alerts_report(
+    job_id: str, reports_dir: Optional[Path] = None
+) -> Optional[Dict[str, Any]]:
+    root = reports_dir or get_reports_dir()
+    path = root / "court_alerts" / f"{job_id}.json"
     if not path.is_file():
         return None
     with open(path, encoding="utf-8") as fh:

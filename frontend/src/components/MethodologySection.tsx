@@ -53,7 +53,7 @@ const MethodologySection = () => {
             the CRM. Clock, not source. First list is the credit. Campaign / Lead Source is extra.
             Never compare Create Date to list month to relabel credit as already in Salesforce,
             After LIP, or After 8020. Create Date may still filter a report window (Gates 2–4) or
-            compute lag (Gates 3, 5, and 6).
+            compute lag (Gates 3, 5, 6, and 7).
           </p>
           <p>
             <strong className="text-stone-800">Gate 5 probate:</strong> Universe is REISift rows tagged{' '}
@@ -73,7 +73,16 @@ const MethodologySection = () => {
             <code className="bg-stone-100 px-1 rounded">in_sold_properties_full</code> sale month
             (external sale, not an HHB closing). Measures marketing touches and pipeline depth
             (list → marketed → Prospect → Opportunity → under contract → HHB close) on or before
-            that sold month. QL Create Date is Prospect lag only; list tags remain credit.
+            that sold month. QL Create Date is Prospect lag only; list tags remain credit.{' '}
+            <code className="bg-stone-100 px-1 rounded">PodioSellerLeads</code> is a pre-Salesforce
+            CRM lead presence tag (Prospect-equivalent when QL/SF engaged are missing).
+          </p>
+          <p>
+            <strong className="text-stone-800">Gate 7 Court Alerts:</strong> Universe is the Court
+            Alerts CSV (parseable address + created_on). REISift supplies competing{' '}
+            <code className="bg-stone-100 px-1 rounded">List Purchased 8020</code> tags by address.
+            First list is the QL credit when Create Date is on or after that first-list month.
+            Lag buckets split by Court Alerts / 8020 / Same month. Reasons from Transactions only.
           </p>
           <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">
             Full methodology: repo{' '}

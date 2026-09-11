@@ -8,6 +8,7 @@ import {
   getWebLeadsJob,
   getProbateJob,
   getSoldPropertiesJob,
+  getCourtAlertsJob,
   deleteAnalysis,
   deleteQualifiedLeadsJob,
   deleteMonthlyConsolidatedJob,
@@ -15,6 +16,7 @@ import {
   deleteWebLeadsJob,
   deleteProbateJob,
   deleteSoldPropertiesJob,
+  deleteCourtAlertsJob,
 } from '../services/api';
 import type { AnalysisCompleteResponse } from '../types/analysis';
 import type { QualifiedLeadsAnalyzeResponse } from '../types/qualifiedLeads';
@@ -28,6 +30,8 @@ import type { ProbateCompletedResponse } from '../types/probate';
 import { asProbateCompleted } from '../types/probate';
 import type { SoldPropertiesCompletedResponse } from '../types/soldProperties';
 import { asSoldPropertiesCompleted } from '../types/soldProperties';
+import type { CourtAlertsCompletedResponse } from '../types/courtAlerts';
+import { asCourtAlertsCompleted } from '../types/courtAlerts';
 import type { SavedReportItem } from '../types/reports';
 
 interface SavedReportsProps {
@@ -38,6 +42,7 @@ interface SavedReportsProps {
   onOpenWebLeadsReport?: (data: WebLeadsCompletedResponse) => void;
   onOpenProbateReport?: (data: ProbateCompletedResponse) => void;
   onOpenSoldPropertiesReport?: (data: SoldPropertiesCompletedResponse) => void;
+  onOpenCourtAlertsReport?: (data: CourtAlertsCompletedResponse) => void;
   refreshKey?: number;
 }
 
@@ -60,6 +65,7 @@ const typeLabel = (t: SavedReportItem['report_type']) => {
   if (t === 'web_leads') return 'Web leads';
   if (t === 'probate') return 'Probate';
   if (t === 'sold_properties') return 'Sold properties';
+  if (t === 'court_alerts') return 'Court Alerts';
   return 'Attribution (legacy)';
 };
 
@@ -71,6 +77,7 @@ const SavedReports = ({
   onOpenWebLeadsReport,
   onOpenProbateReport,
   onOpenSoldPropertiesReport,
+  onOpenCourtAlertsReport,
   refreshKey = 0,
 }: SavedReportsProps) => {
   const [reports, setReports] = useState<SavedReportItem[]>([]);
@@ -103,7 +110,8 @@ const SavedReports = ({
           r.report_type === 'marketing_ramp' ||
           r.report_type === 'web_leads' ||
           r.report_type === 'probate' ||
-          r.report_type === 'sold_properties'
+          r.report_type === 'sold_properties' ||
+          r.report_type === 'court_alerts'
       );
     }
     return reports.filter(
@@ -112,7 +120,8 @@ const SavedReports = ({
         r.report_type !== 'marketing_ramp' &&
         r.report_type !== 'web_leads' &&
         r.report_type !== 'probate' &&
-        r.report_type !== 'sold_properties'
+        r.report_type !== 'sold_properties' &&
+        r.report_type !== 'court_alerts'
     );
   }, [reports, filter]);
 
@@ -141,6 +150,11 @@ const SavedReports = ({
         onOpenSoldPropertiesReport(data);
       } else if (item.report_type === 'sold_properties') {
         alert('Sold properties report handler not configured');
+      } else if (item.report_type === 'court_alerts' && onOpenCourtAlertsReport) {
+        const data = asCourtAlertsCompleted(await getCourtAlertsJob(item.job_id));
+        onOpenCourtAlertsReport(data);
+      } else if (item.report_type === 'court_alerts') {
+        alert('Court Alerts report handler not configured');
       } else if (item.report_type === 'monthly_consolidated' && onOpenMonthlyConsolidatedReport) {
         const data = asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(item.job_id));
         onOpenMonthlyConsolidatedReport(data);
@@ -169,6 +183,8 @@ const SavedReports = ({
         await deleteProbateJob(item.job_id);
       } else if (item.report_type === 'sold_properties') {
         await deleteSoldPropertiesJob(item.job_id);
+      } else if (item.report_type === 'court_alerts') {
+        await deleteCourtAlertsJob(item.job_id);
       } else if (item.report_type === 'monthly_consolidated') {
         await deleteMonthlyConsolidatedJob(item.job_id);
       } else {
@@ -211,7 +227,7 @@ const SavedReports = ({
       {filteredReports.length === 0 ? (
         <div className="text-stone-500 text-sm">
           {filter === 'monthly'
-            ? 'No monthly workflow reports yet. Run Gate 2–6 to save one.'
+            ? 'No monthly workflow reports yet. Run Gate 2–7 to save one.'
             : 'No reports in this filter.'}
         </div>
       ) : (
@@ -239,6 +255,9 @@ const SavedReports = ({
                     ? ` · ${r.date_window_start} – ${r.date_window_end}`
                     : ''}
                   {r.report_type === 'sold_properties' && r.date_window_start
+                    ? ` · ${r.date_window_start} – ${r.date_window_end}`
+                    : ''}
+                  {r.report_type === 'court_alerts' && r.date_window_start
                     ? ` · ${r.date_window_start} – ${r.date_window_end}`
                     : ''}
                   {r.report_type === 'attribution' && r.as_of ? ` · as-of ${r.as_of}` : ''}

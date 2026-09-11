@@ -247,7 +247,60 @@ def parse_tags(tags_str):
                     })
                 except ValueError:
                     pass
-    
+
+        # Pre-Salesforce CRM lead presence flag (exact token; not "Podio Seller Leads")
+        podio_match = re.match(
+            r'^PodioSellerLeads(?:\s+(\d{1,2})[-\/](\d{4})|\s+(\d{4}-\d{2}-\d{2}))?\s*$',
+            tag,
+            re.I,
+        )
+        if podio_match:
+            month_s, year_s, day_s = podio_match.group(1), podio_match.group(2), podio_match.group(3)
+            if day_s:
+                try:
+                    dt = datetime.strptime(day_s, "%Y-%m-%d")
+                    contacts.append({
+                        'type': 'podio_crm',
+                        'channel': None,
+                        'label': 'PodioSellerLeads',
+                        'precision': 'day',
+                        'date': dt.isoformat(),
+                        'month': dt.month,
+                        'year': dt.year,
+                        'tag': tag,
+                    })
+                except ValueError:
+                    pass
+            elif month_s and year_s:
+                try:
+                    month = int(month_s)
+                    year = int(year_s)
+                    dt = datetime(year, month, 1)
+                    contacts.append({
+                        'type': 'podio_crm',
+                        'channel': None,
+                        'label': 'PodioSellerLeads',
+                        'precision': 'month',
+                        'date': dt.isoformat(),
+                        'month': month,
+                        'year': year,
+                        'tag': tag,
+                    })
+                except ValueError:
+                    pass
+            else:
+                # Undated presence — no sold-month cutoff; lifecycle uses epoch sort date
+                contacts.append({
+                    'type': 'podio_crm',
+                    'channel': None,
+                    'label': 'PodioSellerLeads',
+                    'precision': 'none',
+                    'date': '',
+                    'month': None,
+                    'year': None,
+                    'tag': tag,
+                })
+
     return _dedupe_parsed_tag_events(contacts)
 
 

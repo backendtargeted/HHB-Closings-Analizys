@@ -36,13 +36,15 @@ def test_parse_sold_month_formats():
 
 def test_cohort_excludes_blank_and_unparseable(sp_paths):
     result = analyze(sp_paths["reisift"], sp_paths["ql"])
-    # 100 Main, 200 Oak, 400 Elm — not 300 (blank) or 500 (unparseable)
-    assert result.cohort_rows == 3
+    # 100 Main, 200 Oak, 400 Elm, 600 Willow, 700 Cedar — not 300 (blank) or 500 (unparseable)
+    assert result.cohort_rows == 5
     assert result.sold_month_unparseable == 1
     keys = {r.address_key for r in result.rows}
     assert any("100 main" in k for k in keys)
     assert any("200 oak" in k for k in keys)
     assert any("400 elm" in k for k in keys)
+    assert any("600 willow" in k for k in keys)
+    assert any("700 cedar" in k for k in keys)
     assert not any("300 pine" in k for k in keys)
 
 
@@ -67,6 +69,33 @@ def test_prospect_match_from_ql(sp_paths):
     oak = by_street["200 oak ave"]
     assert oak.prospect_matched is False
     assert oak.pipeline_stage == "MARKETED"
+
+
+def test_prospect_from_podio_seller_leads(sp_paths):
+    result = analyze(sp_paths["reisift"], sp_paths["ql"])
+    by_street = {r.street.lower(): r for r in result.rows}
+    willow = by_street["600 willow ln"]
+    assert willow.prospect_matched is True
+    assert willow.prospect_source == "podio"
+    assert willow.pipeline_stage == "PROSPECT"
+    # Spaced "Podio Seller Leads" must not count
+    cedar = by_street["700 cedar ct"]
+    assert cedar.prospect_matched is False
+    assert cedar.pipeline_stage == "ON_LIST"
+
+
+def test_podio_prospect_plus_opportunity(sp_paths):
+    result = analyze(
+        sp_paths["reisift"],
+        sp_paths["ql"],
+        opportunities_path=sp_paths["opps"],
+    )
+    by_street = {r.street.lower(): r for r in result.rows}
+    willow = by_street["600 willow ln"]
+    assert willow.prospect_matched is True
+    assert willow.prospect_source == "podio"
+    assert willow.opp_matched is True
+    assert willow.pipeline_stage == "OPPORTUNITY"
 
 
 def test_under_contract_and_opportunity(sp_paths):

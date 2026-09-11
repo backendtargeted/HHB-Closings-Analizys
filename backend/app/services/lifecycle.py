@@ -87,12 +87,27 @@ def _type_sort_rank(etype: str) -> int:
     order = {
         "sf_updated": 0,
         "sf_status": 1,
+        "podio_crm": 2,
         "list_purchase": 10,
         "skip_trace": 11,
         "contact": 20,
         "closing": 30,
     }
     return order.get(etype, 50)
+
+
+# Undated PodioSellerLeads presence sorts early so it always counts as on/before any reference.
+_PODIO_PRESENCE_SORT_DT = datetime(1970, 1, 1)
+_PODIO_PRESENCE_DATE_ISO = "1970-01-01T00:00:00"
+
+
+def _is_engaged_event(e: Event) -> bool:
+    """SF engaged statuses or PodioSellerLeads presence (pre-Salesforce CRM lead)."""
+    if e.type == "podio_crm":
+        return True
+    if e.type in ("sf_updated", "sf_status"):
+        return bool(e.label) and normalize_status(e.label) in ENGAGED_LABELS
+    return False
 
 
 def build_events(parsed: List[Dict[str, Any]]) -> List[Event]:
@@ -110,16 +125,22 @@ def build_events(parsed: List[Dict[str, Any]]) -> List[Event]:
             "closing",
             "sf_updated",
             "sf_status",
+            "podio_crm",
         ):
             continue
-        date_iso = str(p.get("date", ""))
-        if not date_iso:
-            continue
-        try:
-            sort_dt = _parse_iso(date_iso)
-        except ValueError:
-            continue
+        date_iso = str(p.get("date", "") or "")
         precision = str(p.get("precision", "month"))
+        if etype == "podio_crm" and not date_iso:
+            date_iso = _PODIO_PRESENCE_DATE_ISO
+            precision = "none"
+            sort_dt = _PODIO_PRESENCE_SORT_DT
+        else:
+            if not date_iso:
+                continue
+            try:
+                sort_dt = _parse_iso(date_iso)
+            except ValueError:
+                continue
         label = str(p.get("label", "") or p.get("channel", "") or "")
         tag = str(p.get("tag", ""))
         events.append(
@@ -184,16 +205,11 @@ def compute_stage_funnel(
     researched = first_date(lambda e: e.type == "skip_trace")
     first_contact = first_date(lambda e: e.type == "contact")
 
-    def _sf_label_norm(e: Event) -> str:
-        return normalize_status(e.label) if e.label else ""
-
-    engaged = first_date(
-        lambda e: e.type in ("sf_updated", "sf_status")
-        and _sf_label_norm(e) in ENGAGED_LABELS
-    )
+    engaged = first_date(_is_engaged_event)
     converted = first_date(
         lambda e: e.type in ("sf_updated", "sf_status")
-        and _sf_label_norm(e) in CONVERTED_LABELS
+        and e.label
+        and normalize_status(e.label) in CONVERTED_LABELS
     )
 
     stages = {
@@ -227,29 +243,25 @@ def compute_stage_funnel_open(
                 return e.date_iso
         return None
 
-    def _sf_label_norm(e: Event) -> str:
-        return normalize_status(e.label) if e.label else ""
-
     stages = {
         "ACQUIRED": {"reached": first_date(lambda e: e.type == "list_purchase") is not None, "date": first_date(lambda e: e.type == "list_purchase")},
         "RESEARCHED": {"reached": first_date(lambda e: e.type == "skip_trace") is not None, "date": first_date(lambda e: e.type == "skip_trace")},
         "FIRST_CONTACTED": {"reached": first_date(lambda e: e.type == "contact") is not None, "date": first_date(lambda e: e.type == "contact")},
         "ENGAGED": {
-            "reached": first_date(
-                lambda e: e.type in ("sf_updated", "sf_status") and _sf_label_norm(e) in ENGAGED_LABELS
-            )
-            is not None,
-            "date": first_date(
-                lambda e: e.type in ("sf_updated", "sf_status") and _sf_label_norm(e) in ENGAGED_LABELS
-            ),
+            "reached": first_date(_is_engaged_event) is not None,
+            "date": first_date(_is_engaged_event),
         },
         "CONVERTED": {
             "reached": first_date(
-                lambda e: e.type in ("sf_updated", "sf_status") and _sf_label_norm(e) in CONVERTED_LABELS
+                lambda e: e.type in ("sf_updated", "sf_status")
+                and e.label
+                and normalize_status(e.label) in CONVERTED_LABELS
             )
             is not None,
             "date": first_date(
-                lambda e: e.type in ("sf_updated", "sf_status") and _sf_label_norm(e) in CONVERTED_LABELS
+                lambda e: e.type in ("sf_updated", "sf_status")
+                and e.label
+                and normalize_status(e.label) in CONVERTED_LABELS
             ),
         },
         "CLOSED": {"reached": False, "date": None},
@@ -295,6 +307,8 @@ def compute_ordered_path(events: List[Event], closed_date: pd.Timestamp) -> str:
         elif e.type in ("sf_updated", "sf_status"):
             slug = re.sub(r"\s+", "_", (e.label or "sf").lower())[:40]
             t = f"SF:{slug}"
+        elif e.type == "podio_crm":
+            t = "PODIO"
         elif e.type == "closing":
             t = "CLOSED_TAG"
         else:
@@ -317,15 +331,7 @@ def compute_first_touch(
     first_touch_date = first_contact_ev.date_iso if first_contact_ev else None
 
     list_ev = next((e for e in before if e.type == "list_purchase"), None)
-    engaged_ev = next(
-        (
-            e
-            for e in before
-            if e.type in ("sf_updated", "sf_status")
-            and normalize_status(e.label) in ENGAGED_LABELS
-        ),
-        None,
-    )
+    engaged_ev = next((e for e in before if _is_engaged_event(e)), None)
 
     def _days(a: Optional[datetime], b: Optional[datetime]) -> Optional[int]:
         if a is None or b is None:

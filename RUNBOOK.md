@@ -207,15 +207,45 @@ Each Gate 3 analyze runs **marketing ramp** and **monthly consolidated** in para
 |------|----------|------|
 | **REISift export** with `in_sold_properties_full` | Yes | Cohort + Tags history |
 | **Salesforce Total Qualified Leads** | Yes | Prospect match (Create Date = clock) |
-| **Opportunities** | Optional | Opportunity stage |
+| **Opportunities** | Optional | Opportunity stage (same as Gate 5 Probate) |
+
+`PodioSellerLeads` on REISift Tags = pre-Salesforce CRM lead presence → counts as Prospect when QL/SF engaged are missing (not a verified SF Create Date).
 
 ### Operator checklist
 
 1. Export REISift with the sold-properties column populated for matched addresses.
-2. Upload REISift + Total Qualified Leads (+ Opportunities if available).
+2. Upload REISift + Total Qualified Leads (+ Opportunities if measuring past Prospect).
 3. Review marketed %, pipeline depth, and journey rows; download XLSX (Summary + Journey + By Sold Month).
 
 **Execution:** Async job (202 + poll status), same pattern as Gate 5 probate. Persists under `{REPORTS_DIR}/sold_properties/{job_id}.json`.
+
+---
+
+## Court Alerts lifecycle (Gate 7)
+
+**When:** Nassau/Suffolk (etc.) foreclosure Court Alerts export — compare Court Alerts list month vs 8020 on the matched REISift address, time to Prospect, reason to sell.
+
+**UI:** Docker `http://localhost:3300` → **Court Alerts lifecycle** (Gate 7 tab).
+
+**Implementation:** `backend/app/services/court_alerts.py`, API prefix `/api/court-alerts`.
+
+### Inputs
+
+| File | Required | Role |
+|------|----------|------|
+| **Court Alerts** CSV/XLSX (pgweb) | Yes | Universe (`address` + `created_on`) |
+| **REISift export** | Yes | 8020 tags + phones by address |
+| **Salesforce Total Qualified Leads** | Yes | Prospect match (Create Date = clock) |
+| **Opportunities** | Optional | Opp funnel |
+| **Transactions pipeline** | Optional | Primary/Secondary Reason for Selling |
+
+### Operator checklist
+
+1. Export Court Alerts from pgweb (address, city, state, zip_code, county_name, created_on, …).
+2. Upload Court Alerts + REISift + Total Qualified Leads (+ Opps / Transactions if available).
+3. Review first-source split, lag buckets, county/cohort tables; download XLSX.
+
+**Execution:** Async job (202 + poll status), same pattern as Gate 5. Persists under `{REPORTS_DIR}/court_alerts/{job_id}.json`.
 
 ---
 
