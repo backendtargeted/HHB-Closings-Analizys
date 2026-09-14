@@ -17,8 +17,13 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from .marketing_mapper import find_column_name, smart_read_csv
-from .monthly_consolidated import REISIFT_ADDR, TAGS_CANDIDATES, _col_val, load_reisift_file
+from .marketing_mapper import find_column_name, read_csv_header, resolve_usecols, sanitize_phone, smart_read_csv
+from .monthly_consolidated import (
+    REISIFT_ADDR,
+    REISIFT_INDEX_COLUMN_GROUPS,
+    TAGS_CANDIDATES,
+    iter_reisift_chunks,
+)
 from .probate import (
     CREATE_DATE_CANDIDATES,
     LAG_BUCKETS,
@@ -42,7 +47,6 @@ from .probate import (
     _mean_median,
     _parse_ts,
     _pct,
-    _phones_from_row,
     _ym_label,
     lag_bucket_label,
     months_between,
@@ -141,37 +145,94 @@ def _normalize_county(raw: object) -> str:
 def load_court_alerts_file(file_path: str) -> pd.DataFrame:
     path = Path(file_path)
     suffix = path.suffix.lower()
+    ca_groups: List[List[str]] = [
+        CA_ADDR["street"],
+        CA_ADDR["city"],
+        CA_ADDR["state"],
+        CA_ADDR["zip"],
+        CA_CREATED_CANDIDATES,
+        CA_COUNTY_CANDIDATES,
+        ["index_number", "Index Number", "index"],
+        ["action_type", "Action Type", "action"],
+        ["current_status", "Current Status", "status"],
+    ]
     if suffix in (".xlsx", ".xls"):
         try:
+            header = [str(c) for c in pd.read_excel(file_path, engine="openpyxl", nrows=0).columns]
+            usecols = resolve_usecols(header, ca_groups)
+            if usecols:
+                return pd.read_excel(file_path, engine="openpyxl", usecols=usecols, dtype=str)
             return pd.read_excel(file_path, engine="openpyxl")
         except ImportError as exc:
             raise ValueError("Reading Excel requires openpyxl: pip install openpyxl") from exc
     if suffix == ".csv" or suffix == "":
+        usecols = resolve_usecols(read_csv_header(file_path), ca_groups)
+        if usecols:
+            return smart_read_csv(file_path, usecols=usecols)
         return smart_read_csv(file_path)
     raise ValueError(f"Unsupported file type: {suffix or '(none)'}. Use .csv or .xlsx")
 
 
-def _build_reisift_index(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
-    """Address key → merged Tags + phones (full-file REISift)."""
+def _merge_reisift_chunk_into_index(index: Dict[str, Dict[str, Any]], df: pd.DataFrame) -> None:
+    """Merge one REISift chunk into address → tags/phones index (no iterrows)."""
     tags_col = find_column_name(df, TAGS_CANDIDATES)
     if not tags_col:
         raise ValueError("Missing required column: Tags")
-    index: Dict[str, Dict[str, Any]] = {}
-    for _, row in df.iterrows():
-        street = _col_val(row, REISIFT_ADDR["street"])
-        city = _col_val(row, REISIFT_ADDR["city"])
-        state = _col_val(row, REISIFT_ADDR["state"])
-        zip_code = _col_val(row, REISIFT_ADDR["zip"])
+    street_col = find_column_name(df, REISIFT_ADDR["street"])
+    city_col = find_column_name(df, REISIFT_ADDR["city"])
+    state_col = find_column_name(df, REISIFT_ADDR["state"])
+    zip_col = find_column_name(df, REISIFT_ADDR["zip"])
+    phone_cols: List[str] = []
+    seen_phone_cols: set[str] = set()
+    for name in REISIFT_PHONE_CANDIDATES:
+        col = find_column_name(df, [name])
+        if col and col not in seen_phone_cols:
+            seen_phone_cols.add(col)
+            phone_cols.append(col)
+
+    def _col_series(col: Optional[str]) -> List[str]:
+        if not col or col not in df.columns:
+            return [""] * len(df)
+        return [str(v).strip() if v is not None else "" for v in df[col].tolist()]
+
+    streets = _col_series(street_col)
+    cities = _col_series(city_col)
+    states = _col_series(state_col)
+    zips = _col_series(zip_col)
+    tags_list = _col_series(tags_col)
+    phone_lists = [_col_series(c) for c in phone_cols]
+    n = len(df)
+    for i in range(n):
+        street = streets[i]
+        city = cities[i]
+        state = states[i]
+        zip_code = zips[i]
+        if street.lower() == "nan":
+            street = ""
+        if city.lower() == "nan":
+            city = ""
+        if state.lower() == "nan":
+            state = ""
+        if zip_code.lower() == "nan":
+            zip_code = ""
         key = _address_key_from_parts(street, city, state, zip_code)
         if not key or key == "|||":
             continue
-        tags_part = str(row[tags_col]).strip() if pd.notna(row[tags_col]) else ""
-        phones = _phones_from_row(row, REISIFT_PHONE_CANDIDATES)
+        tags_part = tags_list[i]
+        if tags_part.lower() == "nan":
+            tags_part = ""
+        phones: List[str] = []
+        seen_phones: set[str] = set()
+        for phone_vals in phone_lists:
+            phone = sanitize_phone(phone_vals[i])
+            if len(phone) >= 10 and phone not in seen_phones:
+                seen_phones.add(phone)
+                phones.append(phone)
         entry = index.get(key)
         if entry is None:
             index[key] = {
                 "tags": tags_part,
-                "phones": list(phones),
+                "phones": phones,
                 "street": street,
                 "city": city,
                 "state": state,
@@ -189,7 +250,23 @@ def _build_reisift_index(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
             for fld, val in (("street", street), ("city", city), ("state", state), ("zip", zip_code)):
                 if not entry.get(fld) and val:
                     entry[fld] = val
+
+
+def _build_reisift_index(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
+    """Address key → merged Tags + phones (full-file REISift)."""
+    index: Dict[str, Dict[str, Any]] = {}
+    _merge_reisift_chunk_into_index(index, df)
     return index
+
+
+def build_reisift_index_from_path(file_path: str) -> Tuple[Dict[str, Dict[str, Any]], int]:
+    """Chunked/pruned REISift load → address index + row count."""
+    index: Dict[str, Dict[str, Any]] = {}
+    rows = 0
+    for chunk in iter_reisift_chunks(file_path, column_groups=REISIFT_INDEX_COLUMN_GROUPS):
+        rows += len(chunk)
+        _merge_reisift_chunk_into_index(index, chunk)
+    return index, rows
 
 
 def _lag_buckets_have_split(lag_buckets: List[Dict[str, Any]]) -> bool:
@@ -515,8 +592,7 @@ def analyze(
     status_col = find_column_name(ca_df, ["current_status", "Current Status", "status"])
 
     report(14, "Loading REISift export…")
-    reisift_df = load_reisift_file(reisift_path)
-    reisift_index = _build_reisift_index(reisift_df)
+    reisift_index, reisift_rows_ingested = build_reisift_index_from_path(reisift_path)
 
     report(22, "Loading Salesforce qualified leads…")
     ql_df = _load_crm_file(ql_path)
@@ -791,7 +867,7 @@ def analyze(
         date_window_start=window_start,
         date_window_end=window_end,
         court_alerts_rows_ingested=total,
-        reisift_rows_ingested=len(reisift_df),
+        reisift_rows_ingested=reisift_rows_ingested,
         ca_universe=universe,
         prospect_matched=prospect_n,
         prospect_rate_pct=_pct(prospect_n, universe),

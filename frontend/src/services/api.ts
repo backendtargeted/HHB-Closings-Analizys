@@ -104,6 +104,7 @@ function pathFromCompleteResponse(
   if (kind === 'closings') return finalized.closings_path ?? finalized.excel_path ?? finalized.path;
   if (kind === 'reisift') return finalized.reisift_path ?? finalized.path;
   if (kind === 'qualified_leads') return finalized.qualified_leads_path ?? finalized.path;
+  if (kind === 'tabular') return finalized.tabular_path ?? finalized.path;
   return finalized.path;
 }
 
@@ -850,14 +851,14 @@ async function analyzeProbateResumable(
   let oppsPath: string | undefined;
   if (oppsFile) {
     onProgress?.(70, `Uploading ${oppsFile.name}…`);
-    oppsPath = await uploadFileResumable('closings', oppsFile, (pct, msg) => {
+    oppsPath = await uploadFileResumable('tabular', oppsFile, (pct, msg) => {
       onProgress?.(70 + Math.round(pct * 0.1), msg);
     });
   }
   let txnPath: string | undefined;
   if (txnFile) {
     onProgress?.(80, `Uploading ${txnFile.name}…`);
-    txnPath = await uploadFileResumable('closings', txnFile, (pct, msg) => {
+    txnPath = await uploadFileResumable('tabular', txnFile, (pct, msg) => {
       onProgress?.(80 + Math.round(pct * 0.1), msg);
     });
   }
@@ -1003,7 +1004,7 @@ async function analyzeSoldPropertiesResumable(
   let oppsPath: string | undefined;
   if (oppsFile) {
     onProgress?.(80, `Uploading ${oppsFile.name}…`);
-    oppsPath = await uploadFileResumable('closings', oppsFile, (pct, msg) => {
+    oppsPath = await uploadFileResumable('tabular', oppsFile, (pct, msg) => {
       onProgress?.(80 + Math.round(pct * 0.1), msg);
     });
   }
@@ -1151,7 +1152,7 @@ async function analyzeCourtAlertsResumable(
   onProgress?: (pct: number, message: string) => void
 ): Promise<CourtAlertsCompletedResponse> {
   onProgress?.(0, `Uploading ${courtAlertsFile.name} (chunked fallback)…`);
-  const caPath = await uploadFileResumable('closings', courtAlertsFile, (pct, msg) => {
+  const caPath = await uploadFileResumable('tabular', courtAlertsFile, (pct, msg) => {
     onProgress?.(Math.round(pct * 0.25), msg);
   });
   onProgress?.(25, `Uploading ${reisiftFile.name}…`);
@@ -1165,14 +1166,14 @@ async function analyzeCourtAlertsResumable(
   let oppsPath: string | undefined;
   if (oppsFile) {
     onProgress?.(75, `Uploading ${oppsFile.name}…`);
-    oppsPath = await uploadFileResumable('closings', oppsFile, (pct, msg) => {
+    oppsPath = await uploadFileResumable('tabular', oppsFile, (pct, msg) => {
       onProgress?.(75 + Math.round(pct * 0.08), msg);
     });
   }
   let txnPath: string | undefined;
   if (txnFile) {
     onProgress?.(83, `Uploading ${txnFile.name}…`);
-    txnPath = await uploadFileResumable('closings', txnFile, (pct, msg) => {
+    txnPath = await uploadFileResumable('tabular', txnFile, (pct, msg) => {
       onProgress?.(83 + Math.round(pct * 0.07), msg);
     });
   }

@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -129,13 +129,88 @@ CRM_STATUS_TO_PHONE_STATUS_TAG: Dict[str, Tuple[str, str]] = {
 # Helpers
 # ---------------------------------------------------------------------------
 
-def smart_read_csv(file_path: str) -> pd.DataFrame:
-    """Read CSV with robust encoding fallback."""
+def read_csv_header(file_path: str) -> List[str]:
+    """Read only the CSV header row (encoding fallback). Does not load the body."""
+    import csv
+
     encodings = ["utf-8", "utf-8-sig", "cp1252", "latin1", "iso-8859-1"]
     last_error = None
     for enc in encodings:
         try:
-            return pd.read_csv(file_path, encoding=enc, low_memory=False)
+            with open(file_path, "r", encoding=enc, newline="") as fh:
+                row = next(csv.reader(fh))
+            return [str(c) for c in row]
+        except Exception as exc:
+            last_error = exc
+    raise ValueError(f"Could not read CSV header: {file_path}. Last error: {last_error}")
+
+
+def find_column_in_names(columns: List[str], candidates: List[str]) -> Optional[str]:
+    """Find first matching column name from candidates (case-insensitive)."""
+    normalized = {str(col).lower(): str(col) for col in columns}
+    for name in candidates:
+        hit = normalized.get(str(name).lower())
+        if hit is not None:
+            return hit
+    return None
+
+
+def resolve_usecols(
+    columns: List[str],
+    candidate_groups: List[List[str]],
+) -> List[str]:
+    """
+    Pick present columns from candidate groups (order preserved, de-duplicated).
+    Groups that match nothing are skipped.
+    """
+    seen: set[str] = set()
+    selected: List[str] = []
+    for group in candidate_groups:
+        hit = find_column_in_names(columns, group)
+        if hit and hit not in seen:
+            seen.add(hit)
+            selected.append(hit)
+    return selected
+
+
+def smart_read_csv(
+    file_path: str,
+    *,
+    usecols: Optional[List[str]] = None,
+    dtype: Optional[Any] = None,
+    chunksize: Optional[int] = None,
+) -> Any:
+    """
+    Read CSV with robust encoding fallback.
+
+    Pass ``usecols`` to load only needed columns (critical for large REISift exports).
+    When ``dtype`` is omitted and ``usecols`` is set, columns are read as strings to
+    skip expensive type inference. Pass ``chunksize`` to get a TextFileReader.
+    """
+    encodings = ["utf-8", "utf-8-sig", "cp1252", "latin1", "iso-8859-1"]
+    last_error = None
+    read_kwargs: Dict[str, Any] = {}
+    if usecols is not None:
+        read_kwargs["usecols"] = usecols
+        if dtype is None:
+            read_kwargs["dtype"] = str
+        else:
+            read_kwargs["dtype"] = dtype
+        # Avoid turning blanks into NaN/"nan" when everything is string.
+        read_kwargs["keep_default_na"] = False
+        read_kwargs["na_filter"] = False
+        # With explicit dtypes, low_memory is unnecessary and slower.
+        read_kwargs["low_memory"] = True
+    else:
+        if dtype is not None:
+            read_kwargs["dtype"] = dtype
+        read_kwargs["low_memory"] = False
+    if chunksize is not None:
+        read_kwargs["chunksize"] = int(chunksize)
+
+    for enc in encodings:
+        try:
+            return pd.read_csv(file_path, encoding=enc, **read_kwargs)
         except Exception as exc:
             last_error = exc
     raise ValueError(f"Could not read CSV file: {file_path}. Last error: {last_error}")

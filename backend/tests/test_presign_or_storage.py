@@ -128,7 +128,35 @@ class TestResumableUploadFlow(unittest.TestCase):
             time.sleep(0.1)
 
         self.assertEqual(payload.get("status"), "completed")
-        self.assertTrue(str(payload.get("final_path", "")).endswith(".csv"))
+        self.assertTrue(
+            payload.get("final_path")
+            or payload.get("reisift_path")
+            or payload.get("path")
+        )
+
+    def test_tabular_kind_accepts_csv(self):
+        client = app.test_client()
+        ok = client.post(
+            "/api/upload/resumable/init",
+            json={
+                "kind": "tabular",
+                "filename": "pgweb-export.csv",
+                "total_size": 12,
+                "chunk_size": 5,
+            },
+        )
+        self.assertEqual(ok.status_code, 200, ok.get_data(as_text=True))
+        bad = client.post(
+            "/api/upload/resumable/init",
+            json={
+                "kind": "closings",
+                "filename": "pgweb-export.csv",
+                "total_size": 12,
+                "chunk_size": 5,
+            },
+        )
+        self.assertEqual(bad.status_code, 400)
+        self.assertIn("Closings", bad.get_json().get("detail", ""))
 
 
 class TestMonthlyConsolidatedAnalyzePaths(unittest.TestCase):

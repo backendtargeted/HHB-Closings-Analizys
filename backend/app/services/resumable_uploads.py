@@ -71,12 +71,13 @@ def ensure_dirs() -> None:
 
 
 _MCR_EXTENSIONS = (".csv", ".xlsx", ".xls")
+_TABULAR_KINDS = ("reisift", "qualified_leads", "tabular")
 
 
 def _validate_kind(kind: str) -> str:
     k = (kind or "").strip().lower()
-    if k not in ("csv", "closings", "reisift", "qualified_leads"):
-        raise ValueError("kind must be csv, closings, reisift, or qualified_leads")
+    if k not in ("csv", "closings", "reisift", "qualified_leads", "tabular"):
+        raise ValueError("kind must be csv, closings, reisift, qualified_leads, or tabular")
     return k
 
 
@@ -87,9 +88,7 @@ def _validate_filename(kind: str, filename: str) -> str:
         raise ValueError("CSV upload filename must end with .csv")
     if kind == "closings" and not (lowered.endswith(".xlsx") or lowered.endswith(".xls")):
         raise ValueError("Closings upload filename must end with .xlsx or .xls")
-    if kind in ("reisift", "qualified_leads") and not any(
-        lowered.endswith(ext) for ext in _MCR_EXTENSIONS
-    ):
+    if kind in _TABULAR_KINDS and not any(lowered.endswith(ext) for ext in _MCR_EXTENSIONS):
         raise ValueError(f"{kind} upload filename must end with .csv, .xlsx, or .xls")
     return safe
 

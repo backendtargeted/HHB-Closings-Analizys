@@ -121,7 +121,7 @@ export interface UploadCapabilitiesResponse {
   };
 }
 
-export type ResumableUploadKind = 'csv' | 'closings' | 'reisift' | 'qualified_leads';
+export type ResumableUploadKind = 'csv' | 'closings' | 'reisift' | 'qualified_leads' | 'tabular';
 
 export interface ResumableUploadInitResponse {
   upload_id: string;
@@ -157,6 +157,7 @@ export interface ResumableUploadCompleteResponse {
   excel_path?: string;
   reisift_path?: string;
   qualified_leads_path?: string;
+  tabular_path?: string;
 }
 
 /** Body for POST /api/analyze — csv_path required and optional closings_path. */

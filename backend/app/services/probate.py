@@ -20,6 +20,7 @@ import pandas as pd
 from .marketing_mapper import find_column_name, make_address_key, sanitize_phone
 from .monthly_consolidated import (
     REISIFT_ADDR,
+    REISIFT_INDEX_COLUMN_GROUPS,
     TAGS_CANDIDATES,
     _col_val,
     load_reisift_file,
@@ -884,7 +885,7 @@ def analyze(
 
     warnings: List[str] = []
     report(8, "Loading REISift export…")
-    reisift_df = load_reisift_file(reisift_path)
+    reisift_df = load_reisift_file(reisift_path, column_groups=REISIFT_INDEX_COLUMN_GROUPS)
     tags_col = find_column_name(reisift_df, TAGS_CANDIDATES)
     if not tags_col:
         raise ValueError("Missing required column: Tags")

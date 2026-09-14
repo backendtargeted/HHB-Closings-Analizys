@@ -276,6 +276,8 @@ def upload_resumable_complete(upload_id: str):
         payload["reisift_path"] = final_path
     elif manifest["kind"] == "qualified_leads":
         payload["qualified_leads_path"] = final_path
+    elif manifest["kind"] == "tabular":
+        payload["tabular_path"] = final_path
     return jsonify(payload)
 
 

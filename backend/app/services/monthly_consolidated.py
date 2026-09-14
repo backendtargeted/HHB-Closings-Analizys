@@ -32,7 +32,13 @@ from .lifecycle import (
     compute_stage_funnel_open,
     get_highest_stage,
 )
-from .marketing_mapper import find_column_name, make_address_key, smart_read_csv
+from .marketing_mapper import (
+    find_column_name,
+    make_address_key,
+    read_csv_header,
+    resolve_usecols,
+    smart_read_csv,
+)
 from .qualified_leads import (
     compute_qualified_leads_metrics,
     load_qualified_leads_file,
@@ -51,6 +57,51 @@ REISIFT_ADDR = {
     "state": ["Property state", "Property State", "State"],
     "zip": ["Property zip", "Property zip5", "Property Zip", "Zip"],
 }
+
+REISIFT_PHONE_CANDIDATES = [
+    "Phone 1",
+    "Phone 2",
+    "Phone 3",
+    "Phone",
+    "Mobile",
+    "Mobile Phone",
+]
+
+# Extra columns used by sold-properties / related REISift consumers.
+REISIFT_SOLD_MONTH_CANDIDATES = [
+    "in_sold_properties_full",
+    "In Sold Properties Full",
+    "in_sold_properties",
+    "Sold Month",
+    "sold_month",
+    "External Sold Month",
+    "Sold",
+]
+
+# Only these groups are loaded from large REISift CSVs (drops mailing/name fluff).
+DEFAULT_REISIFT_COLUMN_GROUPS: List[List[str]] = [
+    TAGS_CANDIDATES,
+    LISTS_CANDIDATES,
+    CREATED_CANDIDATES,
+    REISIFT_ADDR["street"],
+    REISIFT_ADDR["city"],
+    REISIFT_ADDR["state"],
+    REISIFT_ADDR["zip"],
+    REISIFT_PHONE_CANDIDATES,
+    REISIFT_SOLD_MONTH_CANDIDATES,
+]
+
+# Court Alerts / Probate address index needs tags + property address (+ phones if present).
+REISIFT_INDEX_COLUMN_GROUPS: List[List[str]] = [
+    TAGS_CANDIDATES,
+    REISIFT_ADDR["street"],
+    REISIFT_ADDR["city"],
+    REISIFT_ADDR["state"],
+    REISIFT_ADDR["zip"],
+    REISIFT_PHONE_CANDIDATES,
+]
+
+REISIFT_CSV_CHUNKSIZE = 100_000
 
 SF_ADDR = {
     "street": ["Street", "Mailing address", "Property address", "Property Address"],
@@ -121,14 +172,70 @@ def parse_report_month(value: str) -> Tuple[date, date]:
     return date(year, month, 1), date(year, month, last_day)
 
 
-def load_reisift_file(file_path: str) -> pd.DataFrame:
+def _header_columns(file_path: str) -> List[str]:
     path = Path(file_path)
+    suffix = path.suffix.lower()
+    if suffix in (".xlsx", ".xls"):
+        try:
+            return [str(c) for c in pd.read_excel(file_path, engine="openpyxl", nrows=0).columns]
+        except ImportError as exc:
+            raise ValueError("Reading Excel requires openpyxl") from exc
+    return read_csv_header(file_path)
+
+
+def resolve_reisift_usecols(
+    file_path: str,
+    column_groups: Optional[List[List[str]]] = None,
+) -> List[str]:
+    """Resolve present column names for a pruned REISift load."""
+    groups = column_groups or DEFAULT_REISIFT_COLUMN_GROUPS
+    return resolve_usecols(_header_columns(file_path), groups)
+
+
+def load_reisift_file(
+    file_path: str,
+    column_groups: Optional[List[List[str]]] = None,
+) -> pd.DataFrame:
+    """
+    Load a REISift export, keeping only columns needed for analysis.
+
+    Large CSVs (~1GB) drop unused mailing/name columns via header probe + usecols.
+    """
+    path = Path(file_path)
+    groups = column_groups or DEFAULT_REISIFT_COLUMN_GROUPS
+    usecols = resolve_reisift_usecols(file_path, groups)
     if path.suffix.lower() in (".xlsx", ".xls"):
         try:
+            if usecols:
+                return pd.read_excel(file_path, engine="openpyxl", usecols=usecols, dtype=str)
             return pd.read_excel(file_path, engine="openpyxl")
         except ImportError as exc:
             raise ValueError("Reading Excel requires openpyxl") from exc
+    if usecols:
+        return smart_read_csv(file_path, usecols=usecols)
     return smart_read_csv(file_path)
+
+
+def iter_reisift_chunks(
+    file_path: str,
+    column_groups: Optional[List[List[str]]] = None,
+    chunksize: int = REISIFT_CSV_CHUNKSIZE,
+):
+    """
+    Yield pruned REISift DataFrame chunks (CSV). Excel yields a single full frame.
+    """
+    path = Path(file_path)
+    groups = column_groups or DEFAULT_REISIFT_COLUMN_GROUPS
+    usecols = resolve_reisift_usecols(file_path, groups)
+    if path.suffix.lower() in (".xlsx", ".xls"):
+        yield load_reisift_file(file_path, column_groups=groups)
+        return
+    if not usecols:
+        yield smart_read_csv(file_path)
+        return
+    reader = smart_read_csv(file_path, usecols=usecols, chunksize=chunksize)
+    for chunk in reader:
+        yield chunk
 
 
 def _require_column(df: pd.DataFrame, candidates: List[str], label: str) -> str:
