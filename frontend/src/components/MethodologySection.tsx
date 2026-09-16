@@ -84,6 +84,16 @@ const MethodologySection = () => {
             First list is the QL credit when Create Date is on or after that first-list month.
             Lag buckets split by Court Alerts / 8020 / Same month. Reasons from Transactions only.
           </p>
+          <p>
+            <strong className="text-stone-800">Gate 8 Investor &amp; In-List Sold:</strong> Universe is
+            CleanREISift{' '}
+            <code className="bg-stone-100 px-1 rounded">sold_properties_full.csv</code> with{' '}
+            <code className="bg-stone-100 px-1 rounded">investor</code> and{' '}
+            <code className="bg-stone-100 px-1 rounded">in_my_records</code> flags. Segments: Investor,
+            In Our List, Both, Neither. Optional REISift + QL (+ Opps) enrich matched addresses with
+            marketing / pipeline depth (same clocks as Gate 6). Distinct from Gate 6’s REISift{' '}
+            <code className="bg-stone-100 px-1 rounded">in_sold_properties_full</code> cohort.
+          </p>
           <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">
             Full methodology: repo{' '}
             <code className="bg-stone-100 px-1 rounded">docs/REPORT_METHODOLOGY.md</code> and operator{' '}

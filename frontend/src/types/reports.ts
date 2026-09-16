@@ -6,7 +6,8 @@ export type ReportType =
   | 'web_leads'
   | 'probate'
   | 'sold_properties'
-  | 'court_alerts';
+  | 'court_alerts'
+  | 'investor_sold';
 
 export interface SavedReportItem {
   job_id: string;

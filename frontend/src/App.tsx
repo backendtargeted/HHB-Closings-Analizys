@@ -17,6 +17,8 @@ import SoldPropertiesWorkspace from './components/SoldPropertiesWorkspace';
 import SoldPropertiesResults from './components/SoldPropertiesResults';
 import CourtAlertsWorkspace from './components/CourtAlertsWorkspace';
 import CourtAlertsResults from './components/CourtAlertsResults';
+import InvestorSoldWorkspace from './components/InvestorSoldWorkspace';
+import InvestorSoldResults from './components/InvestorSoldResults';
 import SavedReports, { SavedReportsPanel } from './components/SavedReports';
 import {
   downloadQualifiedLeadsExport,
@@ -26,6 +28,7 @@ import {
   downloadProbateExport,
   downloadSoldPropertiesExport,
   downloadCourtAlertsExport,
+  downloadInvestorSoldExport,
   getAnalysisResults,
   getQualifiedLeadsJob,
   getMonthlyConsolidatedJob,
@@ -34,6 +37,7 @@ import {
   getProbateJob,
   getSoldPropertiesJob,
   getCourtAlertsJob,
+  getInvestorSoldJob,
   listReports,
 } from './services/api';
 import type { AnalysisCompleteResponse } from './types/analysis';
@@ -50,6 +54,8 @@ import type { SoldPropertiesCompletedResponse } from './types/soldProperties';
 import { asSoldPropertiesCompleted } from './types/soldProperties';
 import type { CourtAlertsCompletedResponse } from './types/courtAlerts';
 import { asCourtAlertsCompleted } from './types/courtAlerts';
+import type { InvestorSoldCompletedResponse } from './types/investorSold';
+import { asInvestorSoldCompleted } from './types/investorSold';
 
 const QL_CHANNEL_LABELS: Record<string, string> = {
   CC: 'Cold Calling',
@@ -64,7 +70,7 @@ const QL_CHANNEL_LABELS: Record<string, string> = {
 function App() {
   const setReportQueryParam = (
     jobId: string | null,
-    reportType?: 'attribution' | 'qualified_leads' | 'monthly_consolidated' | 'marketing_ramp' | 'web_leads' | 'probate' | 'sold_properties' | 'court_alerts'
+    reportType?: 'attribution' | 'qualified_leads' | 'monthly_consolidated' | 'marketing_ramp' | 'web_leads' | 'probate' | 'sold_properties' | 'court_alerts' | 'investor_sold'
   ) => {
     const url = new URL(window.location.href);
     if (jobId) {
@@ -95,6 +101,8 @@ function App() {
     useState<SoldPropertiesCompletedResponse | null>(null);
   const [loadedCourtAlertsReport, setLoadedCourtAlertsReport] =
     useState<CourtAlertsCompletedResponse | null>(null);
+  const [loadedInvestorSoldReport, setLoadedInvestorSoldReport] =
+    useState<InvestorSoldCompletedResponse | null>(null);
   const [savedReportsRefresh, setSavedReportsRefresh] = useState(0);
   const [qlExporting, setQlExporting] = useState(false);
   const [mcrExporting, setMcrExporting] = useState(false);
@@ -103,6 +111,7 @@ function App() {
   const [pbExporting, setPbExporting] = useState(false);
   const [spExporting, setSpExporting] = useState(false);
   const [caExporting, setCaExporting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const showQualifiedResults = loadedQualifiedReport !== null;
   const showMonthlyResults = loadedMonthlyReport !== null;
@@ -111,6 +120,7 @@ function App() {
   const showProbateResults = loadedProbateReport !== null;
   const showSoldPropertiesResults = loadedSoldPropertiesReport !== null;
   const showCourtAlertsResults = loadedCourtAlertsReport !== null;
+  const showInvestorSoldResults = loadedInvestorSoldReport !== null;
   const showLegacyAttribution = loadedSavedReport !== null;
 
   const handleNewRun = () => {
@@ -122,6 +132,7 @@ function App() {
     setLoadedProbateReport(null);
     setLoadedSoldPropertiesReport(null);
     setLoadedCourtAlertsReport(null);
+    setLoadedInvestorSoldReport(null);
     setReportQueryParam(null);
   };
 
@@ -134,6 +145,7 @@ function App() {
     setLoadedProbateReport(null);
     setLoadedSoldPropertiesReport(null);
     setLoadedCourtAlertsReport(null);
+    setLoadedInvestorSoldReport(null);
     setReportQueryParam(data.job_id, 'attribution');
   };
 
@@ -146,6 +158,7 @@ function App() {
     setLoadedProbateReport(null);
     setLoadedSoldPropertiesReport(null);
     setLoadedCourtAlertsReport(null);
+    setLoadedInvestorSoldReport(null);
     setReportQueryParam(data.job_id, 'qualified_leads');
   };
 
@@ -158,6 +171,7 @@ function App() {
     setLoadedProbateReport(null);
     setLoadedSoldPropertiesReport(null);
     setLoadedCourtAlertsReport(null);
+    setLoadedInvestorSoldReport(null);
     setGate('monthlyConsolidated');
     setReportQueryParam(data.job_id, 'monthly_consolidated');
   };
@@ -171,6 +185,7 @@ function App() {
     setLoadedProbateReport(null);
     setLoadedSoldPropertiesReport(null);
     setLoadedCourtAlertsReport(null);
+    setLoadedInvestorSoldReport(null);
     setGate('marketingRamp');
     setReportQueryParam(data.job_id, 'marketing_ramp');
   };
@@ -184,6 +199,7 @@ function App() {
     setLoadedProbateReport(null);
     setLoadedSoldPropertiesReport(null);
     setLoadedCourtAlertsReport(null);
+    setLoadedInvestorSoldReport(null);
     setGate('webLeads');
     setReportQueryParam(data.job_id, 'web_leads');
   };
@@ -197,6 +213,7 @@ function App() {
     setLoadedWebLeadsReport(null);
     setLoadedSoldPropertiesReport(null);
     setLoadedCourtAlertsReport(null);
+    setLoadedInvestorSoldReport(null);
     setGate('probate');
     setReportQueryParam(data.job_id, 'probate');
   };
@@ -210,6 +227,7 @@ function App() {
     setLoadedWebLeadsReport(null);
     setLoadedProbateReport(null);
     setLoadedCourtAlertsReport(null);
+    setLoadedInvestorSoldReport(null);
     setGate('soldProperties');
     setReportQueryParam(data.job_id, 'sold_properties');
   };
@@ -223,8 +241,23 @@ function App() {
     setLoadedWebLeadsReport(null);
     setLoadedProbateReport(null);
     setLoadedSoldPropertiesReport(null);
+    setLoadedInvestorSoldReport(null);
     setGate('courtAlerts');
     setReportQueryParam(data.job_id, 'court_alerts');
+  };
+
+  const handleOpenInvestorSoldReport = (data: InvestorSoldCompletedResponse) => {
+    setLoadedInvestorSoldReport(data);
+    setLoadedSavedReport(null);
+    setLoadedQualifiedReport(null);
+    setLoadedMonthlyReport(null);
+    setLoadedMarketingReport(null);
+    setLoadedWebLeadsReport(null);
+    setLoadedProbateReport(null);
+    setLoadedSoldPropertiesReport(null);
+    setLoadedCourtAlertsReport(null);
+    setGate('investorSold');
+    setReportQueryParam(data.job_id, 'investor_sold');
   };
 
   const handleProbateRunComplete = () => {
@@ -236,6 +269,10 @@ function App() {
   };
 
   const handleCourtAlertsRunComplete = () => {
+    setSavedReportsRefresh((k) => k + 1);
+  };
+
+  const handleInvestorSoldRunComplete = () => {
     setSavedReportsRefresh((k) => k + 1);
   };
 
@@ -373,6 +410,24 @@ function App() {
     }
   };
 
+
+  const handleExportInvestorSold = async (jobId: string) => {
+    setIsExporting(true);
+    try {
+      const blob = await downloadInvestorSoldExport(jobId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `investor_sold_${jobId}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Export failed');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const reportId = params.get('report');
@@ -388,6 +443,7 @@ function App() {
         | 'probate'
         | 'sold_properties'
         | 'court_alerts'
+        | 'investor_sold'
         | 'attribution';
       data: unknown;
     }) => {
@@ -411,6 +467,9 @@ function App() {
       } else if (loaded.kind === 'court_alerts') {
         setLoadedCourtAlertsReport(loaded.data as CourtAlertsCompletedResponse);
         setGate('courtAlerts');
+      } else if (loaded.kind === 'investor_sold') {
+        setLoadedInvestorSoldReport(loaded.data as InvestorSoldCompletedResponse);
+        setGate('investorSold');
       } else {
         setLoadedSavedReport(loaded.data as AnalysisCompleteResponse);
       }
@@ -456,6 +515,12 @@ function App() {
           data: asCourtAlertsCompleted(await getCourtAlertsJob(id)),
         };
       }
+      if (type === 'investor_sold') {
+        return {
+          kind: 'investor_sold' as const,
+          data: asInvestorSoldCompleted(await getInvestorSoldJob(id)),
+        };
+      }
       if (type === 'attribution') {
         return { kind: 'attribution' as const, data: await getAnalysisResults(id) };
       }
@@ -492,7 +557,14 @@ function App() {
                     data: asCourtAlertsCompleted(await getCourtAlertsJob(id)),
                   };
                 } catch {
-                  return { kind: 'attribution' as const, data: await getAnalysisResults(id) };
+                  try {
+                    return {
+                      kind: 'investor_sold' as const,
+                      data: asInvestorSoldCompleted(await getInvestorSoldJob(id)),
+                    };
+                  } catch {
+                    return { kind: 'attribution' as const, data: await getAnalysisResults(id) };
+                  }
                 }
               }
             }
@@ -536,7 +608,8 @@ function App() {
     !showWebLeadsResults &&
     !showProbateResults &&
     !showSoldPropertiesResults &&
-    !showCourtAlertsResults;
+    !showCourtAlertsResults &&
+    !showInvestorSoldResults;
 
   const showAnyReport =
     showMarketingResults ||
@@ -546,7 +619,8 @@ function App() {
     showWebLeadsResults ||
     showProbateResults ||
     showSoldPropertiesResults ||
-    showCourtAlertsResults;
+    showCourtAlertsResults ||
+    showInvestorSoldResults;
 
   const workspaceTabId =
     gate === 'pastPatches'
@@ -561,7 +635,9 @@ function App() {
               ? 'tab-gate6'
               : gate === 'courtAlerts'
                 ? 'tab-gate7'
-                : 'tab-gate2';
+                : gate === 'investorSold'
+                  ? 'tab-gate8'
+                  : 'tab-gate2';
 
   const savedReportsSidebar = (
     <aside className="rounded-2xl border border-stone-200/90 bg-white shadow-sm p-5 h-fit lg:sticky lg:top-6">
@@ -574,6 +650,7 @@ function App() {
         onOpenProbateReport={handleOpenProbateReport}
         onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
         onOpenCourtAlertsReport={handleOpenCourtAlertsReport}
+        onOpenInvestorSoldReport={handleOpenInvestorSoldReport}
         refreshKey={savedReportsRefresh}
       />
     </aside>
@@ -595,7 +672,7 @@ function App() {
               <h1 className="text-3xl font-bold text-white drop-shadow-sm">HHB Marketing Reports</h1>
               <p className="text-gray-200 mt-1">
                 Gate 1: ingest · Gate 2: consolidated · Gate 3: marketing ramp · Gate 4: web leads ·
-                Gate 5: probate · Gate 6: sold properties · Gate 7: court alerts
+                Gate 5: probate · Gate 6: sold properties · Gate 7: court alerts · Gate 8: investor & in-list sold
               </p>
             </div>
           </div>
@@ -612,7 +689,28 @@ function App() {
         <div className="mb-6">
           {!showAnyReport ? <MethodologySection /> : null}
         </div>
-        {showCourtAlertsResults && loadedCourtAlertsReport ? (
+        {showInvestorSoldResults && loadedInvestorSoldReport ? (
+          <div className="space-y-6">
+            <InvestorSoldResults
+              result={loadedInvestorSoldReport}
+              onNewRun={handleNewRun}
+              onExport={() => handleExportInvestorSold(loadedInvestorSoldReport.job_id)}
+              exporting={isExporting}
+            />
+            <SavedReportsPanel
+              onOpenAttributionReport={handleOpenSavedReport}
+              onOpenQualifiedLeadsReport={handleOpenQualifiedReport}
+              onOpenMonthlyConsolidatedReport={handleOpenMonthlyReport}
+              onOpenMarketingRampReport={handleOpenMarketingReport}
+              onOpenWebLeadsReport={handleOpenWebLeadsReport}
+              onOpenProbateReport={handleOpenProbateReport}
+              onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
+              onOpenCourtAlertsReport={handleOpenCourtAlertsReport}
+              onOpenInvestorSoldReport={handleOpenInvestorSoldReport}
+              refreshKey={savedReportsRefresh}
+            />
+          </div>
+        ) : showCourtAlertsResults && loadedCourtAlertsReport ? (
           <div className="space-y-6">
             <CourtAlertsResults
               result={loadedCourtAlertsReport}
@@ -629,6 +727,7 @@ function App() {
               onOpenProbateReport={handleOpenProbateReport}
               onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               onOpenCourtAlertsReport={handleOpenCourtAlertsReport}
+        onOpenInvestorSoldReport={handleOpenInvestorSoldReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -649,6 +748,7 @@ function App() {
               onOpenProbateReport={handleOpenProbateReport}
               onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               onOpenCourtAlertsReport={handleOpenCourtAlertsReport}
+        onOpenInvestorSoldReport={handleOpenInvestorSoldReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -669,6 +769,7 @@ function App() {
               onOpenProbateReport={handleOpenProbateReport}
               onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               onOpenCourtAlertsReport={handleOpenCourtAlertsReport}
+        onOpenInvestorSoldReport={handleOpenInvestorSoldReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -689,6 +790,7 @@ function App() {
               onOpenProbateReport={handleOpenProbateReport}
               onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               onOpenCourtAlertsReport={handleOpenCourtAlertsReport}
+        onOpenInvestorSoldReport={handleOpenInvestorSoldReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -710,6 +812,7 @@ function App() {
               onOpenProbateReport={handleOpenProbateReport}
               onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               onOpenCourtAlertsReport={handleOpenCourtAlertsReport}
+        onOpenInvestorSoldReport={handleOpenInvestorSoldReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -731,6 +834,7 @@ function App() {
               onOpenProbateReport={handleOpenProbateReport}
               onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               onOpenCourtAlertsReport={handleOpenCourtAlertsReport}
+        onOpenInvestorSoldReport={handleOpenInvestorSoldReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -753,6 +857,7 @@ function App() {
               onOpenProbateReport={handleOpenProbateReport}
               onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               onOpenCourtAlertsReport={handleOpenCourtAlertsReport}
+        onOpenInvestorSoldReport={handleOpenInvestorSoldReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -769,6 +874,7 @@ function App() {
               onOpenProbateReport={handleOpenProbateReport}
               onOpenSoldPropertiesReport={handleOpenSoldPropertiesReport}
               onOpenCourtAlertsReport={handleOpenCourtAlertsReport}
+        onOpenInvestorSoldReport={handleOpenInvestorSoldReport}
               refreshKey={savedReportsRefresh}
             />
           </div>
@@ -806,6 +912,11 @@ function App() {
                 <CourtAlertsWorkspace
                   onRunComplete={handleCourtAlertsRunComplete}
                   onOpenResult={handleOpenCourtAlertsReport}
+                />
+              ) : gate === 'investorSold' ? (
+                <InvestorSoldWorkspace
+                  onRunComplete={handleInvestorSoldRunComplete}
+                  onOpenResult={handleOpenInvestorSoldReport}
                 />
               ) : (
                 <MonthlyConsolidatedWorkspace

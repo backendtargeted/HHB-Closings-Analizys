@@ -6,7 +6,8 @@ export type ReportShareType =
   | 'web_leads'
   | 'probate'
   | 'sold_properties'
-  | 'court_alerts';
+  | 'court_alerts'
+  | 'investor_sold';
 
 export function buildReportShareUrl(
   jobId: string,

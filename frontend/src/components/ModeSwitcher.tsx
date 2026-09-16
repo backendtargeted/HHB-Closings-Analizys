@@ -8,7 +8,8 @@ export type GateMode =
   | 'webLeads'
   | 'probate'
   | 'soldProperties'
-  | 'courtAlerts';
+  | 'courtAlerts'
+  | 'investorSold';
 
 interface ModeSwitcherProps {
   mode: GateMode;
@@ -224,6 +225,36 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
             </div>
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-sky-200/80 text-sky-950">
               Court
+            </span>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'investorSold'}
+          id="tab-gate8"
+          aria-controls="panel-workspace"
+          onClick={() => onChange('investorSold')}
+          className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-700 focus-visible:ring-offset-2 ${
+            mode === 'investorSold'
+              ? 'border-violet-600/80 bg-violet-50/90 shadow-md ring-1 ring-violet-600/20'
+              : 'border-stone-200 bg-white/80 hover:border-violet-200 hover:bg-violet-50/40'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-violet-800 mb-1">Gate 8</p>
+              <h2 className="text-lg font-bold text-violet-950 tracking-tight">
+                Investor &amp; In-List Sold
+              </h2>
+              <p className="text-violet-950/80 text-sm mt-2 leading-relaxed">
+                CleanREISift sold_properties_full.csv → investor vs in-our-list segments; optional
+                REISift/QL enrichment for pipeline depth.
+              </p>
+            </div>
+            <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-violet-200/80 text-violet-950">
+              Segments
             </span>
           </div>
         </button>

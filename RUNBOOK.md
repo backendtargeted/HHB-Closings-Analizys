@@ -249,6 +249,33 @@ Each Gate 3 analyze runs **marketing ramp** and **monthly consolidated** in para
 
 ---
 
+## Investor & In-List Sold (Gate 8)
+
+**When:** You have CleanREISift `sold_properties_full.csv` (Dataflik All Transactions with `investor` / `in_my_records` flags) and want segment counts — investor buyers vs already in your REISift records — separate from Gate 6’s REISift `in_sold_properties_full` cohort.
+
+**UI:** Docker `http://localhost:3300` → **Investor & In-List Sold** (Gate 8 tab).
+
+**Implementation:** `backend/app/services/investor_sold.py`, API prefix `/api/investor-sold`.
+
+### Inputs
+
+| File | Required | Role |
+|------|----------|------|
+| **Sold transactions** CSV (`sold_properties_full.csv`) | Yes | Universe + `investor` / `in_my_records` |
+| **REISift export** | Optional | Enrich matched addresses with Tags / marketing |
+| **Salesforce Total Qualified Leads** | Optional | Prospect match (needs REISift join) |
+| **Opportunities** | Optional | Opp stage (same as Gate 6) |
+
+### Operator checklist
+
+1. Produce `data/sold_properties_full.csv` via CleanREISift `scrape_sold_properties.py` (see CleanREISift `RUN_ENRICH.md`).
+2. Upload sold CSV on Gate 8 (+ optional REISift/QL/Opps).
+3. Review KPI segments (Investor / In Our List / Both / Neither), by-month and by-county tables; download XLSX (Summary, By Month, By County, Investor, In Our List, Both, All Rows).
+
+**Execution:** Async job (202 + poll status), same pattern as Gate 6. Persists under `{REPORTS_DIR}/investor_sold/{job_id}.json`.
+
+---
+
 ## Large uploads and reverse proxies (EasyPanel / Traefik)
 
 Large upload flows can fail when the **UI** nginx container or front proxy timeouts are too low (`frontend/nginx.conf`: `client_max_body_size`, `client_body_timeout`, `proxy_*_timeout`).

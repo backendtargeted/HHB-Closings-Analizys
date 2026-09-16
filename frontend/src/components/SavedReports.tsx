@@ -9,6 +9,7 @@ import {
   getProbateJob,
   getSoldPropertiesJob,
   getCourtAlertsJob,
+  getInvestorSoldJob,
   deleteAnalysis,
   deleteQualifiedLeadsJob,
   deleteMonthlyConsolidatedJob,
@@ -17,6 +18,7 @@ import {
   deleteProbateJob,
   deleteSoldPropertiesJob,
   deleteCourtAlertsJob,
+  deleteInvestorSoldJob,
 } from '../services/api';
 import type { AnalysisCompleteResponse } from '../types/analysis';
 import type { QualifiedLeadsAnalyzeResponse } from '../types/qualifiedLeads';
@@ -32,6 +34,8 @@ import type { SoldPropertiesCompletedResponse } from '../types/soldProperties';
 import { asSoldPropertiesCompleted } from '../types/soldProperties';
 import type { CourtAlertsCompletedResponse } from '../types/courtAlerts';
 import { asCourtAlertsCompleted } from '../types/courtAlerts';
+import type { InvestorSoldCompletedResponse } from '../types/investorSold';
+import { asInvestorSoldCompleted } from '../types/investorSold';
 import type { SavedReportItem } from '../types/reports';
 
 interface SavedReportsProps {
@@ -43,6 +47,7 @@ interface SavedReportsProps {
   onOpenProbateReport?: (data: ProbateCompletedResponse) => void;
   onOpenSoldPropertiesReport?: (data: SoldPropertiesCompletedResponse) => void;
   onOpenCourtAlertsReport?: (data: CourtAlertsCompletedResponse) => void;
+  onOpenInvestorSoldReport?: (data: InvestorSoldCompletedResponse) => void;
   refreshKey?: number;
 }
 
@@ -66,6 +71,7 @@ const typeLabel = (t: SavedReportItem['report_type']) => {
   if (t === 'probate') return 'Probate';
   if (t === 'sold_properties') return 'Sold properties';
   if (t === 'court_alerts') return 'Court Alerts';
+  if (t === 'investor_sold') return 'Investor & In-List Sold';
   return 'Attribution (legacy)';
 };
 
@@ -78,6 +84,7 @@ const SavedReports = ({
   onOpenProbateReport,
   onOpenSoldPropertiesReport,
   onOpenCourtAlertsReport,
+  onOpenInvestorSoldReport,
   refreshKey = 0,
 }: SavedReportsProps) => {
   const [reports, setReports] = useState<SavedReportItem[]>([]);
@@ -111,7 +118,8 @@ const SavedReports = ({
           r.report_type === 'web_leads' ||
           r.report_type === 'probate' ||
           r.report_type === 'sold_properties' ||
-          r.report_type === 'court_alerts'
+          r.report_type === 'court_alerts' ||
+          r.report_type === 'investor_sold'
       );
     }
     return reports.filter(
@@ -121,7 +129,8 @@ const SavedReports = ({
         r.report_type !== 'web_leads' &&
         r.report_type !== 'probate' &&
         r.report_type !== 'sold_properties' &&
-        r.report_type !== 'court_alerts'
+        r.report_type !== 'court_alerts' &&
+        r.report_type !== 'investor_sold'
     );
   }, [reports, filter]);
 
@@ -155,6 +164,11 @@ const SavedReports = ({
         onOpenCourtAlertsReport(data);
       } else if (item.report_type === 'court_alerts') {
         alert('Court Alerts report handler not configured');
+      } else if (item.report_type === 'investor_sold' && onOpenInvestorSoldReport) {
+        const data = asInvestorSoldCompleted(await getInvestorSoldJob(item.job_id));
+        onOpenInvestorSoldReport(data);
+      } else if (item.report_type === 'investor_sold') {
+        alert('Investor sold report handler not configured');
       } else if (item.report_type === 'monthly_consolidated' && onOpenMonthlyConsolidatedReport) {
         const data = asMonthlyConsolidatedCompleted(await getMonthlyConsolidatedJob(item.job_id));
         onOpenMonthlyConsolidatedReport(data);
@@ -185,6 +199,8 @@ const SavedReports = ({
         await deleteSoldPropertiesJob(item.job_id);
       } else if (item.report_type === 'court_alerts') {
         await deleteCourtAlertsJob(item.job_id);
+      } else if (item.report_type === 'investor_sold') {
+        await deleteInvestorSoldJob(item.job_id);
       } else if (item.report_type === 'monthly_consolidated') {
         await deleteMonthlyConsolidatedJob(item.job_id);
       } else {
@@ -258,6 +274,9 @@ const SavedReports = ({
                     ? ` · ${r.date_window_start} – ${r.date_window_end}`
                     : ''}
                   {r.report_type === 'court_alerts' && r.date_window_start
+                    ? ` · ${r.date_window_start} – ${r.date_window_end}`
+                    : ''}
+                  {r.report_type === 'investor_sold' && r.date_window_start
                     ? ` · ${r.date_window_start} – ${r.date_window_end}`
                     : ''}
                   {r.report_type === 'attribution' && r.as_of ? ` · as-of ${r.as_of}` : ''}

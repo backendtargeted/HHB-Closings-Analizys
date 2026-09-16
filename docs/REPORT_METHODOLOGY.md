@@ -279,6 +279,7 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 | Tag-derived lead source | `monthly_consolidated.py` — `derive_tag_lead_source` |
 | Sold properties (Gate 6) | `backend/app/services/sold_properties.py` |
 | Court Alerts (Gate 7) | `backend/app/services/court_alerts.py` |
+| Investor & In-List Sold (Gate 8) | `backend/app/services/investor_sold.py` |
 
 ---
 
@@ -377,4 +378,18 @@ Canonical implementation: `backend/app/services/sold_properties.py`.
 **Export:** Summary, Court Alerts Rows, First Source, Campaign, County, List Month, Lag Buckets, CRM Before First List, Txn reason sheets.
 
 Canonical implementation: `backend/app/services/court_alerts.py`.
+
+## 22. Gate 8 Investor & In-List Sold
+
+**Question:** Of scraped external NY sales (`sold_properties_full.csv`), how many are investor buyers, already in our REISift records (`in_my_records`), both, or neither — and (optionally) how far in-list matches got in the HHB funnel.
+
+**Universe:** CleanREISift sold scrape rows with `investor` and `in_my_records` TRUE/FALSE flags. Address keys rebuilt with `make_address_key` from property address parts (do not trust the scrape `address_key` string for joins).
+
+**Segments:** Investor (`investor`), In Our List (`in_my_records`), Both, Neither. Rollups by sold month (`period_date` / `period_label`) and county.
+
+**Optional enrichment:** REISift + QL (+ Opps) joined by address — marketing touches and pipeline depth on or before the sold month (same clocks as Gate 6).
+
+**Export:** Summary, By Month, By County, Investor, In Our List, Both, All Rows.
+
+Canonical implementation: `backend/app/services/investor_sold.py`.
 

@@ -48,6 +48,12 @@ import type {
   SoldPropertiesJobStatus,
 } from '../types/soldProperties';
 import { asSoldPropertiesCompleted } from '../types/soldProperties';
+import type {
+  InvestorSoldAnalyzeResponse,
+  InvestorSoldCompletedResponse,
+  InvestorSoldJobStatus,
+} from '../types/investorSold';
+import { asInvestorSoldCompleted } from '../types/investorSold';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -1073,6 +1079,150 @@ export const downloadSoldPropertiesExport = async (jobId: string): Promise<Blob>
 
 export const deleteSoldPropertiesJob = async (jobId: string): Promise<void> => {
   await api.delete(`/sold-properties/${jobId}`);
+};
+
+export async function pollInvestorSoldJob(
+  jobId: string,
+  onProgress?: (pct: number, message: string) => void
+): Promise<InvestorSoldCompletedResponse> {
+  const deadline = Date.now() + 30 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const status = await getInvestorSoldJobStatus(jobId);
+    const serverPct = status.progress ?? 0;
+    const uiPct =
+      serverPct >= 10 ? 90 + Math.round(((serverPct - 10) / 90) * 9) : 90;
+    onProgress?.(Math.min(99, uiPct), status.message || 'Analyzing…');
+    if (status.status === 'completed') {
+      return asInvestorSoldCompleted(await getInvestorSoldJob(jobId));
+    }
+    if (status.status === 'failed') {
+      throw new Error(status.message || 'Analysis failed');
+    }
+    await sleep(1000);
+  }
+  throw new Error('Analysis timed out after 30 minutes');
+}
+
+async function analyzeInvestorSoldDirect(
+  soldFile: File,
+  reisiftFile?: File,
+  qlFile?: File,
+  oppsFile?: File,
+  onProgress?: (pct: number, message: string) => void
+): Promise<InvestorSoldCompletedResponse> {
+  const form = new FormData();
+  form.append('sold_file', soldFile);
+  if (reisiftFile) form.append('reisift_file', reisiftFile);
+  if (qlFile) form.append('qualified_leads_file', qlFile);
+  if (oppsFile) form.append('opportunities_file', oppsFile);
+  onProgress?.(5, 'Uploading…');
+  const response = await api.post<{ job_id: string; status: string; message: string }>(
+    '/investor-sold/analyze',
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 10 * 60 * 1000 }
+  );
+  onProgress?.(90, 'Starting analysis…');
+  const result = await pollInvestorSoldJob(response.data.job_id, onProgress);
+  onProgress?.(100, 'Done');
+  return result;
+}
+
+async function analyzeInvestorSoldResumable(
+  soldFile: File,
+  reisiftFile?: File,
+  qlFile?: File,
+  oppsFile?: File,
+  onProgress?: (pct: number, message: string) => void
+): Promise<InvestorSoldCompletedResponse> {
+  onProgress?.(0, `Uploading ${soldFile.name} (chunked fallback)…`);
+  const soldPath = await uploadFileResumable('tabular', soldFile, (pct, msg) => {
+    onProgress?.(Math.round(pct * 0.4), msg);
+  });
+  let reisiftPath: string | undefined;
+  if (reisiftFile) {
+    onProgress?.(40, `Uploading ${reisiftFile.name}…`);
+    reisiftPath = await uploadFileResumable('reisift', reisiftFile, (pct, msg) => {
+      onProgress?.(40 + Math.round(pct * 0.3), msg);
+    });
+  }
+  let qlPath: string | undefined;
+  if (qlFile) {
+    onProgress?.(70, `Uploading ${qlFile.name}…`);
+    qlPath = await uploadFileResumable('qualified_leads', qlFile, (pct, msg) => {
+      onProgress?.(70 + Math.round(pct * 0.1), msg);
+    });
+  }
+  let oppsPath: string | undefined;
+  if (oppsFile) {
+    onProgress?.(80, `Uploading ${oppsFile.name}…`);
+    oppsPath = await uploadFileResumable('tabular', oppsFile, (pct, msg) => {
+      onProgress?.(80 + Math.round(pct * 0.1), msg);
+    });
+  }
+  onProgress?.(90, 'Starting analysis…');
+  const started = await analyzeInvestorSoldFromPaths(soldPath, reisiftPath, qlPath, oppsPath);
+  const result = await pollInvestorSoldJob(started.job_id, onProgress);
+  onProgress?.(100, 'Done');
+  return result;
+}
+
+export const analyzeInvestorSold = async (
+  soldFile: File,
+  reisiftFile?: File,
+  qlFile?: File,
+  oppsFile?: File,
+  onProgress?: (pct: number, message: string) => void
+): Promise<InvestorSoldCompletedResponse> => {
+  try {
+    return await analyzeInvestorSoldDirect(soldFile, reisiftFile, qlFile, oppsFile, onProgress);
+  } catch (err) {
+    if (!shouldFallbackToResumableUpload(err)) {
+      throw err;
+    }
+    return analyzeInvestorSoldResumable(soldFile, reisiftFile, qlFile, oppsFile, onProgress);
+  }
+};
+
+export const analyzeInvestorSoldFromPaths = async (
+  soldPath: string,
+  reisiftPath?: string,
+  qlPath?: string,
+  oppsPath?: string
+): Promise<{ job_id: string; status: string; message: string }> => {
+  const body: Record<string, unknown> = { sold_path: soldPath };
+  if (reisiftPath) body.reisift_path = reisiftPath;
+  if (qlPath) body.qualified_leads_path = qlPath;
+  if (oppsPath) body.opportunities_path = oppsPath;
+  const response = await api.post<{ job_id: string; status: string; message: string }>(
+    '/investor-sold/analyze',
+    body
+  );
+  return response.data;
+};
+
+export const getInvestorSoldJobStatus = async (
+  jobId: string
+): Promise<InvestorSoldJobStatus> => {
+  const response = await api.get<InvestorSoldJobStatus>(`/investor-sold/${jobId}/status`);
+  return response.data;
+};
+
+export const getInvestorSoldJob = async (
+  jobId: string
+): Promise<InvestorSoldAnalyzeResponse> => {
+  const response = await api.get<InvestorSoldAnalyzeResponse>(`/investor-sold/${jobId}`);
+  return response.data;
+};
+
+export const downloadInvestorSoldExport = async (jobId: string): Promise<Blob> => {
+  const response = await api.get(`/investor-sold/${jobId}/export`, {
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+export const deleteInvestorSoldJob = async (jobId: string): Promise<void> => {
+  await api.delete(`/investor-sold/${jobId}`);
 };
 
 export async function pollCourtAlertsJob(

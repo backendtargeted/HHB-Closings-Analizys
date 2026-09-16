@@ -23,6 +23,7 @@ from .api.web_leads import load_web_leads_from_disk, web_leads_bp
 from .api.probate import load_probate_from_disk, probate_bp
 from .api.sold_properties import load_sold_properties_from_disk, sold_properties_bp
 from .api.court_alerts import load_court_alerts_from_disk, court_alerts_bp
+from .api.investor_sold import load_investor_sold_from_disk, investor_sold_bp
 from .api.qualified_leads import load_qualified_leads_from_disk, qualified_leads_bp
 from .services.report_store import REPORTS_DIR, _is_production_env, _probe_writable
 
@@ -87,6 +88,7 @@ load_web_leads_from_disk()
 load_probate_from_disk()
 load_sold_properties_from_disk()
 load_court_alerts_from_disk()
+load_investor_sold_from_disk()
 app.config["JSON_SORT_KEYS"] = False
 
 # CORS: localhost defaults for dev; set CORS_ORIGINS for split Easypanel (comma-separated) or * for any origin.
@@ -120,6 +122,7 @@ app.register_blueprint(web_leads_bp, url_prefix="/api/web-leads")
 app.register_blueprint(probate_bp, url_prefix="/api/probate")
 app.register_blueprint(sold_properties_bp, url_prefix="/api/sold-properties")
 app.register_blueprint(court_alerts_bp, url_prefix="/api/court-alerts")
+app.register_blueprint(investor_sold_bp, url_prefix="/api/investor-sold")
 
 
 @app.route("/health", methods=["GET", "HEAD"])
