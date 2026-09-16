@@ -102,10 +102,11 @@ const InvestorSoldResults = ({
   const lost = m.lost ?? {
     lost_to_investor_count: 0,
     lost_to_investor_pct: 0,
-    in_list_investor_count: 0,
-    in_list_non_investor_count: 0,
+    had_presence_count: 0,
+    had_presence_investor_count: 0,
+    had_presence_non_investor_count: 0,
     lost_by_stage: [],
-    in_list_exits_by_buyer: {},
+    had_presence_exits_by_buyer: {},
   };
   const leadSources = m.lead_sources ?? { sf_tag: 0, podio: 0 };
   const pipelineFunnel = m.pipeline_funnel ?? [];
@@ -127,7 +128,7 @@ const InvestorSoldResults = ({
 
     if (journeyFilter === 'never_marketed') rows = rows.filter((r) => !r.marketed);
     else if (journeyFilter === 'lost')
-      rows = rows.filter((r) => r.in_my_records && r.investor && !r.hhb_closed_date);
+      rows = rows.filter((r) => r.had_presence && r.investor && !r.hhb_closed_date);
     else if (journeyFilter === 'leads') rows = rows.filter((r) => r.lead_matched);
     else if (journeyFilter === 'qualified_leads')
       rows = rows.filter((r) => r.qualified_lead_matched);
@@ -189,22 +190,12 @@ const InvestorSoldResults = ({
     {
       label: 'Lost to investor',
       value: lost.lost_to_investor_count.toLocaleString(),
-      subtitle: `${lost.lost_to_investor_pct}% of in-list · click to filter`,
+      subtitle: `${lost.lost_to_investor_pct}% of ${lost.had_presence_count.toLocaleString()} we had · click to filter`,
       onClick: () => {
-        setSegmentFilter('in_our_list');
+        setSegmentFilter('all');
         setJourneyFilter('lost');
       },
       active: journeyFilter === 'lost',
-    },
-    {
-      label: 'In Our List',
-      value: m.segments.in_our_list_count.toLocaleString(),
-      subtitle: `Investor ${lost.in_list_investor_count} · Other ${lost.in_list_non_investor_count}`,
-      onClick: () => {
-        setSegmentFilter('in_our_list');
-        setJourneyFilter('all');
-      },
-      active: segmentFilter === 'in_our_list' && journeyFilter === 'all',
     },
     {
       label: 'Marketed',
@@ -252,7 +243,8 @@ const InvestorSoldResults = ({
             Investor &amp; In-List Sold
           </h2>
           <p className="text-sm text-stone-600 mt-1">
-            Lost to investor among in-list sales · Sold months {m.date_window_start || '—'} →{' '}
+            Lost to investor = we had it (list or CRM) and investor bought it · Sold months{' '}
+            {m.date_window_start || '—'} →{' '}
             {m.date_window_end || '—'} · {propertyRows.toLocaleString()} properties (from{' '}
             {txnRows.toLocaleString()} transactions) ·{' '}
             {m.inputs.unique_addresses.toLocaleString()} unique addresses
@@ -345,7 +337,7 @@ const InvestorSoldResults = ({
         <div className="rounded-xl border border-stone-200 bg-white p-4 overflow-x-auto">
           <h3 className="text-sm font-bold text-stone-800">Lost by furthest stage</h3>
           <p className="text-xs text-stone-500 mt-1">
-            In-list + investor + not closed, counted once at highest stage reached.
+            We had it (list or CRM) + investor + not closed, counted once at highest stage reached.
           </p>
           <table className="mt-3 w-full text-sm">
             <thead>

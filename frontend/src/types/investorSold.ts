@@ -13,6 +13,7 @@ export interface InvestorSoldRow {
   sale_amount: string;
   investor: boolean;
   in_my_records: boolean;
+  had_presence: boolean;
   segment: 'investor' | 'in_our_list' | 'both' | 'neither' | string;
   investor_score: string;
   distressors: string;
@@ -59,6 +60,7 @@ export interface InvestorSoldRollupRow {
   qualified_leads?: number;
   prospects?: number;
   lost_to_investor?: number;
+  had_presence?: number;
 }
 
 export interface InvestorSoldSegmentRow {
@@ -92,10 +94,11 @@ export interface InvestorSoldPipelineFunnelRow {
 export interface InvestorSoldLostBlock {
   lost_to_investor_count: number;
   lost_to_investor_pct: number;
-  in_list_investor_count: number;
-  in_list_non_investor_count: number;
+  had_presence_count: number;
+  had_presence_investor_count: number;
+  had_presence_non_investor_count: number;
   lost_by_stage: InvestorSoldPipelineFunnelRow[];
-  in_list_exits_by_buyer: Record<string, number>;
+  had_presence_exits_by_buyer: Record<string, number>;
 }
 
 export interface InvestorSoldMetrics {
@@ -224,6 +227,23 @@ function emptyMatch(enrichment?: InvestorSoldMetrics['enrichment']): InvestorSol
   };
 }
 
+function rowHadPresence(r: InvestorSoldRow): boolean {
+  return Boolean(
+    r.had_presence ||
+      r.in_my_records ||
+      r.reisift_matched ||
+      r.marketed ||
+      r.lead_matched ||
+      r.qualified_lead_matched ||
+      r.prospect_matched ||
+      r.opp_matched ||
+      r.list_purchase_date ||
+      r.under_contract_date ||
+      r.hhb_closed_date ||
+      (r.pipeline_stage && r.pipeline_stage !== 'NONE')
+  );
+}
+
 export function asInvestorSoldCompleted(
   data: InvestorSoldAnalyzeResponse
 ): InvestorSoldCompletedResponse {
@@ -233,6 +253,9 @@ export function asInvestorSoldCompleted(
   const metrics = data.metrics;
   if (metrics.inputs.property_rows == null) {
     metrics.inputs.property_rows = metrics.rows?.length ?? metrics.inputs.sold_rows_ingested ?? 0;
+  }
+  if (metrics.rows?.length) {
+    metrics.rows = metrics.rows.map((r) => ({ ...r, had_presence: rowHadPresence(r) }));
   }
   if (!metrics.marketing) {
     metrics.marketing = {
@@ -257,10 +280,29 @@ export function asInvestorSoldCompleted(
     metrics.lost = {
       lost_to_investor_count: 0,
       lost_to_investor_pct: 0,
-      in_list_investor_count: 0,
-      in_list_non_investor_count: 0,
+      had_presence_count: 0,
+      had_presence_investor_count: 0,
+      had_presence_non_investor_count: 0,
       lost_by_stage: [],
-      in_list_exits_by_buyer: {},
+      had_presence_exits_by_buyer: {},
+    };
+  } else {
+    const legacy = metrics.lost as InvestorSoldLostBlock & {
+      in_list_investor_count?: number;
+      in_list_non_investor_count?: number;
+      in_list_exits_by_buyer?: Record<string, number>;
+    };
+    metrics.lost = {
+      lost_to_investor_count: legacy.lost_to_investor_count ?? 0,
+      lost_to_investor_pct: legacy.lost_to_investor_pct ?? 0,
+      had_presence_count: legacy.had_presence_count ?? 0,
+      had_presence_investor_count:
+        legacy.had_presence_investor_count ?? legacy.in_list_investor_count ?? 0,
+      had_presence_non_investor_count:
+        legacy.had_presence_non_investor_count ?? legacy.in_list_non_investor_count ?? 0,
+      lost_by_stage: legacy.lost_by_stage ?? [],
+      had_presence_exits_by_buyer:
+        legacy.had_presence_exits_by_buyer ?? legacy.in_list_exits_by_buyer ?? {},
     };
   }
   if (!metrics.pipeline_funnel) metrics.pipeline_funnel = [];

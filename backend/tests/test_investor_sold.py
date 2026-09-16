@@ -90,9 +90,14 @@ def test_segment_counts_and_pipeline(sold_path, reisift_path, ql_path):
     assert result.prospect_sources["podio"] >= 1
     assert result.prospect_sources["ql"] >= 1
     assert result.lead_sources["podio"] >= 1
-    # Lost = in_list + investor + not closed (pine is both investor+in_list)
-    assert result.lost_to_investor_count >= 1
-    assert result.in_list_investor_count >= 1
+    # Lost = we had it (list/CRM) + investor + not closed (main, pine, cedar)
+    assert result.had_presence_count == 4  # elm has neither scrape nor REISift
+    assert result.lost_to_investor_count == 3
+    assert result.lost_to_investor_pct == 75.0
+    assert by_street["100 main st"].had_presence is True
+    assert by_street["500 cedar ln"].had_presence is True
+    assert by_street["400 elm st"].had_presence is False
+    assert result.had_presence_investor_count >= 3
     assert result.lost_by_stage
     assert "lost" in result.to_api_dict()
     assert any(s["segment"] == "in_our_list" and s["prospects_podio"] >= 1 for s in result.by_segment)

@@ -3,7 +3,8 @@ Gate 7 — Investor & In-List Sold + canonical pipeline depth.
 
 Universe: CleanREISift sold_properties_full.csv (property × sold month).
 Requires REISift + Salesforce QL. Opportunities optional.
-Lost to investor = in_my_records AND investor AND not HHB closed.
+Lost to investor = we had it (In My Records OR REISift/CRM presence) AND investor
+AND not HHB closed. Loss rate denominator = properties we had.
 Pipeline: Prospect (8020) → Marketed → Lead (Podio/SF) → Qualified Lead → Opp → UC → Closed.
 """
 
@@ -118,6 +119,28 @@ def segment_for(investor: bool, in_my_records: bool) -> str:
     return "neither"
 
 
+def had_presence(row: "InvestorSoldRow") -> bool:
+    """True when we had the property on list and/or in REISift/CRM before/at sale."""
+    return bool(
+        row.in_my_records
+        or row.reisift_matched
+        or row.marketed
+        or row.lead_matched
+        or row.qualified_lead_matched
+        or row.prospect_matched
+        or row.opp_matched
+        or row.list_purchase_date
+        or row.under_contract_date
+        or row.hhb_closed_date
+        or (row.pipeline_stage and row.pipeline_stage != "NONE")
+    )
+
+
+def is_lost_to_investor(row: "InvestorSoldRow") -> bool:
+    """Investor bought a property we had; we did not HHB-close it."""
+    return bool(had_presence(row) and row.investor and not row.hhb_closed_date)
+
+
 def _parse_sold_ts(period_date: str, period_label: str) -> Optional[pd.Timestamp]:
     sold_ts = None
     if period_date:
@@ -147,6 +170,7 @@ class InvestorSoldRow:
     sale_amount: str = ""
     investor: bool = False
     in_my_records: bool = False
+    had_presence: bool = False
     segment: str = "neither"
     investor_score: str = ""
     distressors: str = ""
@@ -195,6 +219,7 @@ class InvestorSoldRow:
             "sale_amount": self.sale_amount,
             "investor": self.investor,
             "in_my_records": self.in_my_records,
+            "had_presence": self.had_presence,
             "segment": self.segment,
             "investor_score": self.investor_score,
             "distressors": self.distressors,
@@ -258,10 +283,11 @@ class InvestorSoldResult:
     reisift_matched_count: int = 0
     lost_to_investor_count: int = 0
     lost_to_investor_pct: float = 0.0
-    in_list_investor_count: int = 0
-    in_list_non_investor_count: int = 0
+    had_presence_count: int = 0
+    had_presence_investor_count: int = 0
+    had_presence_non_investor_count: int = 0
     lost_by_stage: List[Dict[str, Any]] = field(default_factory=list)
-    in_list_exits_by_buyer: Dict[str, int] = field(default_factory=dict)
+    had_presence_exits_by_buyer: Dict[str, int] = field(default_factory=dict)
     total_touch_counts: Dict[str, int] = field(default_factory=dict)
     avg_touches_per_marketed: Optional[float] = None
     mean_months_list_to_sold: Optional[float] = None
@@ -307,10 +333,11 @@ class InvestorSoldResult:
             "lost": {
                 "lost_to_investor_count": self.lost_to_investor_count,
                 "lost_to_investor_pct": self.lost_to_investor_pct,
-                "in_list_investor_count": self.in_list_investor_count,
-                "in_list_non_investor_count": self.in_list_non_investor_count,
+                "had_presence_count": self.had_presence_count,
+                "had_presence_investor_count": self.had_presence_investor_count,
+                "had_presence_non_investor_count": self.had_presence_non_investor_count,
                 "lost_by_stage": self.lost_by_stage,
-                "in_list_exits_by_buyer": self.in_list_exits_by_buyer,
+                "had_presence_exits_by_buyer": self.had_presence_exits_by_buyer,
             },
             "marketing": {
                 "marketed_count": self.marketed_count,
@@ -399,6 +426,7 @@ def _row_kwargs(item: Dict[str, Any]) -> Dict[str, Any]:
     for b in (
         "investor",
         "in_my_records",
+        "had_presence",
         "reisift_matched",
         "marketed",
         "lead_matched",
@@ -446,6 +474,8 @@ def _row_kwargs(item: Dict[str, Any]) -> Dict[str, Any]:
 
 def result_from_metrics_dict(metrics: Dict[str, Any]) -> InvestorSoldResult:
     rows = [InvestorSoldRow(**_row_kwargs(item)) for item in metrics.get("rows") or []]
+    for row in rows:
+        row.had_presence = had_presence(row)
     inputs = metrics.get("inputs") or {}
     segments = metrics.get("segments") or {}
     marketing = metrics.get("marketing") or {}
@@ -480,13 +510,26 @@ def result_from_metrics_dict(metrics: Dict[str, Any]) -> InvestorSoldResult:
         reisift_matched_count=int(match.get("reisift_matched_count") or 0),
         lost_to_investor_count=int((metrics.get("lost") or {}).get("lost_to_investor_count") or 0),
         lost_to_investor_pct=float((metrics.get("lost") or {}).get("lost_to_investor_pct") or 0),
-        in_list_investor_count=int((metrics.get("lost") or {}).get("in_list_investor_count") or 0),
-        in_list_non_investor_count=int(
-            (metrics.get("lost") or {}).get("in_list_non_investor_count") or 0
+        had_presence_count=int(
+            (metrics.get("lost") or {}).get("had_presence_count")
+            or (metrics.get("lost") or {}).get("in_list_count")
+            or 0
+        ),
+        had_presence_investor_count=int(
+            (metrics.get("lost") or {}).get("had_presence_investor_count")
+            or (metrics.get("lost") or {}).get("in_list_investor_count")
+            or 0
+        ),
+        had_presence_non_investor_count=int(
+            (metrics.get("lost") or {}).get("had_presence_non_investor_count")
+            or (metrics.get("lost") or {}).get("in_list_non_investor_count")
+            or 0
         ),
         lost_by_stage=list((metrics.get("lost") or {}).get("lost_by_stage") or []),
-        in_list_exits_by_buyer=dict(
-            (metrics.get("lost") or {}).get("in_list_exits_by_buyer") or {}
+        had_presence_exits_by_buyer=dict(
+            (metrics.get("lost") or {}).get("had_presence_exits_by_buyer")
+            or (metrics.get("lost") or {}).get("in_list_exits_by_buyer")
+            or {}
         ),
         total_touch_counts=dict(marketing.get("total_touch_counts") or {}),
         avg_touches_per_marketed=marketing.get("avg_touches_per_marketed"),
@@ -542,6 +585,7 @@ def _empty_rollup(key_name: str, key: str) -> Dict[str, Any]:
         "leads": 0,
         "qualified_leads": 0,
         "prospects": 0,
+        "had_presence": 0,
         "lost_to_investor": 0,
     }
 
@@ -698,6 +742,7 @@ def _enrich_row(
         pipeline = _max_pipeline(pipeline, "HHB_CLOSED")
     sold_row.pipeline_stage = pipeline
     sold_row.pipeline_stage_label = PIPELINE_LABELS.get(pipeline, pipeline)
+    sold_row.had_presence = had_presence(sold_row)
 
     if list_dt is not None and sold_ts is not None:
         sold_row.months_list_to_sold = months_between(pd.Timestamp(list_dt), sold_ts)
@@ -875,11 +920,12 @@ def analyze(
 
     in_list_investor_n = sum(1 for r in rows if r.in_my_records and r.investor)
     in_list_non_investor_n = sum(1 for r in rows if r.in_my_records and not r.investor)
-    lost_rows = [
-        r for r in rows if r.in_my_records and r.investor and not r.hhb_closed_date
-    ]
+    had_n = sum(1 for r in rows if r.had_presence)
+    had_investor_n = sum(1 for r in rows if r.had_presence and r.investor)
+    had_non_investor_n = sum(1 for r in rows if r.had_presence and not r.investor)
+    lost_rows = [r for r in rows if is_lost_to_investor(r)]
     lost_n = len(lost_rows)
-    lost_pct = _pct(lost_n, in_list_n)
+    lost_pct = _pct(lost_n, had_n)
     lost_stage_counter: Counter[str] = Counter(r.pipeline_stage for r in lost_rows)
     lost_by_stage = [
         {
@@ -891,13 +937,15 @@ def analyze(
         for stage in PIPELINE_ORDER
         if lost_stage_counter.get(stage, 0) > 0 or stage in PIPELINE_FUNNEL_ALWAYS
     ]
-    in_list_exits_by_buyer = {
-        "investor": in_list_investor_n,
-        "non_investor": in_list_non_investor_n,
+    had_presence_exits_by_buyer = {
+        "investor": had_investor_n,
+        "non_investor": had_non_investor_n,
         "lost_to_investor": lost_n,
         "hhb_closed_investor": sum(
-            1 for r in rows if r.in_my_records and r.investor and r.hhb_closed_date
+            1 for r in rows if r.had_presence and r.investor and r.hhb_closed_date
         ),
+        "scrape_in_list_investor": in_list_investor_n,
+        "scrape_in_list_non_investor": in_list_non_investor_n,
     }
 
     total_touches = {
@@ -991,7 +1039,9 @@ def analyze(
             bucket["qualified_leads"] += 1
         if r.prospect_matched:
             bucket["prospects"] += 1
-        if r.in_my_records and r.investor and not r.hhb_closed_date:
+        if r.had_presence:
+            bucket["had_presence"] += 1
+        if is_lost_to_investor(r):
             bucket["lost_to_investor"] += 1
 
         ck = r.county or "(unknown)"
@@ -1013,7 +1063,9 @@ def analyze(
             cb["qualified_leads"] += 1
         if r.prospect_matched:
             cb["prospects"] += 1
-        if r.in_my_records and r.investor and not r.hhb_closed_date:
+        if r.had_presence:
+            cb["had_presence"] += 1
+        if is_lost_to_investor(r):
             cb["lost_to_investor"] += 1
 
     months_to_sold = [m for m in (r.months_list_to_sold for r in rows) if m is not None]
@@ -1032,8 +1084,9 @@ def analyze(
 
     multi_txn = sum(1 for r in rows if r.transaction_count > 1)
     methodology_note = (
-        "Primary question: lost to another investor = in_my_records AND investor AND not "
-        "HHB closed (loss rate denominator = in-list properties). "
+        "Primary question: lost to another investor = we had it (In My Records scrape OR "
+        "REISift/CRM presence: list tags, marketed, Podio/SF lead, QL, opp, UC, Closed) AND "
+        "investor AND not HHB closed. Loss rate denominator = properties we had. "
         "Universe = CleanREISift sold_properties_full.csv. Grain = unique property × sold month "
         f"(multi-txn Dataflik rows collapse; {multi_txn:,} properties had >1 txn). "
         "Canonical pipeline: Prospect (8020 / list / in_my_records) → Marketed ((8020) CC/SMS/DM) → "
@@ -1070,10 +1123,11 @@ def analyze(
         reisift_matched_count=reisift_n,
         lost_to_investor_count=lost_n,
         lost_to_investor_pct=lost_pct,
-        in_list_investor_count=in_list_investor_n,
-        in_list_non_investor_count=in_list_non_investor_n,
+        had_presence_count=had_n,
+        had_presence_investor_count=had_investor_n,
+        had_presence_non_investor_count=had_non_investor_n,
         lost_by_stage=lost_by_stage,
-        in_list_exits_by_buyer=in_list_exits_by_buyer,
+        had_presence_exits_by_buyer=had_presence_exits_by_buyer,
         total_touch_counts=total_touches,
         avg_touches_per_marketed=avg_touches,
         mean_months_list_to_sold=mean_sold,
@@ -1108,11 +1162,12 @@ def build_export_workbook(result: InvestorSoldResult) -> bytes:
         {"metric": "Sold transactions ingested", "value": result.sold_rows_ingested},
         {"metric": "Property × month rows", "value": result.property_rows},
         {"metric": "Unique addresses", "value": result.unique_addresses},
-        {"metric": "In Our List", "value": result.in_our_list_count},
+        {"metric": "Properties we had (list or CRM)", "value": result.had_presence_count},
         {"metric": "Lost to investor", "value": result.lost_to_investor_count},
-        {"metric": "Lost to investor % of in-list", "value": result.lost_to_investor_pct},
-        {"metric": "In-list sold to investor", "value": result.in_list_investor_count},
-        {"metric": "In-list sold non-investor", "value": result.in_list_non_investor_count},
+        {"metric": "Lost to investor % of we-had", "value": result.lost_to_investor_pct},
+        {"metric": "We-had sold to investor", "value": result.had_presence_investor_count},
+        {"metric": "We-had sold non-investor", "value": result.had_presence_non_investor_count},
+        {"metric": "In Our List (scrape flag)", "value": result.in_our_list_count},
         {"metric": "Investor (market)", "value": result.investor_count},
         {"metric": "Both", "value": result.both_count},
         {"metric": "Neither", "value": result.neither_count},
@@ -1142,10 +1197,13 @@ def build_export_workbook(result: InvestorSoldResult) -> bytes:
         pd.DataFrame(result.by_sold_month).to_excel(writer, sheet_name="By Month", index=False)
         pd.DataFrame(all_rows).to_excel(writer, sheet_name="Journey", index=False)
         pd.DataFrame(
-            [r for r in all_rows if r.get("in_my_records") and r.get("investor") and not r.get("hhb_closed_date")]
+            [r for r in all_rows if r.get("had_presence") and r.get("investor") and not r.get("hhb_closed_date")]
         ).to_excel(writer, sheet_name="Lost To Investor", index=False)
         pd.DataFrame([r for r in all_rows if r.get("investor")]).to_excel(
             writer, sheet_name="Investor", index=False
+        )
+        pd.DataFrame([r for r in all_rows if r.get("had_presence")]).to_excel(
+            writer, sheet_name="We Had", index=False
         )
         pd.DataFrame([r for r in all_rows if r.get("in_my_records")]).to_excel(
             writer, sheet_name="In Our List", index=False

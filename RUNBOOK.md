@@ -223,7 +223,7 @@ Each Gate 3 analyze runs **marketing ramp** and **monthly consolidated** in para
 
 ## Investor & In-List Sold (Gate 7)
 
-**When:** You have CleanREISift `sold_properties_full.csv` and want **lost-to-investor** KPIs (in-list + investor + not Closed) with furthest-stage breakdown, plus segment cuts and the canonical marketing pipeline. This is the single sold-properties product surface (the former REISift `in_sold_properties_full` Gate 6 report was removed).
+**When:** You have CleanREISift `sold_properties_full.csv` and want **lost-to-investor** KPIs (we had it on list/CRM + investor + not Closed) with furthest-stage breakdown, plus segment cuts and the canonical marketing pipeline. This is the single sold-properties product surface (the former REISift `in_sold_properties_full` Gate 6 report was removed).
 
 **UI:** Docker `http://localhost:3300` → **Investor & In-List Sold** (Gate 7 tab).
 
@@ -246,7 +246,7 @@ Each Gate 3 analyze runs **marketing ramp** and **monthly consolidated** in para
 
 **Grain:** One row per **property × sold month** (`dataflik_id` + month). Multiple Dataflik `transaction_id`s for the same property/sale collapse into one row with `transaction_count`. KPIs use property rows, not raw transaction count.
 
-**Lost rule:** `in_my_records` AND `investor` AND not Closed. Loss % = lost / in-list.
+**Lost rule:** We had it (In My Records **or** REISift/CRM presence) AND `investor` AND not Closed. Loss % = lost / properties we had.
 
 **Pipeline:** Prospect (8020 / in-list) → Marketed → Lead (Podio/SF) → Qualified Lead → Opportunity → Under contract → Closed.
 

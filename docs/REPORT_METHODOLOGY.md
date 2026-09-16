@@ -361,7 +361,7 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 **Question:** Of scraped external NY sales (`sold_properties_full.csv`), how many **in-list** properties were **lost to another investor** (investor sale, not HHB closed), at what furthest pipeline stage, and how do investor / in-list / both / neither segments compare?
 
-**Lost definition:** `in_my_records` AND `investor` AND not Closed. Loss rate denominator = in-list property rows. Companion: in-list exits by buyer (investor vs non-investor).
+**Lost definition:** We had it (scrape `in_my_records` **or** REISift/CRM presence: list tags, marketed, Podio/SF lead, QL, opp, UC, Closed) AND `investor` AND not HHB Closed. Loss rate denominator = properties we had. Scrape “In Our List” remains a segment cut, not a second loss KPI.
 
 **Universe:** CleanREISift sold scrape rows with `investor` and `in_my_records` TRUE/FALSE flags. Address keys rebuilt with `make_address_key` from property address parts (do not trust the scrape `address_key` string for joins).
 

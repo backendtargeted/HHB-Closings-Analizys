@@ -80,7 +80,8 @@ const MethodologySection = () => {
             <code className="bg-stone-100 px-1 rounded">sold_properties_full.csv</code> with{' '}
             <code className="bg-stone-100 px-1 rounded">investor</code> and{' '}
             <code className="bg-stone-100 px-1 rounded">in_my_records</code> flags. Primary KPI:{' '}
-            <em>lost to investor</em> = in-list AND investor AND not Closed (rate vs in-list), with
+            <em>lost to investor</em> = we had it (In My Records OR REISift/CRM presence) AND investor
+            AND not Closed (rate vs properties we had), with
             furthest-stage breakdown. Canonical pipeline: Prospect (8020) → Marketed → Lead (Podio/SF)
             → Qualified Lead → Opportunity → Under contract → Closed. Grain = unique property × sold month.
           </p>
