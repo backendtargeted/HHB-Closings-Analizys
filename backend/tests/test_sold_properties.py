@@ -1,4 +1,4 @@
-"""Tests for Gate 6 sold-properties cohort and pipeline depth."""
+"""Tests for shared sold-properties pipeline helpers (Investor Sold reuse)."""
 
 from __future__ import annotations
 

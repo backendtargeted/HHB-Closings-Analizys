@@ -1,4 +1,4 @@
-"""Tests for Gate 7 Court Alerts lifecycle."""
+"""Tests for Gate 6 Court Alerts lifecycle."""
 
 from __future__ import annotations
 

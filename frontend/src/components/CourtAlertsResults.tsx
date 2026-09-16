@@ -254,7 +254,7 @@ const CourtAlertsResults = ({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-sky-950">Gate 7 — Court Alerts lifecycle</h2>
+          <h2 className="text-2xl font-bold text-sky-950">Gate 6 — Court Alerts lifecycle</h2>
           <p className="text-sm text-stone-600 mt-1">
             {m.date_window_start} → {m.date_window_end}
             {' · '}

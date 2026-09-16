@@ -7,7 +7,6 @@ import {
   getMarketingRampJob,
   getWebLeadsJob,
   getProbateJob,
-  getSoldPropertiesJob,
   getCourtAlertsJob,
   getInvestorSoldJob,
   deleteAnalysis,
@@ -16,7 +15,6 @@ import {
   deleteMarketingRampJob,
   deleteWebLeadsJob,
   deleteProbateJob,
-  deleteSoldPropertiesJob,
   deleteCourtAlertsJob,
   deleteInvestorSoldJob,
 } from '../services/api';
@@ -30,8 +28,6 @@ import type { WebLeadsCompletedResponse } from '../types/webLeads';
 import { asWebLeadsCompleted } from '../types/webLeads';
 import type { ProbateCompletedResponse } from '../types/probate';
 import { asProbateCompleted } from '../types/probate';
-import type { SoldPropertiesCompletedResponse } from '../types/soldProperties';
-import { asSoldPropertiesCompleted } from '../types/soldProperties';
 import type { CourtAlertsCompletedResponse } from '../types/courtAlerts';
 import { asCourtAlertsCompleted } from '../types/courtAlerts';
 import type { InvestorSoldCompletedResponse } from '../types/investorSold';
@@ -45,7 +41,6 @@ interface SavedReportsProps {
   onOpenMarketingRampReport?: (data: MarketingRampCompletedResponse) => void;
   onOpenWebLeadsReport?: (data: WebLeadsCompletedResponse) => void;
   onOpenProbateReport?: (data: ProbateCompletedResponse) => void;
-  onOpenSoldPropertiesReport?: (data: SoldPropertiesCompletedResponse) => void;
   onOpenCourtAlertsReport?: (data: CourtAlertsCompletedResponse) => void;
   onOpenInvestorSoldReport?: (data: InvestorSoldCompletedResponse) => void;
   refreshKey?: number;
@@ -69,7 +64,6 @@ const typeLabel = (t: SavedReportItem['report_type']) => {
   if (t === 'marketing_ramp') return 'Marketing ramp';
   if (t === 'web_leads') return 'Web leads';
   if (t === 'probate') return 'Probate';
-  if (t === 'sold_properties') return 'Sold properties';
   if (t === 'court_alerts') return 'Court Alerts';
   if (t === 'investor_sold') return 'Investor & In-List Sold';
   return 'Attribution (legacy)';
@@ -82,7 +76,6 @@ const SavedReports = ({
   onOpenMarketingRampReport,
   onOpenWebLeadsReport,
   onOpenProbateReport,
-  onOpenSoldPropertiesReport,
   onOpenCourtAlertsReport,
   onOpenInvestorSoldReport,
   refreshKey = 0,
@@ -109,26 +102,25 @@ const SavedReports = ({
   }, [load, refreshKey]);
 
   const filteredReports = useMemo(() => {
-    if (filter === 'all') return reports;
+    const visible = reports.filter((r) => (r.report_type as string) !== 'sold_properties');
+    if (filter === 'all') return visible;
     if (filter === 'monthly') {
-      return reports.filter(
+      return visible.filter(
         (r) =>
           r.report_type === 'monthly_consolidated' ||
           r.report_type === 'marketing_ramp' ||
           r.report_type === 'web_leads' ||
           r.report_type === 'probate' ||
-          r.report_type === 'sold_properties' ||
           r.report_type === 'court_alerts' ||
           r.report_type === 'investor_sold'
       );
     }
-    return reports.filter(
+    return visible.filter(
       (r) =>
         r.report_type !== 'monthly_consolidated' &&
         r.report_type !== 'marketing_ramp' &&
         r.report_type !== 'web_leads' &&
         r.report_type !== 'probate' &&
-        r.report_type !== 'sold_properties' &&
         r.report_type !== 'court_alerts' &&
         r.report_type !== 'investor_sold'
     );
@@ -154,11 +146,6 @@ const SavedReports = ({
         onOpenProbateReport(data);
       } else if (item.report_type === 'probate') {
         alert('Probate report handler not configured');
-      } else if (item.report_type === 'sold_properties' && onOpenSoldPropertiesReport) {
-        const data = asSoldPropertiesCompleted(await getSoldPropertiesJob(item.job_id));
-        onOpenSoldPropertiesReport(data);
-      } else if (item.report_type === 'sold_properties') {
-        alert('Sold properties report handler not configured');
       } else if (item.report_type === 'court_alerts' && onOpenCourtAlertsReport) {
         const data = asCourtAlertsCompleted(await getCourtAlertsJob(item.job_id));
         onOpenCourtAlertsReport(data);
@@ -195,8 +182,6 @@ const SavedReports = ({
         await deleteWebLeadsJob(item.job_id);
       } else if (item.report_type === 'probate') {
         await deleteProbateJob(item.job_id);
-      } else if (item.report_type === 'sold_properties') {
-        await deleteSoldPropertiesJob(item.job_id);
       } else if (item.report_type === 'court_alerts') {
         await deleteCourtAlertsJob(item.job_id);
       } else if (item.report_type === 'investor_sold') {
@@ -268,9 +253,6 @@ const SavedReports = ({
                     ? ` · ${r.date_window_start} – ${r.date_window_end}`
                     : ''}
                   {r.report_type === 'probate' && r.date_window_start
-                    ? ` · ${r.date_window_start} – ${r.date_window_end}`
-                    : ''}
-                  {r.report_type === 'sold_properties' && r.date_window_start
                     ? ` · ${r.date_window_start} – ${r.date_window_end}`
                     : ''}
                   {r.report_type === 'court_alerts' && r.date_window_start

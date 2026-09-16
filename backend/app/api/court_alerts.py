@@ -1,5 +1,5 @@
 """
-Gate 7 — Court Alerts lifecycle report API.
+Gate 6 — Court Alerts lifecycle report API.
 """
 
 from __future__ import annotations

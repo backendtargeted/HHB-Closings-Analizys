@@ -5,7 +5,6 @@ export type ReportShareType =
   | 'marketing_ramp'
   | 'web_leads'
   | 'probate'
-  | 'sold_properties'
   | 'court_alerts'
   | 'investor_sold';
 

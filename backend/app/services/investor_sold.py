@@ -1,5 +1,5 @@
 """
-Gate 8 — Investor & In-List Sold + canonical pipeline depth.
+Gate 7 — Investor & In-List Sold + canonical pipeline depth.
 
 Universe: CleanREISift sold_properties_full.csv (property × sold month).
 Requires REISift + Salesforce QL. Opportunities optional.
@@ -725,9 +725,9 @@ def analyze(
             on_progress(pct, message)
 
     if not reisift_path:
-        raise ValueError("REISift export is required for Gate 8 pipeline enrichment")
+        raise ValueError("REISift export is required for Gate 7 pipeline enrichment")
     if not ql_path:
-        raise ValueError("Salesforce Total Qualified Leads is required for Gate 8")
+        raise ValueError("Salesforce Total Qualified Leads is required for Gate 7")
 
     warnings: List[str] = []
     report(5, "Loading sold transactions CSV…")

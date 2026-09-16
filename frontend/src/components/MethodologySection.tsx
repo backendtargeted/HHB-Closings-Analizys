@@ -68,32 +68,21 @@ const MethodologySection = () => {
             first-list source: LIP Probates, 8020, and Same month.
           </p>
           <p>
-            <strong className="text-stone-800">Gate 6 sold properties:</strong> Cohort is REISift rows
-            with a parseable{' '}
-            <code className="bg-stone-100 px-1 rounded">in_sold_properties_full</code> sale month
-            (external sale, not an HHB closing). Canonical pipeline: Prospect (8020) → Marketed →
-            Lead (Podio/SF) → Qualified Lead → Opportunity → Under contract → Closed. QL Create Date
-            is Qualified Lead lag only; list tags remain credit.{' '}
-            <code className="bg-stone-100 px-1 rounded">PodioSellerLeads</code> is Lead (pre-Salesforce
-            CRM presence).
-          </p>
-          <p>
-            <strong className="text-stone-800">Gate 7 Court Alerts:</strong> Universe is the Court
+            <strong className="text-stone-800">Gate 6 Court Alerts:</strong> Universe is the Court
             Alerts CSV (parseable address + created_on). REISift supplies competing{' '}
             <code className="bg-stone-100 px-1 rounded">List Purchased 8020</code> tags by address.
             First list is the QL credit when Create Date is on or after that first-list month.
             Lag buckets split by Court Alerts / 8020 / Same month. Reasons from Transactions only.
           </p>
           <p>
-            <strong className="text-stone-800">Gate 8 Investor &amp; In-List Sold:</strong> Universe is
+            <strong className="text-stone-800">Gate 7 Investor &amp; In-List Sold:</strong> Universe is
             CleanREISift{' '}
             <code className="bg-stone-100 px-1 rounded">sold_properties_full.csv</code> with{' '}
             <code className="bg-stone-100 px-1 rounded">investor</code> and{' '}
             <code className="bg-stone-100 px-1 rounded">in_my_records</code> flags. Primary KPI:{' '}
             <em>lost to investor</em> = in-list AND investor AND not Closed (rate vs in-list), with
-            furthest-stage breakdown. Same canonical pipeline as Gate 6. Grain = unique property ×
-            sold month. Distinct from Gate 6’s REISift{' '}
-            <code className="bg-stone-100 px-1 rounded">in_sold_properties_full</code> cohort.
+            furthest-stage breakdown. Canonical pipeline: Prospect (8020) → Marketed → Lead (Podio/SF)
+            → Qualified Lead → Opportunity → Under contract → Closed. Grain = unique property × sold month.
           </p>
           <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">
             Full methodology: repo{' '}

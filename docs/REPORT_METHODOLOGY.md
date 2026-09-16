@@ -6,7 +6,7 @@ This document describes **how closings / contact attribution reports are compute
 
 **Salesforce Create Date (all gates):** Create Date is when marketing called or texted that LIP / 8020 / CourtAlerts list and pushed the lead into the CRM. It is a **clock**, not a source. The list provider is the credit (first list on the row wins). Campaign / Lead Source is how they worked it — extra, not a replacement for the list. Never compare Create Date to list month to relabel credit as “Already in Salesforce,” “After LIP,” or “After 8020.”
 
-Allowed clock uses: Gate 1 does not credit from Create Date. Gate 2 / legacy QL — Create Date **window** = which QLs fall in the month. Gate 3 — same window, plus `days_list_to_create_date` **lag**. Gate 4 — Create Date is the web-lead / CourtAlerts cohort **anchor**; prior list tags are history, not a rewrite of that credit. Gate 5 — lag from first-list month to CRM push (Qualified Lead). Gate 6 — Qualified Lead lag from first list month to QL Create Date (on or before external sold month). Gate 7 — same lag rules as Gate 5 (Court Alerts vs 8020 first list → Create Date).
+Allowed clock uses: Gate 1 does not credit from Create Date. Gate 2 / legacy QL — Create Date **window** = which QLs fall in the month. Gate 3 — same window, plus `days_list_to_create_date` **lag**. Gate 4 — Create Date is the web-lead / CourtAlerts cohort **anchor**; prior list tags are history, not a rewrite of that credit. Gate 5 — lag from first-list month to CRM push (Qualified Lead). Gate 6 — same lag rules as Gate 5 (Court Alerts vs 8020 first list → Create Date). Gate 7 Investor & In-List Sold — Qualified Lead lag from first list month to QL Create Date (on or before external sold month).
 
 ---
 
@@ -277,9 +277,9 @@ Saved JSON from older runs may omit lifecycle fields; re-run analysis to populat
 | Gate 5 probate | `backend/app/services/probate.py` |
 | Open pipeline / stuck-at-stage | `lifecycle.py` — `compute_stage_funnel_open`, `aggregate_stuck_at_stage` |
 | Tag-derived lead source | `monthly_consolidated.py` — `derive_tag_lead_source` |
-| Sold properties (Gate 6) | `backend/app/services/sold_properties.py` |
-| Court Alerts (Gate 7) | `backend/app/services/court_alerts.py` |
-| Investor & In-List Sold (Gate 8) | `backend/app/services/investor_sold.py` |
+| Court Alerts (Gate 6) | `backend/app/services/court_alerts.py` |
+| Investor & In-List Sold (Gate 7) | `backend/app/services/investor_sold.py` |
+| Shared sold pipeline helpers | `backend/app/services/sold_properties.py` (used by Gate 7; not a product report) |
 
 ---
 
@@ -339,29 +339,7 @@ Canonical implementation: `backend/app/services/probate.py`.
 
 ---
 
-## 20. Gate 6 sold properties (pipeline depth before external sale)
-
-**Question:** Among properties already in REISift that later appear in a sold-properties file (`in_sold_properties_full` sale month), how hard did we market them, and how far did they get in the HHB funnel before that external sale?
-
-**Inputs:** REISift export with `in_sold_properties_full` (required) + Salesforce Total Qualified Leads (required) + Opportunities (optional).
-
-**Cohort:** Rows with a non-empty, parseable `in_sold_properties_full` value (aliases: `Sold Month`, `in_sold_properties`). Accepted month forms: `M/YYYY`, `MM/YYYY`, `YYYY-MM`, month names. Unparseable non-empty values are excluded and counted in warnings.
-
-**External sale anchor:** Sold month is **not** an HHB closing. Events and CRM matches are evaluated **on or before the end of the sold month**.
-
-**Pipeline stages (highest reached):** Prospect (8020 list) → Marketed (`(8020)` CC/SMS/DM) → Lead (`PodioSellerLeads` or SF engaged) → Qualified Lead (QL Create Date on/after first list month and on/before sold month) → Opportunity (optional Opportunities file) → Under contract (SF converted) → Closed (`(CLOSED) 8020`). Why they sold elsewhere is out of scope.
-
-**Create Date:** Qualified Lead **lag** only (`months_list_to_qualified_lead`). List purchase tags remain source credit.
-
-**Export:** Summary, Journey, Never Marketed, Pipeline Funnel, By Sold Month, Lifecycle Funnel sheets.
-
-**Never marketed:** No `(8020) CC/SMS/DM` tags on/before sold month. Often federal Do Not Call, other DNC, or suppression imports (property bought into REISift but intentionally not reached). Spot-check Tags/Lists for DNC or suppression labels.
-
-Canonical implementation: `backend/app/services/sold_properties.py`.
-
----
-
-## 21. Gate 7 Court Alerts lifecycle
+## 20. Gate 6 Court Alerts lifecycle
 
 **Question:** On Court Alerts (foreclosure / court) properties, who delivered the record first (Court Alerts vs 8020), how many months until Salesforce Qualified Lead, what % of the Court Alerts list became Qualified Leads, and what Primary/Secondary Reason for Selling is stated on the Transactions pipeline.
 
@@ -379,7 +357,7 @@ Canonical implementation: `backend/app/services/sold_properties.py`.
 
 Canonical implementation: `backend/app/services/court_alerts.py`.
 
-## 22. Gate 8 Investor & In-List Sold
+## 21. Gate 7 Investor & In-List Sold
 
 **Question:** Of scraped external NY sales (`sold_properties_full.csv`), how many **in-list** properties were **lost to another investor** (investor sale, not HHB closed), at what furthest pipeline stage, and how do investor / in-list / both / neither segments compare?
 
@@ -387,18 +365,18 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 **Universe:** CleanREISift sold scrape rows with `investor` and `in_my_records` TRUE/FALSE flags. Address keys rebuilt with `make_address_key` from property address parts (do not trust the scrape `address_key` string for joins).
 
-**Required inputs:** Sold CSV + REISift export + Salesforce Total Qualified Leads. Opportunities optional (Opp stage). Gate 6 remains the REISift `in_sold_properties_full` cohort; Gate 8 is the CleanREISift-driven sibling.
+**Required inputs:** Sold CSV + REISift export + Salesforce Total Qualified Leads. Opportunities optional (Opp stage). This is the single sold-properties product report; the former REISift `in_sold_properties_full` cohort report was removed.
 
 **Grain:** Unique **property × sold month** (`dataflik_id` + month, else `address_key` + month). Multiple Dataflik `transaction_id`s for the same sale collapse to one row with `transaction_count`. Segment KPIs count property rows; `sold_rows_ingested` remains the raw transaction count.
 
 **Segments:** Investor (`investor`), In Our List (`in_my_records`), Both, Neither. Rollups by sold month and by segment (marketed %, lead %, qualified lead %, opps, UC, Closed, median list→sold).
 
-**Canonical pipeline clocks (same as Gate 6, after collapse):**
+**Canonical pipeline clocks** (shared helpers in `backend/app/services/sold_properties.py`, after property×month collapse):
 - **Prospect (8020):** list purchase / `in_my_records`.
 - **Marketed:** `(8020)` CC/SMS/DM tag events on/before sold month end.
 - **Lead:** SF engaged tag on/before sold month, or `PodioSellerLeads` presence (no Create Date clock).
 - **Qualified Lead:** QL Create Date on/after first list-purchase month and on/before sold month end.
-- **Opp / under contract / Closed:** same date gates as Gate 6.
+- **Opp / under contract / Closed:** same date gates as the shared sold pipeline helpers.
 
 **Data caveat:** CleanREISift In My Records scrape must return non-zero totals for every sold month (historically Mar–Jul 2026 returned `total=0`). Re-scrape before trusting Lost KPIs.
 

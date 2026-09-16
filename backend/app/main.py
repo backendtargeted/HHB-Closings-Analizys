@@ -21,7 +21,6 @@ from .api.monthly_consolidated import (
 from .api.marketing_ramp import load_marketing_ramp_from_disk, marketing_ramp_bp
 from .api.web_leads import load_web_leads_from_disk, web_leads_bp
 from .api.probate import load_probate_from_disk, probate_bp
-from .api.sold_properties import load_sold_properties_from_disk, sold_properties_bp
 from .api.court_alerts import load_court_alerts_from_disk, court_alerts_bp
 from .api.investor_sold import load_investor_sold_from_disk, investor_sold_bp
 from .api.qualified_leads import load_qualified_leads_from_disk, qualified_leads_bp
@@ -86,7 +85,6 @@ load_monthly_consolidated_from_disk()
 load_marketing_ramp_from_disk()
 load_web_leads_from_disk()
 load_probate_from_disk()
-load_sold_properties_from_disk()
 load_court_alerts_from_disk()
 load_investor_sold_from_disk()
 app.config["JSON_SORT_KEYS"] = False
@@ -120,7 +118,6 @@ app.register_blueprint(monthly_consolidated_bp, url_prefix="/api/monthly-consoli
 app.register_blueprint(marketing_ramp_bp, url_prefix="/api/marketing-ramp")
 app.register_blueprint(web_leads_bp, url_prefix="/api/web-leads")
 app.register_blueprint(probate_bp, url_prefix="/api/probate")
-app.register_blueprint(sold_properties_bp, url_prefix="/api/sold-properties")
 app.register_blueprint(court_alerts_bp, url_prefix="/api/court-alerts")
 app.register_blueprint(investor_sold_bp, url_prefix="/api/investor-sold")
 

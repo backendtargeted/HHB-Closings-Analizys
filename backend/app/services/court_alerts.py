@@ -1,5 +1,5 @@
 """
-Gate 7 — Court Alerts lifecycle.
+Gate 6 — Court Alerts lifecycle.
 
 Universe is a Court Alerts CSV/XLSX (pgweb export). REISift supplies competing
 8020 list-purchase tags (and phones) by address. First list is the QL credit.

@@ -1,10 +1,9 @@
 """
-Gate 6 — Sold properties (pipeline depth before external sale).
+Shared pipeline helpers used by Investor Sold — NOT a Gate 6 product report.
 
-Cohort: REISift rows with a non-empty `in_sold_properties_full` (external sale month).
-Measures marketing intensity and how far each property progressed in the HHB funnel
-(list → marketed → Prospect → Opportunity → under contract → HHB close) on or before
-that sold month. Salesforce Create Date is a clock (Prospect lag), not source credit.
+Cohort logic: REISift rows with a non-empty `in_sold_properties_full` (external sale month).
+Measures marketing intensity and funnel depth on or before that sold month. Salesforce Create
+Date is a clock (Prospect lag), not source credit. analyze() remains for tests and reuse.
 """
 
 from __future__ import annotations
@@ -69,7 +68,7 @@ REISIFT_PHONE_CANDIDATES = [
 
 TOUCH_CHANNELS = ("CC", "SMS", "DM")
 
-# Business pipeline (ordered ascending). Canonical across Gate 6 / Gate 8 / workspace copy.
+# Business pipeline (ordered ascending). Canonical for Investor Sold / workspace copy.
 # Prospect (8020) = list presence; Lead = Podio/SF engaged; Qualified Lead = QL Create Date.
 PIPELINE_ORDER = (
     "NONE",

@@ -1,5 +1,5 @@
 """
-Gate 8 — Investor & In-List Sold API.
+Gate 7 — Investor & In-List Sold API.
 """
 
 from __future__ import annotations

@@ -7,7 +7,6 @@ export type GateMode =
   | 'marketingRamp'
   | 'webLeads'
   | 'probate'
-  | 'soldProperties'
   | 'courtAlerts'
   | 'investorSold';
 
@@ -176,36 +175,8 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
         <button
           type="button"
           role="tab"
-          aria-selected={mode === 'soldProperties'}
-          id="tab-gate6"
-          aria-controls="panel-workspace"
-          onClick={() => onChange('soldProperties')}
-          className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:ring-offset-2 ${
-            mode === 'soldProperties'
-              ? 'border-teal-600/80 bg-teal-50/90 shadow-md ring-1 ring-teal-600/20'
-              : 'border-stone-200 bg-white/80 hover:border-teal-200 hover:bg-teal-50/40'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-teal-800 mb-1">Gate 6</p>
-              <h2 className="text-lg font-bold text-teal-950 tracking-tight">Sold properties</h2>
-              <p className="text-teal-950/80 text-sm mt-2 leading-relaxed">
-                REISift export with in_sold_properties_full + QL → marketing intensity and pipeline
-                depth before the external sale month.
-              </p>
-            </div>
-            <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-teal-200/80 text-teal-950">
-              Sold
-            </span>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          role="tab"
           aria-selected={mode === 'courtAlerts'}
-          id="tab-gate7"
+          id="tab-gate6"
           aria-controls="panel-workspace"
           onClick={() => onChange('courtAlerts')}
           className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-700 focus-visible:ring-offset-2 ${
@@ -216,7 +187,7 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-sky-800 mb-1">Gate 7</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-sky-800 mb-1">Gate 6</p>
               <h2 className="text-lg font-bold text-sky-950 tracking-tight">Court Alerts lifecycle</h2>
               <p className="text-sky-950/80 text-sm mt-2 leading-relaxed">
                 Court Alerts CSV vs 8020 on the matched REISift address, time to Salesforce Qualified
@@ -233,7 +204,7 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
           type="button"
           role="tab"
           aria-selected={mode === 'investorSold'}
-          id="tab-gate8"
+          id="tab-gate7"
           aria-controls="panel-workspace"
           onClick={() => onChange('investorSold')}
           className={`text-left rounded-2xl border-2 p-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-700 focus-visible:ring-offset-2 ${
@@ -244,7 +215,7 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-violet-800 mb-1">Gate 8</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-violet-800 mb-1">Gate 7</p>
               <h2 className="text-lg font-bold text-violet-950 tracking-tight">
                 Investor &amp; In-List Sold
               </h2>

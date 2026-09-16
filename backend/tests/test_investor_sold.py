@@ -1,4 +1,4 @@
-"""Tests for Gate 8 investor & in-list sold + pipeline depth."""
+"""Tests for Gate 7 investor & in-list sold + pipeline depth."""
 
 from __future__ import annotations
 
