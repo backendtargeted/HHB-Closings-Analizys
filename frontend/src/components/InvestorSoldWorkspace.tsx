@@ -112,8 +112,8 @@ const InvestorSoldWorkspace = ({
         Primary question: how many properties we had (list or CRM) were lost to another investor
         (investor sale, not HHB closed), and at what furthest pipeline stage. Universe is
         CleanREISift <code className="text-xs">sold_properties_full.csv</code>. Canonical
-        pipeline: Prospect (8020) → Marketed → Lead (Podio/SF) → Qualified Lead → Opportunity →
-        Under contract → Closed.
+        pipeline: Prospect (8020 / Court Alerts / LI Profiles) → Marketed (CC/DM/SMS) → Lead
+        (Salesforce/Podio) → Qualified Lead → Opportunity (includes under contract) → Closed.
       </p>
 
       <div className="mt-6 grid gap-4 max-w-md">

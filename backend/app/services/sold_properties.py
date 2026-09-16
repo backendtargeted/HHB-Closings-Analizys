@@ -69,7 +69,8 @@ REISIFT_PHONE_CANDIDATES = [
 TOUCH_CHANNELS = ("CC", "SMS", "DM")
 
 # Business pipeline (ordered ascending). Canonical for Investor Sold / workspace copy.
-# Prospect (8020) = list presence; Lead = Podio/SF engaged; Qualified Lead = QL Create Date.
+# Prospect sources: 8020, Court Alerts, LI Profiles (Probates NY).
+# Then: Marketed (CC/DM/SMS) → Lead (SF/Podio) → Qualified Lead → Opportunity → Closed.
 PIPELINE_ORDER = (
     "NONE",
     "PROSPECT",
@@ -77,23 +78,38 @@ PIPELINE_ORDER = (
     "LEAD",
     "QUALIFIED_LEAD",
     "OPPORTUNITY",
-    "UNDER_CONTRACT",
     "HHB_CLOSED",
 )
 
 PIPELINE_LABELS = {
     "NONE": "No list / history",
-    "PROSPECT": "Prospect (8020)",
+    "PROSPECT": "Prospect",
     "MARKETED": "Marketed",
     "LEAD": "Lead",
     "QUALIFIED_LEAD": "Qualified Lead",
     "OPPORTUNITY": "Opportunity",
-    "UNDER_CONTRACT": "Under contract",
     "HHB_CLOSED": "Closed",
 }
 
 # Stages always shown in funnel tables (even at zero).
 PIPELINE_FUNNEL_ALWAYS = PIPELINE_ORDER[1:]  # skip NONE unless present
+
+# Single product-facing ladder (Gate 7 + workspace copy). Opp includes under contract.
+CANONICAL_PIPELINE = (
+    "Prospect (8020 / Court Alerts / LI Profiles) → "
+    "Marketed (CC/DM/SMS) → "
+    "Lead (Salesforce/Podio) → "
+    "Qualified Lead → "
+    "Opportunity (includes under contract) → "
+    "Closed"
+)
+
+PROSPECT_SOURCE_LABELS = {
+    "8020": "8020",
+    "eight": "8020",
+    "lip": "LI Profiles",
+    "court_alerts": "Court Alerts",
+}
 
 _MONTH_SLASH_RE = re.compile(r"^(\d{1,2})[/-](\d{4})$")
 _YEAR_MONTH_RE = re.compile(r"^(\d{4})-(\d{1,2})$")
@@ -244,6 +260,108 @@ def _earliest_list_purchase(parsed: List[Dict[str, Any]]) -> Optional[datetime]:
         if dt is not None:
             dates.append(dt)
     return min(dates) if dates else None
+
+
+# Prospect list sources beyond parse_tags List Purchased 8020.
+_LIP_TAG_RE = re.compile(
+    r"^Probates\s+NY\s+(Nassau|Queens|Suffolk)\s+(\d{1,2})-(\d{4})$",
+    re.I,
+)
+_COURT_ALERTS_LIST_RE = re.compile(
+    r"^List\s+Purchased\s+Court\s*Alerts?\s+(\d{1,2})[-/](\d{4})$",
+    re.I,
+)
+_COURT_ALERTS_TAG_RE = re.compile(
+    r"^Court\s*Alerts?\s+(?:NY\s+)?(?:Nassau|Queens|Suffolk|Erie|Monroe|Onondaga)?\s*"
+    r"(\d{1,2})[-/](\d{4})$",
+    re.I,
+)
+
+
+def _prospect_source_dates_from_tags(tags_str: object) -> List[Tuple[datetime, str]]:
+    """
+    Dated Prospect list events from Tags: 8020 (via caller/parsed), LI Profiles, Court Alerts.
+    Returns (date, source_id) where source_id is eight | lip | court_alerts.
+    """
+    out: List[Tuple[datetime, str]] = []
+    for part in str(tags_str or "").split(","):
+        tag = part.strip()
+        if not tag:
+            continue
+        m = _LIP_TAG_RE.match(tag)
+        if m:
+            month, year = int(m.group(2)), int(m.group(3))
+            try:
+                out.append((datetime(year, month, 1), "lip"))
+            except ValueError:
+                pass
+            continue
+        m = _COURT_ALERTS_LIST_RE.match(tag) or _COURT_ALERTS_TAG_RE.match(tag)
+        if m:
+            month, year = int(m.group(1)), int(m.group(2))
+            try:
+                out.append((datetime(year, month, 1), "court_alerts"))
+            except ValueError:
+                pass
+    return out
+
+
+def _lists_has_prospect_source(lists_str: object) -> Optional[str]:
+    """If Lists names a Prospect provider, return source_id (no month)."""
+    text = " ".join(str(lists_str or "").lower().split())
+    if not text:
+        return None
+    if "court alert" in text or "courtalert" in text:
+        return "court_alerts"
+    if (
+        "li profile" in text
+        or "long island profile" in text
+        or "probate" in text
+    ):
+        return "lip"
+    # Distress 8020 lists — not "8020 source list" hygiene import.
+    if re.search(r"\b8020\b", text) and "source list" not in text:
+        return "8020"
+    return None
+
+
+def earliest_prospect_list(
+    parsed: List[Dict[str, Any]],
+    tags_str: object = "",
+    lists_str: object = "",
+) -> Tuple[Optional[datetime], str]:
+    """
+    Earliest Prospect list month among 8020, Court Alerts, LI Profiles.
+
+    Prefers parse_tags list_purchase events (canonical). Falls back to Lists names
+    when no dated tag exists. Returns (date_or_none, source_id) where source_id is
+    8020 | lip | court_alerts | "".
+    """
+    candidates: List[Tuple[datetime, str]] = []
+    for p in parsed:
+        if p.get("type") != "list_purchase":
+            continue
+        dt = _parse_iso_dt(str(p.get("date", "")))
+        if dt is None:
+            continue
+        label = str(p.get("label") or "8020").strip().lower()
+        if label in ("eight", ""):
+            label = "8020"
+        if label not in ("8020", "lip", "court_alerts"):
+            label = "8020"
+        candidates.append((dt, label))
+    # Legacy / extra tag shapes not yet in parse_tags (keep in sync defensively).
+    for dt, src in _prospect_source_dates_from_tags(tags_str):
+        mapped = "8020" if src == "eight" else src
+        if not any(c[0] == dt and c[1] == mapped for c in candidates):
+            candidates.append((dt, mapped))
+    if not candidates:
+        src = _lists_has_prospect_source(lists_str)
+        if src == "eight":
+            src = "8020"
+        return None, (src or "")
+    best_dt, best_src = min(candidates, key=lambda x: x[0])
+    return best_dt, best_src
 
 
 def _contact_touch_stats(
@@ -671,12 +789,17 @@ def analyze(
         if stages.get("CLOSED", {}).get("reached"):
             highest = "CLOSED"
 
-        list_dt = _earliest_list_purchase(parsed)
+        list_dt, prospect_list_source = earliest_prospect_list(
+            parsed, tags_val, _col_val(row, lists_col)
+        )
         list_purchase_ymd = list_dt.date().isoformat() if list_dt else ""
         created_raw = _col_val(row, created_col)
         created_ts = pd.to_datetime(created_raw, errors="coerce") if created_raw else pd.NaT
         if list_dt is None and pd.notna(created_ts):
             list_dt = created_ts.to_pydatetime()
+        lists_only_src = _lists_has_prospect_source(_col_val(row, lists_col))
+        if not prospect_list_source and lists_only_src:
+            prospect_list_source = lists_only_src
 
         touch_counts, first_ch, first_date = _contact_touch_stats(
             parsed, on_or_before=sold_end_dt
@@ -769,10 +892,18 @@ def analyze(
             under_contract = None
         under_ymd = under_contract.date().isoformat() if under_contract else ""
         hhb_ymd = hhb_closed.date().isoformat() if hhb_closed else ""
+        # Under contract counts as Opportunity (not a separate stage).
+        if under_contract is not None:
+            opp_matched = True
 
-        # Business pipeline: Prospect(8020) → Marketed → Lead → QL → Opp → UC → Closed
+        # Business pipeline: Prospect → Marketed → Lead → QL → Opp → Closed
         pipe = "NONE"
-        if list_dt is not None or list_purchase_ymd or created_raw:
+        if (
+            list_purchase_ymd
+            or prospect_list_source
+            or lists_only_src
+            or created_raw
+        ):
             pipe = "PROSPECT"
         if marketed:
             pipe = _max_pipeline(pipe, "MARKETED")
@@ -780,10 +911,8 @@ def analyze(
             pipe = _max_pipeline(pipe, "LEAD")
         if qualified_lead_matched:
             pipe = _max_pipeline(pipe, "QUALIFIED_LEAD")
-        if opp_matched:
+        if opp_matched or under_contract is not None:
             pipe = _max_pipeline(pipe, "OPPORTUNITY")
-        if under_contract is not None:
-            pipe = _max_pipeline(pipe, "UNDER_CONTRACT")
         if hhb_closed is not None:
             pipe = _max_pipeline(pipe, "HHB_CLOSED")
 
@@ -942,10 +1071,8 @@ def analyze(
 
     methodology_note = (
         "Cohort = REISift rows with a parseable in_sold_properties_full sale month "
-        "(external sale, not an HHB closing). Canonical pipeline: Prospect (8020 list) → "
-        "Marketed ((8020) CC/SMS/DM) → Lead (PodioSellerLeads or SF engaged) → "
-        "Qualified Lead (QL Create Date on/after first list month and on/before sold month) → "
-        "Opportunity → Under contract → Closed. List purchase tags remain source credit; "
+        f"(external sale, not an HHB closing). Canonical pipeline: {CANONICAL_PIPELINE}. "
+        "List purchase tags remain source credit; "
         "Create Date is a Qualified Lead clock only. Never-marketed rows are often DNC / "
         "suppression. Why they sold elsewhere is out of scope."
     )

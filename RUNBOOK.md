@@ -248,7 +248,7 @@ Each Gate 3 analyze runs **marketing ramp** and **monthly consolidated** in para
 
 **Lost rule:** We had it (In My Records **or** REISift/CRM presence) AND `investor` AND not Closed. Loss % = lost / properties we had.
 
-**Pipeline:** Prospect (8020 / in-list) → Marketed → Lead (Podio/SF) → Qualified Lead → Opportunity → Under contract → Closed.
+**Pipeline:** Prospect (8020 / Court Alerts / LI Profiles) → Marketed (CC/DM/SMS) → Lead (Salesforce/Podio) → Qualified Lead → Opportunity (includes under contract) → Closed.
 
 **Execution:** Async job (202 + poll status), same pattern as Gate 5. Persists under `{REPORTS_DIR}/investor_sold/{job_id}.json`.
 
@@ -349,7 +349,9 @@ The **Past patches** screen no longer drives “as-of” analysis; use **`POST /
 | `(8020) CC - MM/YYYY` | Cold call touch (month granularity) |
 | `(8020) SMS - MM/YYYY` | SMS touch |
 | `(8020) DM - MM/YYYY` | DM touch |
-| `List Purchased 8020 MM/YYYY` | Parsed; not counted in CC/SMS/DM pre-close totals |
+| `List Purchased 8020 MM/YYYY` | Prospect source **8020** (`list_purchase`); not counted in CC/SMS/DM |
+| `List Purchased Court Alerts MM/YYYY` / Court Alerts dated tags | Prospect source **Court Alerts** |
+| `Probates NY Nassau\|Queens\|Suffolk M-YYYY` | Prospect source **LI Profiles** |
 | `Skip Traced … MM/YYYY` | Parsed; optional “Versium”; not counted in CC/SMS/DM totals |
 | `(CLOSED) 8020 - MM/YYYY` | Closing-month marker; not counted as CC/SMS/DM |
 | `(SF) UPDATED - {status} - YYYY-MM-DD` | Parsed for **lifecycle** (day precision); status label matched to engaged/converted heuristics |
@@ -365,7 +367,7 @@ Stages are computed only from tags **strictly before** each deal’s **Date Clos
 
 | Stage | Signal |
 |-------|--------|
-| ACQUIRED | `List Purchased 8020 …` |
+| ACQUIRED | Prospect list: `List Purchased 8020 …`, `Probates NY …` (LI Profiles), Court Alerts list tags |
 | RESEARCHED | `Skip Traced …` |
 | FIRST_CONTACTED | First `(8020) CC\|SMS\|DM …` |
 | ENGAGED | `(SF) …` with CRM label in the engaged allow-list (`lifecycle.py`) |

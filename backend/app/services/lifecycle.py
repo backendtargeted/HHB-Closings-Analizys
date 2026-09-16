@@ -63,7 +63,7 @@ STAGE_ORDER = (
 
 # User-facing labels aligned with the workspace business ladder.
 STAGE_DISPLAY_LABELS = {
-    "ACQUIRED": "Prospect (8020)",
+    "ACQUIRED": "Prospect",
     "RESEARCHED": "Researched",
     "FIRST_CONTACTED": "Marketed",
     "ENGAGED": "Lead",

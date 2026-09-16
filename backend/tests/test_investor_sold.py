@@ -77,7 +77,6 @@ def test_segment_counts_and_pipeline(sold_path, reisift_path, ql_path):
     assert by_street["300 pine rd"].pipeline_stage in (
         "QUALIFIED_LEAD",
         "OPPORTUNITY",
-        "UNDER_CONTRACT",
         "HHB_CLOSED",
     )
     assert by_street["400 elm st"].reisift_matched is False

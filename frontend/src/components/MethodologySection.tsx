@@ -36,13 +36,29 @@ const MethodologySection = () => {
           </p>
           <p>
             <strong className="text-stone-800">Other tag families:</strong>{' '}
+            Prospect list sources:{' '}
             <code className="bg-stone-100 px-1 rounded">List Purchased 8020</code>,{' '}
+            <code className="bg-stone-100 px-1 rounded">Probates NY …</code> (LI Profiles),{' '}
+            Court Alerts list tags; plus{' '}
             <code className="bg-stone-100 px-1 rounded">Skip Traced</code>, and{' '}
-            <code className="bg-stone-100 px-1 rounded">(SF) UPDATED|STATUS</code> drive the{' '}
-            <strong>lead lifecycle</strong> funnel, paths, and SF trail. Import CRM history via Past patches, then re-export contacts so these appear in Tags.
+            <code className="bg-stone-100 px-1 rounded">(SF) UPDATED|STATUS</code> for the{' '}
+            <strong>lead lifecycle</strong> funnel, paths, and SF trail. Import CRM history via Past
+            patches, then re-export contacts so these appear in Tags.
           </p>
           <p>
-            <strong className="text-stone-800">Lifecycle stages:</strong> Acquired → Researched → First contacted → Engaged (SF allow-list) → Converted (SF &quot;converted&quot; = under contract / contract signed). Stages use tags strictly before Date Closed. Settlement closed is a separate milestone from contract signed. Path strings dedupe only consecutive identical steps.
+            <strong className="text-stone-800">Canonical marketing pipeline (Gate 7 + sold depth):</strong>{' '}
+            Prospect (8020 / Court Alerts / LI Profiles) → Marketed (CC/DM/SMS) → Lead
+            (Salesforce/Podio) → Qualified Lead → Opportunity (includes under contract) → Closed.
+            Closings attribution (Gates 1–3) still uses the lifecycle ladder Acquired → Researched →
+            First contacted → Engaged → Converted; Acquired is Prospect list presence from the same
+            tag families.
+          </p>
+          <p>
+            <strong className="text-stone-800">Lifecycle stages (closings attribution):</strong> Acquired
+            (Prospect list) → Researched → First contacted → Engaged (SF allow-list) → Converted (SF
+            &quot;converted&quot; = under contract / contract signed). Stages use tags strictly before
+            Date Closed. Settlement closed is a separate milestone from contract signed. Path strings
+            dedupe only consecutive identical steps.
           </p>
           <p>
             <strong className="text-stone-800">Summary stats:</strong> Match rate = deals with a matched CSV row. Channel totals sum per-deal counts across matched deals. Month-granular 8020 tags use the first of the month internally; SF tags use calendar days.
@@ -82,8 +98,9 @@ const MethodologySection = () => {
             <code className="bg-stone-100 px-1 rounded">in_my_records</code> flags. Primary KPI:{' '}
             <em>lost to investor</em> = we had it (In My Records OR REISift/CRM presence) AND investor
             AND not Closed (rate vs properties we had), with
-            furthest-stage breakdown. Canonical pipeline: Prospect (8020) → Marketed → Lead (Podio/SF)
-            → Qualified Lead → Opportunity → Under contract → Closed. Grain = unique property × sold month.
+            furthest-stage breakdown. Canonical pipeline: Prospect (8020 / Court Alerts / LI
+            Profiles) → Marketed (CC/DM/SMS) → Lead (Salesforce/Podio) → Qualified Lead →
+            Opportunity (includes under contract) → Closed. Grain = unique property × sold month.
           </p>
           <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">
             Full methodology: repo{' '}

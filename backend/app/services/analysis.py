@@ -144,7 +144,7 @@ def parse_tags(tags_str):
             except ValueError:
                 continue
         
-        # Parse list purchase dates: List Purchased 8020 11/2025
+        # Parse list purchase dates — Prospect sources: 8020, Court Alerts, LI Profiles.
         list_match = re.match(r'List Purchased\s+8020\s+(\d{1,2})[-\/](\d{4})', tag)
         if list_match:
             month = int(list_match.group(1))
@@ -154,12 +154,82 @@ def parse_tags(tags_str):
                 contacts.append({
                     'type': 'list_purchase',
                     'channel': None,
-                    'label': '',
+                    'label': '8020',
                     'precision': 'month',
                     'date': list_date.isoformat(),
                     'month': month,
                     'year': year,
                     'tag': tag
+                })
+            except ValueError:
+                continue
+
+        ca_list_match = re.match(
+            r'List\s+Purchased\s+Court\s*Alerts?\s+(\d{1,2})[-/](\d{4})',
+            tag,
+            re.I,
+        )
+        if ca_list_match:
+            month = int(ca_list_match.group(1))
+            year = int(ca_list_match.group(2))
+            try:
+                list_date = datetime(year, month, 1)
+                contacts.append({
+                    'type': 'list_purchase',
+                    'channel': None,
+                    'label': 'court_alerts',
+                    'precision': 'month',
+                    'date': list_date.isoformat(),
+                    'month': month,
+                    'year': year,
+                    'tag': tag,
+                })
+            except ValueError:
+                continue
+
+        ca_tag_match = re.match(
+            r'^Court\s*Alerts?\s+(?:NY\s+)?(?:Nassau|Queens|Suffolk|Erie|Monroe|Onondaga)?\s*'
+            r'(\d{1,2})[-/](\d{4})$',
+            tag,
+            re.I,
+        )
+        if ca_tag_match:
+            month = int(ca_tag_match.group(1))
+            year = int(ca_tag_match.group(2))
+            try:
+                list_date = datetime(year, month, 1)
+                contacts.append({
+                    'type': 'list_purchase',
+                    'channel': None,
+                    'label': 'court_alerts',
+                    'precision': 'month',
+                    'date': list_date.isoformat(),
+                    'month': month,
+                    'year': year,
+                    'tag': tag,
+                })
+            except ValueError:
+                continue
+
+        lip_match = re.match(
+            r'^Probates\s+NY\s+(Nassau|Queens|Suffolk)\s+(\d{1,2})-(\d{4})$',
+            tag,
+            re.I,
+        )
+        if lip_match:
+            month = int(lip_match.group(2))
+            year = int(lip_match.group(3))
+            try:
+                list_date = datetime(year, month, 1)
+                contacts.append({
+                    'type': 'list_purchase',
+                    'channel': None,
+                    'label': 'lip',
+                    'precision': 'month',
+                    'date': list_date.isoformat(),
+                    'month': month,
+                    'year': year,
+                    'tag': tag,
                 })
             except ValueError:
                 continue

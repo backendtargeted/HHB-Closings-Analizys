@@ -13,7 +13,7 @@ interface InvestorSoldResultsProps {
 }
 
 type SegmentFilter = 'all' | 'investor' | 'in_our_list' | 'both' | 'neither';
-type JourneyFilter = 'all' | 'never_marketed' | 'prospects' | 'opps' | 'uc' | 'hhb' | string;
+type JourneyFilter = 'all' | 'never_marketed' | 'prospects' | 'opps' | 'hhb' | string;
 type SortKey = keyof InvestorSoldRow;
 type SortDir = 'asc' | 'desc';
 
@@ -132,8 +132,8 @@ const InvestorSoldResults = ({
     else if (journeyFilter === 'leads') rows = rows.filter((r) => r.lead_matched);
     else if (journeyFilter === 'qualified_leads')
       rows = rows.filter((r) => r.qualified_lead_matched);
-    else if (journeyFilter === 'opps') rows = rows.filter((r) => r.opp_matched);
-    else if (journeyFilter === 'uc') rows = rows.filter((r) => Boolean(r.under_contract_date));
+    else if (journeyFilter === 'opps')
+      rows = rows.filter((r) => r.opp_matched || Boolean(r.under_contract_date));
     else if (journeyFilter === 'hhb') rows = rows.filter((r) => Boolean(r.hhb_closed_date));
     else if (journeyFilter !== 'all') {
       rows = rows.filter((r) => r.pipeline_stage === journeyFilter);
@@ -219,12 +219,6 @@ const InvestorSoldResults = ({
       value: `${match.opp_matched.toLocaleString()} (${match.opp_rate_pct}%)`,
       onClick: () => setJourneyFilter('opps'),
       active: journeyFilter === 'opps',
-    },
-    {
-      label: 'Under contract',
-      value: match.under_contract_count.toLocaleString(),
-      onClick: () => setJourneyFilter('uc'),
-      active: journeyFilter === 'uc',
     },
     {
       label: 'Closed',
@@ -369,8 +363,9 @@ const InvestorSoldResults = ({
         <div className="rounded-xl border border-stone-200 bg-white p-4">
           <h3 className="text-sm font-bold text-stone-800">Pipeline depth (highest stage)</h3>
           <p className="text-xs text-stone-500 mt-1 leading-relaxed">
-            Prospect (8020) → Marketed → Lead (Podio/SF) → Qualified Lead → Opportunity → Under
-            contract → Closed. Each property once at furthest stage.
+            Prospect (8020 / Court Alerts / LI Profiles) → Marketed (CC/DM/SMS) → Lead
+            (Salesforce/Podio) → Qualified Lead → Opportunity → Closed. Each property once at
+            furthest stage.
           </p>
           <table className="mt-3 w-full text-sm">
             <thead>
@@ -487,7 +482,6 @@ const InvestorSoldResults = ({
                 <option value="leads">Leads</option>
                 <option value="qualified_leads">Qualified Leads</option>
                 <option value="opps">Opportunities</option>
-                <option value="uc">Under contract</option>
                 <option value="hhb">Closed</option>
                 {pipelineFunnel.map((row) => (
                   <option key={row.stage} value={row.stage}>

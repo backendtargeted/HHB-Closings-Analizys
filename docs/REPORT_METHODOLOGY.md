@@ -8,6 +8,8 @@ This document describes **how closings / contact attribution reports are compute
 
 Allowed clock uses: Gate 1 does not credit from Create Date. Gate 2 / legacy QL — Create Date **window** = which QLs fall in the month. Gate 3 — same window, plus `days_list_to_create_date` **lag**. Gate 4 — Create Date is the web-lead / CourtAlerts cohort **anchor**; prior list tags are history, not a rewrite of that credit. Gate 5 — lag from first-list month to CRM push (Qualified Lead). Gate 6 — same lag rules as Gate 5 (Court Alerts vs 8020 first list → Create Date). Gate 7 Investor & In-List Sold — Qualified Lead lag from first list month to QL Create Date (on or before external sold month).
 
+**Canonical marketing pipeline (Gate 7 sold depth; shared helpers in `sold_properties.py`):** Prospect (8020 / Court Alerts / LI Profiles) → Marketed (CC/DM/SMS) → Lead (Salesforce/Podio) → Qualified Lead → Opportunity (includes under contract) → Closed. Prospect list tags are parsed once in `analysis.parse_tags` and reused by lifecycle ACQUIRED and Gate 7.
+
 ---
 
 ## 1. Purpose and data flow
@@ -71,7 +73,9 @@ The **`Tags`** string is split on commas. Each token is matched against known pa
 | `(8020) CC - MM/YYYY` or `MM-YYYY` | `contact` (channel CC) | Month → 1st of month | Yes, if before close |
 | `(8020) SMS - …` | `contact` (SMS) | Month | Yes, if before close |
 | `(8020) DM - …` | `contact` (DM) | Month | Yes, if before close |
-| `List Purchased 8020 MM/YYYY` | `list_purchase` | Month | No |
+| `List Purchased 8020 MM/YYYY` | `list_purchase` (label `8020`) | Month | No |
+| `List Purchased Court Alerts MM/YYYY` (or Court Alerts dated tags) | `list_purchase` (label `court_alerts`) | Month | No |
+| `Probates NY Nassau\|Queens\|Suffolk M-YYYY` | `list_purchase` (label `lip`) | Month | No |
 | `Skip Traced … MM/YYYY` (optional Versium) | `skip_trace` | Month | No |
 | `(CLOSED) 8020 - MM/YYYY` | `closing` | Month | No |
 | `(SF) UPDATED - {status} - YYYY-MM-DD` | `sf_updated` | Day | No |
@@ -167,7 +171,7 @@ Events are built with **`build_events`**, sorted by datetime then type rank (SF 
 
 | Stage | Signal (first before close) |
 |-------|----------------------------|
-| **ACQUIRED** | `List Purchased 8020 …` |
+| **ACQUIRED** | Prospect list: `List Purchased 8020 …`, `Probates NY …` (LI Profiles), or Court Alerts list tags |
 | **RESEARCHED** | `Skip Traced …` |
 | **FIRST_CONTACTED** | First `(8020) CC|SMS|DM …` |
 | **ENGAGED** | `(SF) …` with label in **ENGAGED_LABELS** |
@@ -372,11 +376,12 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 **Segments:** Investor (`investor`), In Our List (`in_my_records`), Both, Neither. Rollups by sold month and by segment (marketed %, lead %, qualified lead %, opps, UC, Closed, median list→sold).
 
 **Canonical pipeline clocks** (shared helpers in `backend/app/services/sold_properties.py`, after property×month collapse):
-- **Prospect (8020):** list purchase / `in_my_records`.
+- **Prospect:** 8020 (`List Purchased 8020`), Court Alerts (dated Court Alerts / List Purchased Court Alerts tags or Lists name), or LI Profiles (`Probates NY …` tags or LI Profiles / Probate Lists) / `in_my_records`.
 - **Marketed:** `(8020)` CC/SMS/DM tag events on/before sold month end.
 - **Lead:** SF engaged tag on/before sold month, or `PodioSellerLeads` presence (no Create Date clock).
-- **Qualified Lead:** QL Create Date on/after first list-purchase month and on/before sold month end.
-- **Opp / under contract / Closed:** same date gates as the shared sold pipeline helpers.
+- **Qualified Lead:** QL Create Date on/after first Prospect list month and on/before sold month end.
+- **Opportunity:** Opportunities file match **or** under-contract milestone (contract is Opp, not a separate stage).
+- **Closed:** HHB `(CLOSED) 8020` on/before sold month end.
 
 **Data caveat:** CleanREISift In My Records scrape must return non-zero totals for every sold month (historically Mar–Jul 2026 returned `total=0`). Re-scrape before trusting Lost KPIs.
 

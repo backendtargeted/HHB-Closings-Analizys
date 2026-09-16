@@ -28,6 +28,15 @@ class TestParseTagsDedupe(unittest.TestCase):
         closings = [x for x in p if x["type"] == "closing"]
         self.assertEqual(len(closings), 1)
 
+    def test_prospect_list_sources_parsed(self):
+        p = parse_tags(
+            "List Purchased 8020 3/2025,Probates NY Nassau 04-2025,"
+            "List Purchased Court Alerts 5/2025"
+        )
+        purchases = [x for x in p if x["type"] == "list_purchase"]
+        labels = {x["label"] for x in purchases}
+        self.assertEqual(labels, {"8020", "lip", "court_alerts"})
+
     def test_perform_analysis_contact_count_not_doubled(self):
         csv_payload = (
             "Property address,Property city,Tags\n"

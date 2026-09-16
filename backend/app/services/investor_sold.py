@@ -5,7 +5,8 @@ Universe: CleanREISift sold_properties_full.csv (property × sold month).
 Requires REISift + Salesforce QL. Opportunities optional.
 Lost to investor = we had it (In My Records OR REISift/CRM presence) AND investor
 AND not HHB closed. Loss rate denominator = properties we had.
-Pipeline: Prospect (8020) → Marketed → Lead (Podio/SF) → Qualified Lead → Opp → UC → Closed.
+Pipeline: Prospect (8020 / Court Alerts / LI Profiles) → Marketed (CC/DM/SMS) →
+Lead (SF/Podio) → Qualified Lead → Opportunity → Closed.
 """
 
 from __future__ import annotations
@@ -37,15 +38,17 @@ from .probate import (
 )
 from .qualified_leads import CREATE_DATE_CANDIDATES
 from .sold_properties import (
+    CANONICAL_PIPELINE,
+    LISTS_CANDIDATES,
     PIPELINE_FUNNEL_ALWAYS,
     PIPELINE_LABELS,
     PIPELINE_ORDER,
     REISIFT_PHONE_CANDIDATES,
     TOUCH_CHANNELS,
     _contact_touch_stats,
-    _earliest_list_purchase,
     _first_podio_crm_date,
     _iso_day,
+    _lists_has_prospect_source,
     _max_pipeline,
     _mean_median,
     _month_end,
@@ -53,6 +56,7 @@ from .sold_properties import (
     _pct,
     _podio_crm_present,
     _sf_engaged_before,
+    earliest_prospect_list,
     parse_sold_month,
 )
 
@@ -594,6 +598,7 @@ def _build_reisift_index(reisift_df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
     tags_col = find_column_name(reisift_df, TAGS_CANDIDATES)
     if not tags_col:
         raise ValueError("Missing required column: Tags")
+    lists_col = find_column_name(reisift_df, LISTS_CANDIDATES)
     addr_cols = {k: find_column_name(reisift_df, v) for k, v in REISIFT_ADDR.items()}
     index: Dict[str, Dict[str, Any]] = {}
     for _, row in reisift_df.iterrows():
@@ -607,6 +612,7 @@ def _build_reisift_index(reisift_df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
             continue
         index[key] = {
             "tags": str(row.get(tags_col, "") or "").strip(),
+            "lists": str(row.get(lists_col, "") or "").strip() if lists_col else "",
             "phones": _phones_from_row(row, REISIFT_PHONE_CANDIDATES),
         }
     return index
@@ -624,6 +630,7 @@ def _enrich_row(
         return
     sold_row.reisift_matched = True
     tags_val = str(reisift_hit.get("tags") or "")
+    lists_val = str(reisift_hit.get("lists") or "")
     parsed = _dedupe_parsed_tag_events(parse_tags(tags_val)) if tags_val else []
     phones = list(reisift_hit.get("phones") or [])
 
@@ -640,15 +647,18 @@ def _enrich_row(
     sold_row.first_touch_channel = first_ch or ""
     sold_row.first_touch_date = first_date or ""
 
-    list_dt = _earliest_list_purchase(parsed)
+    list_dt, prospect_list_source = earliest_prospect_list(parsed, tags_val, lists_val)
     list_purchase_ymd = list_dt.date().isoformat() if list_dt else ""
     sold_row.list_purchase_date = list_purchase_ymd
     first_list_month = (
         pd.Timestamp(year=list_dt.year, month=list_dt.month, day=1) if list_dt else None
     )
+    lists_src = _lists_has_prospect_source(lists_val)
+    if not prospect_list_source and lists_src:
+        prospect_list_source = lists_src
 
     pipeline = "NONE"
-    if list_dt is not None or sold_row.in_my_records:
+    if list_dt is not None or sold_row.in_my_records or prospect_list_source or lists_src:
         pipeline = "PROSPECT"
     if sold_row.marketed:
         pipeline = _max_pipeline(pipeline, "MARKETED")
@@ -673,7 +683,6 @@ def _enrich_row(
         uc = None
     if uc is not None:
         sold_row.under_contract_date = uc.date().isoformat()
-        pipeline = _max_pipeline(pipeline, "UNDER_CONTRACT")
 
     before = (sold_end + pd.Timedelta(days=1)) if sold_end is not None else None
     ql_hit = _best_hit(
@@ -736,6 +745,11 @@ def _enrich_row(
             sold_row.opp_matched = True
             sold_row.opp_created_date = _iso_day(opp_hit.date)
             pipeline = _max_pipeline(pipeline, "OPPORTUNITY")
+
+    # Under contract is Opportunity (not a separate ladder stage).
+    if sold_row.under_contract_date:
+        sold_row.opp_matched = True
+        pipeline = _max_pipeline(pipeline, "OPPORTUNITY")
 
     highest = get_highest_stage(stages)
     if highest == "CLOSED":
@@ -1089,9 +1103,7 @@ def analyze(
         "investor AND not HHB closed. Loss rate denominator = properties we had. "
         "Universe = CleanREISift sold_properties_full.csv. Grain = unique property × sold month "
         f"(multi-txn Dataflik rows collapse; {multi_txn:,} properties had >1 txn). "
-        "Canonical pipeline: Prospect (8020 / list / in_my_records) → Marketed ((8020) CC/SMS/DM) → "
-        "Lead (PodioSellerLeads or SF engaged) → Qualified Lead (QL Create Date on/after first "
-        "list month and on/before sold month) → Opportunity → Under contract → Closed."
+        f"Canonical pipeline: {CANONICAL_PIPELINE}."
     )
 
     report(100, "Done")

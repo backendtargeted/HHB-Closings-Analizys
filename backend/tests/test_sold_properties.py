@@ -9,9 +9,12 @@ import pytest
 from app.services.sold_properties import (
     analyze,
     build_export_workbook,
+    earliest_prospect_list,
     parse_sold_month,
     result_from_metrics_dict,
 )
+from app.services.analysis import parse_tags
+from app.services.analysis import _dedupe_parsed_tag_events as dedupe
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -32,6 +35,29 @@ def test_parse_sold_month_formats():
     assert parse_sold_month("Jun 2025").month == 6
     assert parse_sold_month("") is None
     assert parse_sold_month("not-a-month") is None
+
+
+def test_earliest_prospect_list_sources():
+    eight = dedupe(parse_tags("List Purchased 8020 3/2025"))
+    dt, src = earliest_prospect_list(eight, "List Purchased 8020 3/2025")
+    assert src == "8020"
+    assert dt is not None and dt.month == 3 and dt.year == 2025
+
+    lip_tags = "Probates NY Nassau 04-2025,List Purchased 8020 6/2025"
+    dt, src = earliest_prospect_list(dedupe(parse_tags(lip_tags)), lip_tags)
+    assert src == "lip"
+    assert dt is not None and dt.month == 4 and dt.year == 2025
+
+    ca_tags = "List Purchased Court Alerts 5/2025"
+    dt, src = earliest_prospect_list([], ca_tags)
+    assert src == "court_alerts"
+    assert dt is not None and dt.month == 5
+
+    dt, src = earliest_prospect_list([], "", "Court Alerts, High Equity")
+    assert dt is None and src == "court_alerts"
+
+    dt, src = earliest_prospect_list([], "", "LI Profiles")
+    assert dt is None and src == "lip"
 
 
 def test_cohort_excludes_blank_and_unparseable(sp_paths):
@@ -69,7 +95,6 @@ def test_prospect_match_from_ql(sp_paths):
     assert main.pipeline_stage in (
         "QUALIFIED_LEAD",
         "OPPORTUNITY",
-        "UNDER_CONTRACT",
         "HHB_CLOSED",
     )
     oak = by_street["200 oak ave"]
@@ -117,7 +142,7 @@ def test_under_contract_and_opportunity(sp_paths):
     elm = by_street["400 elm st"]
     assert elm.under_contract_date.startswith("2025-02")
     assert elm.opp_matched is True
-    assert elm.pipeline_stage in ("OPPORTUNITY", "UNDER_CONTRACT")
+    assert elm.pipeline_stage == "OPPORTUNITY"
     assert result.opp_matched >= 1
     assert result.under_contract_count >= 1
 

@@ -221,8 +221,8 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
               </h2>
               <p className="text-violet-950/80 text-sm mt-2 leading-relaxed">
                 Sold transactions + marketing/pipeline before sale; lost-to-investor KPIs on
-                CleanREISift sold CSV. Pipeline: Prospect → Marketed → Lead → Qualified Lead → Opp →
-                Closed.
+                CleanREISift sold CSV. Pipeline: Prospect (8020 / Court Alerts / LI Profiles) →
+                Marketed → Lead → Qualified Lead → Opp → Closed.
               </p>
             </div>
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-violet-200/80 text-violet-950">
