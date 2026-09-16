@@ -6,7 +6,7 @@ This document describes **how closings / contact attribution reports are compute
 
 **Salesforce Create Date (all gates):** Create Date is when marketing called or texted that LIP / 8020 / CourtAlerts list and pushed the lead into the CRM. It is a **clock**, not a source. The list provider is the credit (first list on the row wins). Campaign / Lead Source is how they worked it — extra, not a replacement for the list. Never compare Create Date to list month to relabel credit as “Already in Salesforce,” “After LIP,” or “After 8020.”
 
-Allowed clock uses: Gate 1 does not credit from Create Date. Gate 2 / legacy QL — Create Date **window** = which QLs fall in the month. Gate 3 — same window, plus `days_list_to_create_date` **lag**. Gate 4 — Create Date is the web-lead / CourtAlerts cohort **anchor**; prior list tags are history, not a rewrite of that credit. Gate 5 — lag from first-list month to CRM push. Gate 6 — Prospect lag from first list month to QL Create Date (on or before external sold month). Gate 7 — same lag rules as Gate 5 (Court Alerts vs 8020 first list → Create Date).
+Allowed clock uses: Gate 1 does not credit from Create Date. Gate 2 / legacy QL — Create Date **window** = which QLs fall in the month. Gate 3 — same window, plus `days_list_to_create_date` **lag**. Gate 4 — Create Date is the web-lead / CourtAlerts cohort **anchor**; prior list tags are history, not a rewrite of that credit. Gate 5 — lag from first-list month to CRM push (Qualified Lead). Gate 6 — Qualified Lead lag from first list month to QL Create Date (on or before external sold month). Gate 7 — same lag rules as Gate 5 (Court Alerts vs 8020 first list → Create Date).
 
 ---
 
@@ -321,7 +321,7 @@ Canonical implementation: `backend/app/services/web_leads.py`.
 
 ## 19. Gate 5 probate lifecycle
 
-**Question:** On Long Island Profiles (probate) properties, who delivered the record first (LIP vs 8020), how many months until Salesforce Prospect, what % of the LIP list became Prospects, and what Primary/Secondary Reason for Selling is stated on the Transactions pipeline.
+**Question:** On Long Island Profiles (probate) properties, who delivered the record first (LIP vs 8020), how many months until Salesforce Qualified Lead, what % of the LIP list became Qualified Leads, and what Primary/Secondary Reason for Selling is stated on the Transactions pipeline.
 
 **Universe:** REISift rows with at least one of the **38 locked** tags `Probates NY (Nassau|Queens|Suffolk) M-YYYY` (hyphen, optional leading zero). Nassau starts Apr 2025 (not Feb/Mar 2025). Queens starts Feb 2026. **Nassau 3-2026** and **Queens 3-2026** stay in the locked set even when those drops have no rows. Other gaps are real. 8020-only rows are excluded. First LIP month = earliest **locked** tag on the row. County is taken from that tag.
 
@@ -349,9 +349,9 @@ Canonical implementation: `backend/app/services/probate.py`.
 
 **External sale anchor:** Sold month is **not** an HHB closing. Events and CRM matches are evaluated **on or before the end of the sold month**.
 
-**Pipeline stages (highest reached):** On list → Marketed (`(8020)` CC/SMS/DM) → Prospect (QL match on/after first list month, SF engaged status tag, or REISift `PodioSellerLeads` presence — pre-Salesforce CRM lead tag, not a Create Date clock) → Opportunity (optional Opportunities file, same ingest as Gate 5) → Under contract (SF converted) → Closed with HHB (`(CLOSED) 8020`). Why they sold elsewhere is out of scope.
+**Pipeline stages (highest reached):** Prospect (8020 list) → Marketed (`(8020)` CC/SMS/DM) → Lead (`PodioSellerLeads` or SF engaged) → Qualified Lead (QL Create Date on/after first list month and on/before sold month) → Opportunity (optional Opportunities file) → Under contract (SF converted) → Closed (`(CLOSED) 8020`). Why they sold elsewhere is out of scope.
 
-**Create Date:** Prospect **lag** only (`months_list_to_prospect`). List purchase tags remain source credit.
+**Create Date:** Qualified Lead **lag** only (`months_list_to_qualified_lead`). List purchase tags remain source credit.
 
 **Export:** Summary, Journey, Never Marketed, Pipeline Funnel, By Sold Month, Lifecycle Funnel sheets.
 
@@ -363,7 +363,7 @@ Canonical implementation: `backend/app/services/sold_properties.py`.
 
 ## 21. Gate 7 Court Alerts lifecycle
 
-**Question:** On Court Alerts (foreclosure / court) properties, who delivered the record first (Court Alerts vs 8020), how many months until Salesforce Prospect, what % of the Court Alerts list became Prospects, and what Primary/Secondary Reason for Selling is stated on the Transactions pipeline.
+**Question:** On Court Alerts (foreclosure / court) properties, who delivered the record first (Court Alerts vs 8020), how many months until Salesforce Qualified Lead, what % of the Court Alerts list became Qualified Leads, and what Primary/Secondary Reason for Selling is stated on the Transactions pipeline.
 
 **Universe:** Rows from the Court Alerts CSV/XLSX (pgweb export) with a parseable **address** and **created_on**. List month = first of the month of `created_on`. County comes from `county_name` (optional “County” suffix stripped). This file **is** the universe — not a REISift tag filter.
 
@@ -373,7 +373,7 @@ Canonical implementation: `backend/app/services/sold_properties.py`.
 
 **First source** (month granularity): Court Alerts only, Court Alerts first, 8020 first, same month. **That first list is the QL credit** when the row matches a Qualified Lead **on or after** the first-list month.
 
-**Prospect / lag / reasons:** Same rules as Gate 5 probate (Create Date on or after first-list month; lag buckets split by Court Alerts / 8020 / Same month; reasons from Transactions only).
+**Prospect / lag / reasons:** Same rules as Gate 5 probate (Create Date on or after first-list month = Qualified Lead clock; lag buckets split by Court Alerts / 8020 / Same month; reasons from Transactions only).
 
 **Export:** Summary, Court Alerts Rows, First Source, Campaign, County, List Month, Lag Buckets, CRM Before First List, Txn reason sheets.
 
@@ -381,7 +381,9 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 ## 22. Gate 8 Investor & In-List Sold
 
-**Question:** Of scraped external NY sales (`sold_properties_full.csv`), how many are investor buyers, already in our REISift records (`in_my_records`), both, or neither — and how far each property got in the HHB marketing / pipeline funnel before the sold month.
+**Question:** Of scraped external NY sales (`sold_properties_full.csv`), how many **in-list** properties were **lost to another investor** (investor sale, not HHB closed), at what furthest pipeline stage, and how do investor / in-list / both / neither segments compare?
+
+**Lost definition:** `in_my_records` AND `investor` AND not Closed. Loss rate denominator = in-list property rows. Companion: in-list exits by buyer (investor vs non-investor).
 
 **Universe:** CleanREISift sold scrape rows with `investor` and `in_my_records` TRUE/FALSE flags. Address keys rebuilt with `make_address_key` from property address parts (do not trust the scrape `address_key` string for joins).
 
@@ -389,14 +391,18 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 **Grain:** Unique **property × sold month** (`dataflik_id` + month, else `address_key` + month). Multiple Dataflik `transaction_id`s for the same sale collapse to one row with `transaction_count`. Segment KPIs count property rows; `sold_rows_ingested` remains the raw transaction count.
 
-**Segments:** Investor (`investor`), In Our List (`in_my_records`), Both, Neither. Rollups by sold month and by segment (marketed %, prospect %, Podio prospects, opps, UC, HHB closed, median list→sold).
+**Segments:** Investor (`investor`), In Our List (`in_my_records`), Both, Neither. Rollups by sold month and by segment (marketed %, lead %, qualified lead %, opps, UC, Closed, median list→sold).
 
-**Pipeline clocks (Gate 6 parity, after collapse):**
+**Canonical pipeline clocks (same as Gate 6, after collapse):**
+- **Prospect (8020):** list purchase / `in_my_records`.
 - **Marketed:** `(8020)` CC/SMS/DM tag events on/before sold month end.
-- **Prospect:** QL Create Date on/after first list-purchase month and on/before sold month end, **or** SF engaged tag on/before sold month, **or** `PodioSellerLeads` presence (pre-Salesforce CRM lead — no Create Date clock; `prospect_source = podio`).
-- **Opp / under contract / HHB closed:** same date gates as Gate 6.
+- **Lead:** SF engaged tag on/before sold month, or `PodioSellerLeads` presence (no Create Date clock).
+- **Qualified Lead:** QL Create Date on/after first list-purchase month and on/before sold month end.
+- **Opp / under contract / Closed:** same date gates as Gate 6.
 
-**Export:** Summary, By Segment, Pipeline Funnel, By Month, Journey, Investor, In Our List, Both, Never Marketed.
+**Data caveat:** CleanREISift In My Records scrape must return non-zero totals for every sold month (historically Mar–Jul 2026 returned `total=0`). Re-scrape before trusting Lost KPIs.
+
+**Export:** Summary, Lost By Stage, By Segment, Pipeline Funnel, By Month, Journey, Lost To Investor, Investor, In Our List, Both, Never Marketed.
 
 Canonical implementation: `backend/app/services/investor_sold.py`.
 

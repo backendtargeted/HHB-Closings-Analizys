@@ -109,11 +109,10 @@ const InvestorSoldWorkspace = ({
     <div className="rounded-2xl border border-violet-200/90 bg-violet-50/40 p-6 shadow-sm">
       <h2 className="text-xl font-bold text-violet-950">Investor &amp; In-List Sold</h2>
       <p className="text-sm text-violet-950/80 mt-2 leading-relaxed max-w-2xl">
-        Sold transactions + marketing/pipeline before sale. Universe is CleanREISift{' '}
-        <code className="text-xs">sold_properties_full.csv</code> (investor / in_my_records
-        segments). REISift + Salesforce QL are required for Gate 6–parity pipeline depth.
-        <code className="text-xs"> PodioSellerLeads</code> counts as Prospect when QL / SF engaged
-        are missing (pre-Salesforce CRM lead).
+        Primary question: how many in-list properties were lost to another investor (investor sale,
+        not Closed). Universe is CleanREISift{' '}
+        <code className="text-xs">sold_properties_full.csv</code>. Canonical pipeline: Prospect
+        (8020) → Marketed → Lead (Podio/SF) → Qualified Lead → Opportunity → Under contract → Closed.
       </p>
 
       <div className="mt-6 grid gap-4 max-w-md">

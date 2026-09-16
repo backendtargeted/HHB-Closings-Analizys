@@ -104,7 +104,7 @@ const ProbateWorkspace = ({ onRunComplete, onOpenResult }: ProbateWorkspaceProps
       <h2 className="text-xl font-bold text-rose-950">Probate lifecycle</h2>
       <p className="text-sm text-rose-950/80 mt-2 leading-relaxed max-w-2xl">
         Long Island Profiles vs 8020 on the same REISift row. First list is the QL credit.
-        A Prospect counts only when Salesforce Create Date is on or after that first-list month.
+        A Qualified Lead counts only when Salesforce Create Date is on or after that first-list month.
         Campaign is how they worked it. Transactions supply reason for selling after the match.
       </p>
 

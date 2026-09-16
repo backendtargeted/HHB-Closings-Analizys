@@ -27,12 +27,13 @@ const JOURNEY_COLS: Array<{ key: keyof SoldPropertyRow; label: string }> = [
   { key: 'sms_touch_count', label: 'SMS' },
   { key: 'dm_touch_count', label: 'DM' },
   { key: 'first_touch_channel', label: 'First touch' },
-  { key: 'prospect_date', label: 'Prospect date' },
+  { key: 'lead_source', label: 'Lead source' },
+  { key: 'qualified_lead_date', label: 'QL date' },
   { key: 'opp_created_date', label: 'Opp date' },
   { key: 'under_contract_date', label: 'Under contract' },
-  { key: 'hhb_closed_date', label: 'HHB closed' },
+  { key: 'hhb_closed_date', label: 'Closed' },
   { key: 'months_list_to_sold', label: 'Mo list→sold' },
-  { key: 'months_list_to_prospect', label: 'Mo list→prospect' },
+  { key: 'months_list_to_qualified_lead', label: 'Mo list→QL' },
 ];
 
 const SoldPropertiesResults = ({
@@ -129,10 +130,17 @@ const SoldPropertiesResults = ({
             value: `${neverMarketedCount} (${m.inputs.cohort_rows ? ((100 * neverMarketedCount) / m.inputs.cohort_rows).toFixed(1) : 0}%)`,
             onClick: () => setStageFilter('never_marketed'),
           },
-          { label: 'Prospects', value: `${m.match.prospect_matched} (${m.match.prospect_rate_pct}%)` },
+          {
+            label: 'Leads',
+            value: `${m.match.lead_matched ?? 0} (${m.match.lead_rate_pct ?? 0}%)`,
+          },
+          {
+            label: 'Qualified Leads',
+            value: `${m.match.qualified_lead_matched ?? 0} (${m.match.qualified_lead_rate_pct ?? 0}%)`,
+          },
           { label: 'Opportunities', value: `${m.match.opp_matched} (${m.match.opp_rate_pct}%)` },
           { label: 'Under contract', value: m.match.under_contract_count },
-          { label: 'HHB closed', value: m.match.hhb_closed_count },
+          { label: 'Closed', value: m.match.hhb_closed_count },
           {
             label: 'Median mo list→sold',
             value: fmt(m.lag.median_months_list_to_sold),
@@ -171,15 +179,10 @@ const SoldPropertiesResults = ({
         <div className="rounded-xl border border-stone-200 bg-white p-4">
           <h3 className="text-sm font-bold text-stone-800">Pipeline depth (highest stage)</h3>
           <p className="text-xs text-stone-500 mt-1 leading-relaxed">
-            Each property counted once at its furthest HHB stage. Click a stage to filter the journey
-            table. Prospect includes QL, SF engaged tags, or{' '}
-            <code className="bg-stone-100 px-1 rounded">PodioSellerLeads</code> (pre-Salesforce CRM
-            lead). Closed with HHB ={' '}
-            <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020</code> tag on REISift — not the
-            Opportunities file. Never marketed = no{' '}
-            <code className="bg-stone-100 px-1 rounded">(8020) CC/SMS/DM</code> tags on/before sold
-            month; often federal Do Not Call, other DNC, or suppression imports (bought into REISift
-            but never dialed/texted/mailed).
+            Prospect (8020) → Marketed → Lead (Podio/SF) → Qualified Lead → Opportunity → Under
+            contract → Closed. Each property once at furthest stage. Click a stage to filter. Closed ={' '}
+            <code className="bg-stone-100 px-1 rounded">(CLOSED) 8020</code>. Never marketed = no{' '}
+            <code className="bg-stone-100 px-1 rounded">(8020) CC/SMS/DM</code> on/before sold month.
           </p>
           <table className="mt-3 w-full text-sm">
             <thead>
@@ -246,10 +249,11 @@ const SoldPropertiesResults = ({
                 <th className="py-1">Sold month</th>
                 <th className="py-1">Count</th>
                 <th className="py-1">Marketed</th>
-                <th className="py-1">Prospects</th>
+                <th className="py-1">Leads</th>
+                <th className="py-1">QL</th>
                 <th className="py-1">Opps</th>
                 <th className="py-1">Contract</th>
-                <th className="py-1">HHB closed</th>
+                <th className="py-1">Closed</th>
               </tr>
             </thead>
             <tbody>
@@ -258,7 +262,8 @@ const SoldPropertiesResults = ({
                   <td className="py-1.5 font-mono text-xs">{row.sold_month}</td>
                   <td className="py-1.5">{row.count}</td>
                   <td className="py-1.5">{row.marketed}</td>
-                  <td className="py-1.5">{row.prospects}</td>
+                  <td className="py-1.5">{row.leads ?? 0}</td>
+                  <td className="py-1.5">{row.qualified_leads ?? 0}</td>
                   <td className="py-1.5">{row.opportunities}</td>
                   <td className="py-1.5">{row.under_contract}</td>
                   <td className="py-1.5">{row.hhb_closed}</td>
@@ -291,7 +296,7 @@ const SoldPropertiesResults = ({
             </select>
           </label>
         </div>
-        {(stageFilter === 'never_marketed' || stageFilter === 'ON_LIST') && (
+        {(stageFilter === 'never_marketed' || stageFilter === 'PROSPECT') && (
           <p className="text-xs text-amber-900 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-2">
             These REISift rows have no{' '}
             <code className="bg-white/80 px-1 rounded">(8020) CC/SMS/DM</code> contact tags

@@ -69,12 +69,14 @@ REISIFT_PHONE_CANDIDATES = [
 
 TOUCH_CHANNELS = ("CC", "SMS", "DM")
 
-# Business pipeline (ordered ascending).
+# Business pipeline (ordered ascending). Canonical across Gate 6 / Gate 8 / workspace copy.
+# Prospect (8020) = list presence; Lead = Podio/SF engaged; Qualified Lead = QL Create Date.
 PIPELINE_ORDER = (
     "NONE",
-    "ON_LIST",
-    "MARKETED",
     "PROSPECT",
+    "MARKETED",
+    "LEAD",
+    "QUALIFIED_LEAD",
     "OPPORTUNITY",
     "UNDER_CONTRACT",
     "HHB_CLOSED",
@@ -82,13 +84,17 @@ PIPELINE_ORDER = (
 
 PIPELINE_LABELS = {
     "NONE": "No list / history",
-    "ON_LIST": "On list (lead)",
+    "PROSPECT": "Prospect (8020)",
     "MARKETED": "Marketed",
-    "PROSPECT": "Prospect",
+    "LEAD": "Lead",
+    "QUALIFIED_LEAD": "Qualified Lead",
     "OPPORTUNITY": "Opportunity",
     "UNDER_CONTRACT": "Under contract",
-    "HHB_CLOSED": "Closed with HHB",
+    "HHB_CLOSED": "Closed",
 }
+
+# Stages always shown in funnel tables (even at zero).
+PIPELINE_FUNNEL_ALWAYS = PIPELINE_ORDER[1:]  # skip NONE unless present
 
 _MONTH_SLASH_RE = re.compile(r"^(\d{1,2})[/-](\d{4})$")
 _YEAR_MONTH_RE = re.compile(r"^(\d{4})-(\d{1,2})$")
@@ -302,6 +308,13 @@ class SoldPropertyRow:
     dm_touch_count: int = 0
     first_touch_channel: str = ""
     first_touch_date: str = ""
+    lead_matched: bool = False
+    lead_date: str = ""
+    lead_source: str = ""  # podio | sf_tag | ""
+    qualified_lead_matched: bool = False
+    qualified_lead_date: str = ""
+    qualified_lead_match_via: str = ""
+    # Back-compat: lead OR qualified lead (old bundled "prospect" match)
     prospect_matched: bool = False
     prospect_date: str = ""
     prospect_match_via: str = ""
@@ -315,6 +328,9 @@ class SoldPropertyRow:
     pipeline_stage_label: str = ""
     days_list_to_sold: Optional[int] = None
     months_list_to_sold: Optional[int] = None
+    days_list_to_qualified_lead: Optional[int] = None
+    months_list_to_qualified_lead: Optional[int] = None
+    # Alias for older consumers (lag to QL Create Date)
     days_list_to_prospect: Optional[int] = None
     months_list_to_prospect: Optional[int] = None
     tags: str = ""
@@ -338,6 +354,12 @@ class SoldPropertyRow:
             "dm_touch_count": self.dm_touch_count,
             "first_touch_channel": self.first_touch_channel,
             "first_touch_date": self.first_touch_date,
+            "lead_matched": self.lead_matched,
+            "lead_date": self.lead_date,
+            "lead_source": self.lead_source,
+            "qualified_lead_matched": self.qualified_lead_matched,
+            "qualified_lead_date": self.qualified_lead_date,
+            "qualified_lead_match_via": self.qualified_lead_match_via,
             "prospect_matched": self.prospect_matched,
             "prospect_date": self.prospect_date,
             "prospect_match_via": self.prospect_match_via,
@@ -351,6 +373,8 @@ class SoldPropertyRow:
             "pipeline_stage_label": self.pipeline_stage_label,
             "days_list_to_sold": self.days_list_to_sold,
             "months_list_to_sold": self.months_list_to_sold,
+            "days_list_to_qualified_lead": self.days_list_to_qualified_lead,
+            "months_list_to_qualified_lead": self.months_list_to_qualified_lead,
             "days_list_to_prospect": self.days_list_to_prospect,
             "months_list_to_prospect": self.months_list_to_prospect,
             "tags": self.tags,
@@ -364,7 +388,11 @@ class SoldPropertiesResult:
     sold_month_unparseable: int = 0
     marketed_count: int = 0
     marketed_pct: float = 0.0
-    prospect_matched: int = 0
+    lead_matched: int = 0
+    lead_rate_pct: float = 0.0
+    qualified_lead_matched: int = 0
+    qualified_lead_rate_pct: float = 0.0
+    prospect_matched: int = 0  # lead OR qualified lead (compat)
     prospect_rate_pct: float = 0.0
     opp_matched: int = 0
     opp_rate_pct: float = 0.0
@@ -377,6 +405,8 @@ class SoldPropertiesResult:
     lifecycle_funnel: List[Dict[str, Any]] = field(default_factory=list)
     mean_months_list_to_sold: Optional[float] = None
     median_months_list_to_sold: Optional[float] = None
+    mean_months_list_to_qualified_lead: Optional[float] = None
+    median_months_list_to_qualified_lead: Optional[float] = None
     mean_months_list_to_prospect: Optional[float] = None
     median_months_list_to_prospect: Optional[float] = None
     rows: List[SoldPropertyRow] = field(default_factory=list)
@@ -402,6 +432,10 @@ class SoldPropertiesResult:
                 "avg_touches_per_marketed": self.avg_touches_per_marketed,
             },
             "match": {
+                "lead_matched": self.lead_matched,
+                "lead_rate_pct": self.lead_rate_pct,
+                "qualified_lead_matched": self.qualified_lead_matched,
+                "qualified_lead_rate_pct": self.qualified_lead_rate_pct,
                 "prospect_matched": self.prospect_matched,
                 "prospect_rate_pct": self.prospect_rate_pct,
                 "opp_matched": self.opp_matched,
@@ -412,6 +446,8 @@ class SoldPropertiesResult:
             "lag": {
                 "mean_months_list_to_sold": self.mean_months_list_to_sold,
                 "median_months_list_to_sold": self.median_months_list_to_sold,
+                "mean_months_list_to_qualified_lead": self.mean_months_list_to_qualified_lead,
+                "median_months_list_to_qualified_lead": self.median_months_list_to_qualified_lead,
                 "mean_months_list_to_prospect": self.mean_months_list_to_prospect,
                 "median_months_list_to_prospect": self.median_months_list_to_prospect,
             },
@@ -430,6 +466,8 @@ def _row_kwargs(item: Dict[str, Any]) -> Dict[str, Any]:
     for k in allowed:
         out[k] = item.get(k)
     out["marketed"] = bool(out.get("marketed"))
+    out["lead_matched"] = bool(out.get("lead_matched"))
+    out["qualified_lead_matched"] = bool(out.get("qualified_lead_matched"))
     out["prospect_matched"] = bool(out.get("prospect_matched"))
     out["opp_matched"] = bool(out.get("opp_matched"))
     for int_key in ("cc_touch_count", "sms_touch_count", "dm_touch_count"):
@@ -448,6 +486,10 @@ def _row_kwargs(item: Dict[str, Any]) -> Dict[str, Any]:
         "list_purchase_date",
         "first_touch_channel",
         "first_touch_date",
+        "lead_date",
+        "lead_source",
+        "qualified_lead_date",
+        "qualified_lead_match_via",
         "prospect_date",
         "prospect_match_via",
         "prospect_source",
@@ -475,6 +517,10 @@ def result_from_metrics_dict(metrics: Dict[str, Any]) -> SoldPropertiesResult:
         sold_month_unparseable=int(inputs.get("sold_month_unparseable") or 0),
         marketed_count=int(marketing.get("marketed_count") or 0),
         marketed_pct=float(marketing.get("marketed_pct") or 0),
+        lead_matched=int(match.get("lead_matched") or 0),
+        lead_rate_pct=float(match.get("lead_rate_pct") or 0),
+        qualified_lead_matched=int(match.get("qualified_lead_matched") or 0),
+        qualified_lead_rate_pct=float(match.get("qualified_lead_rate_pct") or 0),
         prospect_matched=int(match.get("prospect_matched") or 0),
         prospect_rate_pct=float(match.get("prospect_rate_pct") or 0),
         opp_matched=int(match.get("opp_matched") or 0),
@@ -488,6 +534,8 @@ def result_from_metrics_dict(metrics: Dict[str, Any]) -> SoldPropertiesResult:
         lifecycle_funnel=list(metrics.get("lifecycle_funnel") or []),
         mean_months_list_to_sold=lag.get("mean_months_list_to_sold"),
         median_months_list_to_sold=lag.get("median_months_list_to_sold"),
+        mean_months_list_to_qualified_lead=lag.get("mean_months_list_to_qualified_lead"),
+        median_months_list_to_qualified_lead=lag.get("median_months_list_to_qualified_lead"),
         mean_months_list_to_prospect=lag.get("mean_months_list_to_prospect"),
         median_months_list_to_prospect=lag.get("median_months_list_to_prospect"),
         rows=rows,
@@ -657,16 +705,20 @@ def analyze(
         prospect_from_ql = ql_hit is not None and ql_hit.date is not None
         prospect_from_sf = _sf_engaged_before(parsed, sold_end_dt)
         prospect_from_podio = _podio_crm_present(parsed)
-        prospect_matched = prospect_from_ql or prospect_from_sf or prospect_from_podio
+
+        lead_matched = prospect_from_sf or prospect_from_podio
+        qualified_lead_matched = prospect_from_ql
+        prospect_matched = lead_matched or qualified_lead_matched
+
+        lead_date = ""
+        lead_source = ""
+        qualified_lead_date = ""
+        qualified_lead_via = ""
         prospect_date = ""
         prospect_via = ""
         prospect_source = ""
-        if prospect_from_ql and ql_hit is not None:
-            prospect_date = _iso_day(ql_hit.date)
-            prospect_via = ql_hit.via
-            prospect_source = "ql"
-        elif prospect_from_sf:
-            # First engaged SF date on or before sold end
+
+        if prospect_from_sf:
             for p in parsed:
                 if p.get("type") not in ("sf_updated", "sf_status"):
                     continue
@@ -675,14 +727,31 @@ def analyze(
                     continue
                 dt = _parse_iso_dt(str(p.get("date", "")))
                 if dt is not None and dt <= sold_end_dt:
-                    prospect_date = dt.date().isoformat()
-                    prospect_via = "sf_tag"
-                    prospect_source = "sf_tag"
+                    lead_date = dt.date().isoformat()
+                    lead_source = "sf_tag"
                     break
-        elif prospect_from_podio:
-            prospect_date = _first_podio_crm_date(parsed)
-            prospect_via = "podio"
-            prospect_source = "podio"
+            if not lead_source:
+                lead_source = "sf_tag"
+        if prospect_from_podio and not lead_source:
+            lead_date = _first_podio_crm_date(parsed)
+            lead_source = "podio"
+        elif prospect_from_podio and lead_source == "sf_tag":
+            # Both present: prefer SF date when available; still mark lead
+            pass
+        if prospect_from_podio and lead_source == "":
+            lead_date = _first_podio_crm_date(parsed)
+            lead_source = "podio"
+
+        if prospect_from_ql and ql_hit is not None:
+            qualified_lead_date = _iso_day(ql_hit.date)
+            qualified_lead_via = ql_hit.via
+            prospect_date = qualified_lead_date
+            prospect_via = qualified_lead_via
+            prospect_source = "ql"
+        elif lead_source:
+            prospect_date = lead_date
+            prospect_via = lead_source
+            prospect_source = lead_source
 
         opp_hit = None
         if opp_index is not None:
@@ -702,14 +771,16 @@ def analyze(
         under_ymd = under_contract.date().isoformat() if under_contract else ""
         hhb_ymd = hhb_closed.date().isoformat() if hhb_closed else ""
 
-        # Business pipeline
+        # Business pipeline: Prospect(8020) → Marketed → Lead → QL → Opp → UC → Closed
         pipe = "NONE"
         if list_dt is not None or list_purchase_ymd or created_raw:
-            pipe = "ON_LIST"
+            pipe = "PROSPECT"
         if marketed:
             pipe = _max_pipeline(pipe, "MARKETED")
-        if prospect_matched:
-            pipe = _max_pipeline(pipe, "PROSPECT")
+        if lead_matched:
+            pipe = _max_pipeline(pipe, "LEAD")
+        if qualified_lead_matched:
+            pipe = _max_pipeline(pipe, "QUALIFIED_LEAD")
         if opp_matched:
             pipe = _max_pipeline(pipe, "OPPORTUNITY")
         if under_contract is not None:
@@ -722,11 +793,11 @@ def analyze(
         months_list_to_sold = (
             months_between(pd.Timestamp(list_dt), sold_ts) if list_dt else None
         )
-        prospect_dt = _parse_iso_dt(prospect_date) if prospect_date else None
-        days_list_to_prospect = _days_between(list_dt, prospect_dt) if list_dt else None
-        months_list_to_prospect = (
-            months_between(pd.Timestamp(list_dt), pd.Timestamp(prospect_dt))
-            if list_dt and prospect_dt
+        ql_dt = _parse_iso_dt(qualified_lead_date) if qualified_lead_date else None
+        days_list_to_ql = _days_between(list_dt, ql_dt) if list_dt else None
+        months_list_to_ql = (
+            months_between(pd.Timestamp(list_dt), pd.Timestamp(ql_dt))
+            if list_dt and ql_dt
             else None
         )
 
@@ -749,6 +820,12 @@ def analyze(
                 dm_touch_count=touch_counts["DM"],
                 first_touch_channel=first_ch or "",
                 first_touch_date=first_date or "",
+                lead_matched=lead_matched,
+                lead_date=lead_date,
+                lead_source=lead_source,
+                qualified_lead_matched=qualified_lead_matched,
+                qualified_lead_date=qualified_lead_date,
+                qualified_lead_match_via=qualified_lead_via,
                 prospect_matched=prospect_matched,
                 prospect_date=prospect_date,
                 prospect_match_via=prospect_via,
@@ -762,8 +839,10 @@ def analyze(
                 pipeline_stage_label=PIPELINE_LABELS.get(pipe, pipe),
                 days_list_to_sold=days_list_to_sold,
                 months_list_to_sold=months_list_to_sold,
-                days_list_to_prospect=days_list_to_prospect,
-                months_list_to_prospect=months_list_to_prospect,
+                days_list_to_qualified_lead=days_list_to_ql,
+                months_list_to_qualified_lead=months_list_to_ql,
+                days_list_to_prospect=days_list_to_ql,
+                months_list_to_prospect=months_list_to_ql,
                 tags=tags_val,
             )
         )
@@ -771,6 +850,8 @@ def analyze(
     report(85, "Aggregating summary…")
     cohort_n = len(rows)
     marketed_n = sum(1 for r in rows if r.marketed)
+    lead_n = sum(1 for r in rows if r.lead_matched)
+    ql_n = sum(1 for r in rows if r.qualified_lead_matched)
     prospect_n = sum(1 for r in rows if r.prospect_matched)
     opp_n = sum(1 for r in rows if r.opp_matched)
     uc_n = sum(1 for r in rows if r.under_contract_date)
@@ -792,7 +873,7 @@ def analyze(
             "share_pct": _pct(pipe_counter.get(stage, 0), cohort_n),
         }
         for stage in PIPELINE_ORDER
-        if pipe_counter.get(stage, 0) > 0 or stage in ("ON_LIST", "MARKETED", "PROSPECT")
+        if pipe_counter.get(stage, 0) > 0 or stage in PIPELINE_FUNNEL_ALWAYS
     ]
 
     life_counter: Counter[str] = Counter(r.highest_lifecycle_stage for r in rows)
@@ -815,6 +896,8 @@ def analyze(
                 "sold_month": key,
                 "count": 0,
                 "marketed": 0,
+                "leads": 0,
+                "qualified_leads": 0,
                 "prospects": 0,
                 "opportunities": 0,
                 "under_contract": 0,
@@ -824,6 +907,10 @@ def analyze(
         bucket["count"] += 1
         if r.marketed:
             bucket["marketed"] += 1
+        if r.lead_matched:
+            bucket["leads"] += 1
+        if r.qualified_lead_matched:
+            bucket["qualified_leads"] += 1
         if r.prospect_matched:
             bucket["prospects"] += 1
         if r.opp_matched:
@@ -835,11 +922,11 @@ def analyze(
     by_sold_month = sorted(by_month_stats.values(), key=lambda x: x["sold_month"])
 
     months_to_sold = [m for m in (r.months_list_to_sold for r in rows) if m is not None]
-    months_to_prospect = [
-        m for m in (r.months_list_to_prospect for r in rows) if m is not None
+    months_to_ql = [
+        m for m in (r.months_list_to_qualified_lead for r in rows) if m is not None
     ]
     mean_sold, median_sold = _mean_median(months_to_sold)
-    mean_prospect, median_prospect = _mean_median(months_to_prospect)
+    mean_ql, median_ql = _mean_median(months_to_ql)
 
     if sold_months:
         date_window_start = _ym_label(min(sold_months))
@@ -856,14 +943,12 @@ def analyze(
 
     methodology_note = (
         "Cohort = REISift rows with a parseable in_sold_properties_full sale month "
-        "(external sale, not an HHB closing). List purchase tags remain source credit; "
-        "Salesforce Create Date is a clock for Prospect lag (earliest QL match on or after "
-        "first list month and on or before the sold month). Marketing touches are (8020) "
-        "CC/SMS/DM tags on or before the sold month. Rows with no contact tags (never "
-        "marketed) are often federal Do Not Call, other DNC, or suppression imports — "
-        "bought onto REISift but intentionally not reached. Pipeline stages: On list → "
-        "Marketed → Prospect (QL, SF engaged tag, or PodioSellerLeads) → Opportunity (optional file) → "
-        "Under contract → Closed with HHB. Why they sold elsewhere is out of scope."
+        "(external sale, not an HHB closing). Canonical pipeline: Prospect (8020 list) → "
+        "Marketed ((8020) CC/SMS/DM) → Lead (PodioSellerLeads or SF engaged) → "
+        "Qualified Lead (QL Create Date on/after first list month and on/before sold month) → "
+        "Opportunity → Under contract → Closed. List purchase tags remain source credit; "
+        "Create Date is a Qualified Lead clock only. Never-marketed rows are often DNC / "
+        "suppression. Why they sold elsewhere is out of scope."
     )
 
     report(100, "Done")
@@ -873,6 +958,10 @@ def analyze(
         sold_month_unparseable=unparseable,
         marketed_count=marketed_n,
         marketed_pct=_pct(marketed_n, cohort_n),
+        lead_matched=lead_n,
+        lead_rate_pct=_pct(lead_n, cohort_n),
+        qualified_lead_matched=ql_n,
+        qualified_lead_rate_pct=_pct(ql_n, cohort_n),
         prospect_matched=prospect_n,
         prospect_rate_pct=_pct(prospect_n, cohort_n),
         opp_matched=opp_n,
@@ -886,8 +975,10 @@ def analyze(
         lifecycle_funnel=lifecycle_funnel,
         mean_months_list_to_sold=mean_sold,
         median_months_list_to_sold=median_sold,
-        mean_months_list_to_prospect=mean_prospect,
-        median_months_list_to_prospect=median_prospect,
+        mean_months_list_to_qualified_lead=mean_ql,
+        median_months_list_to_qualified_lead=median_ql,
+        mean_months_list_to_prospect=mean_ql,
+        median_months_list_to_prospect=median_ql,
         rows=rows,
         warnings=warnings,
         methodology_note=methodology_note,
@@ -908,12 +999,14 @@ def build_export_workbook(result: SoldPropertiesResult) -> bytes:
         {"metric": "Sold month unparseable (excluded)", "value": result.sold_month_unparseable},
         {"metric": "Marketed count", "value": result.marketed_count},
         {"metric": "Marketed %", "value": result.marketed_pct},
-        {"metric": "Prospect matched", "value": result.prospect_matched},
-        {"metric": "Prospect %", "value": result.prospect_rate_pct},
+        {"metric": "Lead matched", "value": result.lead_matched},
+        {"metric": "Lead %", "value": result.lead_rate_pct},
+        {"metric": "Qualified Lead matched", "value": result.qualified_lead_matched},
+        {"metric": "Qualified Lead %", "value": result.qualified_lead_rate_pct},
         {"metric": "Opportunity matched", "value": result.opp_matched},
         {"metric": "Opportunity %", "value": result.opp_rate_pct},
         {"metric": "Under contract", "value": result.under_contract_count},
-        {"metric": "Closed with HHB", "value": result.hhb_closed_count},
+        {"metric": "Closed", "value": result.hhb_closed_count},
         {"metric": "CC touches (total)", "value": result.total_touch_counts.get("CC", 0)},
         {"metric": "SMS touches (total)", "value": result.total_touch_counts.get("SMS", 0)},
         {"metric": "DM touches (total)", "value": result.total_touch_counts.get("DM", 0)},

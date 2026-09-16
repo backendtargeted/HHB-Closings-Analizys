@@ -1,9 +1,10 @@
 """
-Gate 8 — Investor & In-List Sold + Gate 6 pipeline depth.
+Gate 8 — Investor & In-List Sold + canonical pipeline depth.
 
 Universe: CleanREISift sold_properties_full.csv (property × sold month).
 Requires REISift + Salesforce QL. Opportunities optional.
-Prospect = QL Create Date clock, SF engaged tag, or PodioSellerLeads presence.
+Lost to investor = in_my_records AND investor AND not HHB closed.
+Pipeline: Prospect (8020) → Marketed → Lead (Podio/SF) → Qualified Lead → Opp → UC → Closed.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from .probate import (
 )
 from .qualified_leads import CREATE_DATE_CANDIDATES
 from .sold_properties import (
+    PIPELINE_FUNNEL_ALWAYS,
     PIPELINE_LABELS,
     PIPELINE_ORDER,
     REISIFT_PHONE_CANDIDATES,
@@ -48,7 +50,6 @@ from .sold_properties import (
     _month_end,
     _parse_iso_dt,
     _pct,
-    _pipeline_rank,
     _podio_crm_present,
     _sf_engaged_before,
     parse_sold_month,
@@ -160,6 +161,11 @@ class InvestorSoldRow:
     dm_touch_count: int = 0
     first_touch_channel: str = ""
     first_touch_date: str = ""
+    lead_matched: bool = False
+    lead_date: str = ""
+    lead_source: str = ""
+    qualified_lead_matched: bool = False
+    qualified_lead_date: str = ""
     prospect_matched: bool = False
     prospect_date: str = ""
     prospect_source: str = ""
@@ -170,6 +176,7 @@ class InvestorSoldRow:
     pipeline_stage: str = "NONE"
     pipeline_stage_label: str = ""
     months_list_to_sold: Optional[int] = None
+    months_list_to_qualified_lead: Optional[int] = None
     months_list_to_prospect: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -202,6 +209,11 @@ class InvestorSoldRow:
             "dm_touch_count": self.dm_touch_count,
             "first_touch_channel": self.first_touch_channel,
             "first_touch_date": self.first_touch_date,
+            "lead_matched": self.lead_matched,
+            "lead_date": self.lead_date,
+            "lead_source": self.lead_source,
+            "qualified_lead_matched": self.qualified_lead_matched,
+            "qualified_lead_date": self.qualified_lead_date,
             "prospect_matched": self.prospect_matched,
             "prospect_date": self.prospect_date,
             "prospect_source": self.prospect_source,
@@ -212,6 +224,7 @@ class InvestorSoldRow:
             "pipeline_stage": self.pipeline_stage,
             "pipeline_stage_label": self.pipeline_stage_label,
             "months_list_to_sold": self.months_list_to_sold,
+            "months_list_to_qualified_lead": self.months_list_to_qualified_lead,
             "months_list_to_prospect": self.months_list_to_prospect,
         }
 
@@ -232,6 +245,10 @@ class InvestorSoldResult:
     marketed_count: int = 0
     marketed_pct: float = 0.0
     never_marketed_count: int = 0
+    lead_matched: int = 0
+    lead_rate_pct: float = 0.0
+    qualified_lead_matched: int = 0
+    qualified_lead_rate_pct: float = 0.0
     prospect_matched: int = 0
     prospect_rate_pct: float = 0.0
     opp_matched: int = 0
@@ -239,14 +256,23 @@ class InvestorSoldResult:
     under_contract_count: int = 0
     hhb_closed_count: int = 0
     reisift_matched_count: int = 0
+    lost_to_investor_count: int = 0
+    lost_to_investor_pct: float = 0.0
+    in_list_investor_count: int = 0
+    in_list_non_investor_count: int = 0
+    lost_by_stage: List[Dict[str, Any]] = field(default_factory=list)
+    in_list_exits_by_buyer: Dict[str, int] = field(default_factory=dict)
     total_touch_counts: Dict[str, int] = field(default_factory=dict)
     avg_touches_per_marketed: Optional[float] = None
     mean_months_list_to_sold: Optional[float] = None
     median_months_list_to_sold: Optional[float] = None
+    mean_months_list_to_qualified_lead: Optional[float] = None
+    median_months_list_to_qualified_lead: Optional[float] = None
     mean_months_list_to_prospect: Optional[float] = None
     median_months_list_to_prospect: Optional[float] = None
     pipeline_funnel: List[Dict[str, Any]] = field(default_factory=list)
     prospect_sources: Dict[str, int] = field(default_factory=dict)
+    lead_sources: Dict[str, int] = field(default_factory=dict)
     by_segment: List[Dict[str, Any]] = field(default_factory=list)
     by_sold_month: List[Dict[str, Any]] = field(default_factory=list)
     by_county: List[Dict[str, Any]] = field(default_factory=list)
@@ -278,6 +304,14 @@ class InvestorSoldResult:
                 "neither_count": self.neither_count,
                 "neither_pct": self.neither_pct,
             },
+            "lost": {
+                "lost_to_investor_count": self.lost_to_investor_count,
+                "lost_to_investor_pct": self.lost_to_investor_pct,
+                "in_list_investor_count": self.in_list_investor_count,
+                "in_list_non_investor_count": self.in_list_non_investor_count,
+                "lost_by_stage": self.lost_by_stage,
+                "in_list_exits_by_buyer": self.in_list_exits_by_buyer,
+            },
             "marketing": {
                 "marketed_count": self.marketed_count,
                 "marketed_pct": self.marketed_pct,
@@ -286,6 +320,10 @@ class InvestorSoldResult:
                 "avg_touches_per_marketed": self.avg_touches_per_marketed,
             },
             "match": {
+                "lead_matched": self.lead_matched,
+                "lead_rate_pct": self.lead_rate_pct,
+                "qualified_lead_matched": self.qualified_lead_matched,
+                "qualified_lead_rate_pct": self.qualified_lead_rate_pct,
                 "prospect_matched": self.prospect_matched,
                 "prospect_rate_pct": self.prospect_rate_pct,
                 "opp_matched": self.opp_matched,
@@ -297,21 +335,25 @@ class InvestorSoldResult:
             "lag": {
                 "mean_months_list_to_sold": self.mean_months_list_to_sold,
                 "median_months_list_to_sold": self.median_months_list_to_sold,
+                "mean_months_list_to_qualified_lead": self.mean_months_list_to_qualified_lead,
+                "median_months_list_to_qualified_lead": self.median_months_list_to_qualified_lead,
                 "mean_months_list_to_prospect": self.mean_months_list_to_prospect,
                 "median_months_list_to_prospect": self.median_months_list_to_prospect,
             },
             "pipeline_funnel": self.pipeline_funnel,
             "prospect_sources": self.prospect_sources,
+            "lead_sources": self.lead_sources,
             "by_segment": self.by_segment,
             "by_sold_month": self.by_sold_month,
             "by_county": self.by_county,
             "rows": [r.to_dict() for r in self.rows],
             "warnings": self.warnings,
             "methodology_note": self.methodology_note,
-            # Back-compat for older UI fields
             "enrichment": {
                 "reisift_matched_count": self.reisift_matched_count,
                 "marketed_count": self.marketed_count,
+                "lead_matched": self.lead_matched,
+                "qualified_lead_matched": self.qualified_lead_matched,
                 "prospect_matched": self.prospect_matched,
                 "opp_matched": self.opp_matched,
             },
@@ -359,13 +401,19 @@ def _row_kwargs(item: Dict[str, Any]) -> Dict[str, Any]:
         "in_my_records",
         "reisift_matched",
         "marketed",
+        "lead_matched",
+        "qualified_lead_matched",
         "prospect_matched",
         "opp_matched",
     ):
         out[b] = bool(out.get(b))
     for i in ("cc_touch_count", "sms_touch_count", "dm_touch_count", "transaction_count"):
         out[i] = int(out.get(i) or (1 if i == "transaction_count" else 0))
-    for opt in ("months_list_to_sold", "months_list_to_prospect"):
+    for opt in (
+        "months_list_to_sold",
+        "months_list_to_qualified_lead",
+        "months_list_to_prospect",
+    ):
         raw = out.get(opt)
         if raw is None or raw == "":
             out[opt] = None
@@ -379,6 +427,8 @@ def _row_kwargs(item: Dict[str, Any]) -> Dict[str, Any]:
         "in_my_records",
         "reisift_matched",
         "marketed",
+        "lead_matched",
+        "qualified_lead_matched",
         "prospect_matched",
         "opp_matched",
         "cc_touch_count",
@@ -386,6 +436,7 @@ def _row_kwargs(item: Dict[str, Any]) -> Dict[str, Any]:
         "dm_touch_count",
         "transaction_count",
         "months_list_to_sold",
+        "months_list_to_qualified_lead",
         "months_list_to_prospect",
     }
     for s in str_keys:
@@ -416,6 +467,10 @@ def result_from_metrics_dict(metrics: Dict[str, Any]) -> InvestorSoldResult:
         marketed_count=int(marketing.get("marketed_count") or match.get("marketed_count") or 0),
         marketed_pct=float(marketing.get("marketed_pct") or 0),
         never_marketed_count=int(marketing.get("never_marketed_count") or 0),
+        lead_matched=int(match.get("lead_matched") or 0),
+        lead_rate_pct=float(match.get("lead_rate_pct") or 0),
+        qualified_lead_matched=int(match.get("qualified_lead_matched") or 0),
+        qualified_lead_rate_pct=float(match.get("qualified_lead_rate_pct") or 0),
         prospect_matched=int(match.get("prospect_matched") or 0),
         prospect_rate_pct=float(match.get("prospect_rate_pct") or 0),
         opp_matched=int(match.get("opp_matched") or 0),
@@ -423,14 +478,27 @@ def result_from_metrics_dict(metrics: Dict[str, Any]) -> InvestorSoldResult:
         under_contract_count=int(match.get("under_contract_count") or 0),
         hhb_closed_count=int(match.get("hhb_closed_count") or 0),
         reisift_matched_count=int(match.get("reisift_matched_count") or 0),
+        lost_to_investor_count=int((metrics.get("lost") or {}).get("lost_to_investor_count") or 0),
+        lost_to_investor_pct=float((metrics.get("lost") or {}).get("lost_to_investor_pct") or 0),
+        in_list_investor_count=int((metrics.get("lost") or {}).get("in_list_investor_count") or 0),
+        in_list_non_investor_count=int(
+            (metrics.get("lost") or {}).get("in_list_non_investor_count") or 0
+        ),
+        lost_by_stage=list((metrics.get("lost") or {}).get("lost_by_stage") or []),
+        in_list_exits_by_buyer=dict(
+            (metrics.get("lost") or {}).get("in_list_exits_by_buyer") or {}
+        ),
         total_touch_counts=dict(marketing.get("total_touch_counts") or {}),
         avg_touches_per_marketed=marketing.get("avg_touches_per_marketed"),
         mean_months_list_to_sold=lag.get("mean_months_list_to_sold"),
         median_months_list_to_sold=lag.get("median_months_list_to_sold"),
+        mean_months_list_to_qualified_lead=lag.get("mean_months_list_to_qualified_lead"),
+        median_months_list_to_qualified_lead=lag.get("median_months_list_to_qualified_lead"),
         mean_months_list_to_prospect=lag.get("mean_months_list_to_prospect"),
         median_months_list_to_prospect=lag.get("median_months_list_to_prospect"),
         pipeline_funnel=list(metrics.get("pipeline_funnel") or []),
         prospect_sources=dict(metrics.get("prospect_sources") or {}),
+        lead_sources=dict(metrics.get("lead_sources") or {}),
         by_segment=list(metrics.get("by_segment") or []),
         by_sold_month=list(metrics.get("by_sold_month") or []),
         by_county=list(metrics.get("by_county") or []),
@@ -449,6 +517,8 @@ def _empty_segment_rollup(segment: str) -> Dict[str, Any]:
         "count": 0,
         "marketed": 0,
         "never_marketed": 0,
+        "leads": 0,
+        "qualified_leads": 0,
         "prospects": 0,
         "prospects_podio": 0,
         "prospects_ql": 0,
@@ -469,7 +539,10 @@ def _empty_rollup(key_name: str, key: str) -> Dict[str, Any]:
         "both": 0,
         "neither": 0,
         "marketed": 0,
+        "leads": 0,
+        "qualified_leads": 0,
         "prospects": 0,
+        "lost_to_investor": 0,
     }
 
 
@@ -532,7 +605,7 @@ def _enrich_row(
 
     pipeline = "NONE"
     if list_dt is not None or sold_row.in_my_records:
-        pipeline = "ON_LIST"
+        pipeline = "PROSPECT"
     if sold_row.marketed:
         pipeline = _max_pipeline(pipeline, "MARKETED")
 
@@ -566,18 +639,17 @@ def _enrich_row(
         on_or_after=first_list_month,
         before=before,
     )
-    prospect_from_ql = ql_hit is not None and ql_hit.date is not None
-    prospect_from_sf = (
+    from_ql = ql_hit is not None and ql_hit.date is not None
+    from_sf = (
         _sf_engaged_before(parsed, sold_end_dt) if sold_end_dt is not None else False
     )
-    prospect_from_podio = _podio_crm_present(parsed)
-    sold_row.prospect_matched = prospect_from_ql or prospect_from_sf or prospect_from_podio
+    from_podio = _podio_crm_present(parsed)
 
-    if prospect_from_ql and ql_hit is not None:
-        sold_row.prospect_date = _iso_day(ql_hit.date)
-        sold_row.prospect_source = "ql"
-        pipeline = _max_pipeline(pipeline, "PROSPECT")
-    elif prospect_from_sf and sold_end_dt is not None:
+    sold_row.lead_matched = from_sf or from_podio
+    sold_row.qualified_lead_matched = from_ql
+    sold_row.prospect_matched = sold_row.lead_matched or sold_row.qualified_lead_matched
+
+    if from_sf and sold_end_dt is not None:
         for p in parsed:
             if p.get("type") not in ("sf_updated", "sf_status"):
                 continue
@@ -586,16 +658,27 @@ def _enrich_row(
                 continue
             dt = _parse_iso_dt(str(p.get("date", "")))
             if dt is not None and dt <= sold_end_dt:
-                sold_row.prospect_date = dt.date().isoformat()
-                sold_row.prospect_source = "sf_tag"
+                sold_row.lead_date = dt.date().isoformat()
+                sold_row.lead_source = "sf_tag"
                 break
-        if not sold_row.prospect_source:
-            sold_row.prospect_source = "sf_tag"
-        pipeline = _max_pipeline(pipeline, "PROSPECT")
-    elif prospect_from_podio:
-        sold_row.prospect_date = _first_podio_crm_date(parsed)
-        sold_row.prospect_source = "podio"
-        pipeline = _max_pipeline(pipeline, "PROSPECT")
+        if not sold_row.lead_source:
+            sold_row.lead_source = "sf_tag"
+    if from_podio and not sold_row.lead_source:
+        sold_row.lead_date = _first_podio_crm_date(parsed)
+        sold_row.lead_source = "podio"
+
+    if from_ql and ql_hit is not None:
+        sold_row.qualified_lead_date = _iso_day(ql_hit.date)
+        sold_row.prospect_date = sold_row.qualified_lead_date
+        sold_row.prospect_source = "ql"
+    elif sold_row.lead_source:
+        sold_row.prospect_date = sold_row.lead_date
+        sold_row.prospect_source = sold_row.lead_source
+
+    if sold_row.lead_matched:
+        pipeline = _max_pipeline(pipeline, "LEAD")
+    if sold_row.qualified_lead_matched:
+        pipeline = _max_pipeline(pipeline, "QUALIFIED_LEAD")
 
     if opp_index is not None:
         opp_hit = _best_hit(
@@ -618,11 +701,16 @@ def _enrich_row(
 
     if list_dt is not None and sold_ts is not None:
         sold_row.months_list_to_sold = months_between(pd.Timestamp(list_dt), sold_ts)
-    prospect_dt = _parse_iso_dt(sold_row.prospect_date) if sold_row.prospect_date else None
-    if list_dt is not None and prospect_dt is not None:
-        sold_row.months_list_to_prospect = months_between(
-            pd.Timestamp(list_dt), pd.Timestamp(prospect_dt)
+    ql_dt = (
+        _parse_iso_dt(sold_row.qualified_lead_date)
+        if sold_row.qualified_lead_date
+        else None
+    )
+    if list_dt is not None and ql_dt is not None:
+        sold_row.months_list_to_qualified_lead = months_between(
+            pd.Timestamp(list_dt), pd.Timestamp(ql_dt)
         )
+        sold_row.months_list_to_prospect = sold_row.months_list_to_qualified_lead
 
 
 def analyze(
@@ -777,11 +865,40 @@ def analyze(
 
     marketed_n = sum(1 for r in rows if r.marketed)
     never_n = n - marketed_n
+    lead_n = sum(1 for r in rows if r.lead_matched)
+    ql_n = sum(1 for r in rows if r.qualified_lead_matched)
     prospect_n = sum(1 for r in rows if r.prospect_matched)
     opp_n = sum(1 for r in rows if r.opp_matched)
     uc_n = sum(1 for r in rows if r.under_contract_date)
     closed_n = sum(1 for r in rows if r.hhb_closed_date)
     reisift_n = sum(1 for r in rows if r.reisift_matched)
+
+    in_list_investor_n = sum(1 for r in rows if r.in_my_records and r.investor)
+    in_list_non_investor_n = sum(1 for r in rows if r.in_my_records and not r.investor)
+    lost_rows = [
+        r for r in rows if r.in_my_records and r.investor and not r.hhb_closed_date
+    ]
+    lost_n = len(lost_rows)
+    lost_pct = _pct(lost_n, in_list_n)
+    lost_stage_counter: Counter[str] = Counter(r.pipeline_stage for r in lost_rows)
+    lost_by_stage = [
+        {
+            "stage": stage,
+            "label": PIPELINE_LABELS.get(stage, stage),
+            "count": lost_stage_counter.get(stage, 0),
+            "share_pct": _pct(lost_stage_counter.get(stage, 0), lost_n),
+        }
+        for stage in PIPELINE_ORDER
+        if lost_stage_counter.get(stage, 0) > 0 or stage in PIPELINE_FUNNEL_ALWAYS
+    ]
+    in_list_exits_by_buyer = {
+        "investor": in_list_investor_n,
+        "non_investor": in_list_non_investor_n,
+        "lost_to_investor": lost_n,
+        "hhb_closed_investor": sum(
+            1 for r in rows if r.in_my_records and r.investor and r.hhb_closed_date
+        ),
+    }
 
     total_touches = {
         ch: sum(int(getattr(r, f"{ch.lower()}_touch_count")) for r in rows)
@@ -797,6 +914,11 @@ def analyze(
         "podio": int(src_counter.get("podio", 0)),
         "unmatched": n - prospect_n,
     }
+    lead_src = Counter(r.lead_source for r in rows if r.lead_matched)
+    lead_sources = {
+        "sf_tag": int(lead_src.get("sf_tag", 0)),
+        "podio": int(lead_src.get("podio", 0)),
+    }
 
     pipe_counter: Counter[str] = Counter(r.pipeline_stage for r in rows)
     pipeline_funnel = [
@@ -807,7 +929,7 @@ def analyze(
             "share_pct": _pct(pipe_counter.get(stage, 0), n),
         }
         for stage in PIPELINE_ORDER
-        if pipe_counter.get(stage, 0) > 0 or stage in ("ON_LIST", "MARKETED", "PROSPECT")
+        if pipe_counter.get(stage, 0) > 0 or stage in PIPELINE_FUNNEL_ALWAYS
     ]
 
     by_seg: Dict[str, Dict[str, Any]] = {s: _empty_segment_rollup(s) for s in SEGMENT_IDS}
@@ -819,6 +941,10 @@ def analyze(
             bucket["marketed"] += 1
         else:
             bucket["never_marketed"] += 1
+        if r.lead_matched:
+            bucket["leads"] += 1
+        if r.qualified_lead_matched:
+            bucket["qualified_leads"] += 1
         if r.prospect_matched:
             bucket["prospects"] += 1
             if r.prospect_source == "podio":
@@ -839,6 +965,8 @@ def analyze(
         _, med = _mean_median(lag_by_seg[seg])
         bucket["median_months_list_to_sold"] = med
         bucket["marketed_pct"] = _pct(bucket["marketed"], bucket["count"])
+        bucket["lead_pct"] = _pct(bucket["leads"], bucket["count"])
+        bucket["qualified_lead_pct"] = _pct(bucket["qualified_leads"], bucket["count"])
         bucket["prospect_pct"] = _pct(bucket["prospects"], bucket["count"])
 
     by_month: Dict[str, Dict[str, Any]] = {}
@@ -857,8 +985,14 @@ def analyze(
             bucket["neither"] += 1
         if r.marketed:
             bucket["marketed"] += 1
+        if r.lead_matched:
+            bucket["leads"] += 1
+        if r.qualified_lead_matched:
+            bucket["qualified_leads"] += 1
         if r.prospect_matched:
             bucket["prospects"] += 1
+        if r.in_my_records and r.investor and not r.hhb_closed_date:
+            bucket["lost_to_investor"] += 1
 
         ck = r.county or "(unknown)"
         cb = by_county.setdefault(ck, _empty_rollup("county", ck))
@@ -873,15 +1007,21 @@ def analyze(
             cb["neither"] += 1
         if r.marketed:
             cb["marketed"] += 1
+        if r.lead_matched:
+            cb["leads"] += 1
+        if r.qualified_lead_matched:
+            cb["qualified_leads"] += 1
         if r.prospect_matched:
             cb["prospects"] += 1
+        if r.in_my_records and r.investor and not r.hhb_closed_date:
+            cb["lost_to_investor"] += 1
 
     months_to_sold = [m for m in (r.months_list_to_sold for r in rows) if m is not None]
-    months_to_prospect = [
-        m for m in (r.months_list_to_prospect for r in rows) if m is not None
+    months_to_ql = [
+        m for m in (r.months_list_to_qualified_lead for r in rows) if m is not None
     ]
     mean_sold, median_sold = _mean_median(months_to_sold)
-    mean_prospect, median_prospect = _mean_median(months_to_prospect)
+    mean_ql, median_ql = _mean_median(months_to_ql)
 
     if sold_months:
         date_window_start = f"{min(sold_months).year:04d}-{min(sold_months).month:02d}"
@@ -892,12 +1032,13 @@ def analyze(
 
     multi_txn = sum(1 for r in rows if r.transaction_count > 1)
     methodology_note = (
+        "Primary question: lost to another investor = in_my_records AND investor AND not "
+        "HHB closed (loss rate denominator = in-list properties). "
         "Universe = CleanREISift sold_properties_full.csv. Grain = unique property × sold month "
         f"(multi-txn Dataflik rows collapse; {multi_txn:,} properties had >1 txn). "
-        "investor / in_my_records from scrape flags. Pipeline depth reuses Gate 6 clocks: "
-        "(8020) CC/SMS/DM = marketed; Prospect = QL Create Date on/after first list month and "
-        "on/before sold month, OR SF engaged tag, OR PodioSellerLeads presence (pre-Salesforce CRM "
-        "lead — no Create Date clock). Optional Opportunities for Opp stage."
+        "Canonical pipeline: Prospect (8020 / list / in_my_records) → Marketed ((8020) CC/SMS/DM) → "
+        "Lead (PodioSellerLeads or SF engaged) → Qualified Lead (QL Create Date on/after first "
+        "list month and on/before sold month) → Opportunity → Under contract → Closed."
     )
 
     report(100, "Done")
@@ -916,6 +1057,10 @@ def analyze(
         marketed_count=marketed_n,
         marketed_pct=_pct(marketed_n, n),
         never_marketed_count=never_n,
+        lead_matched=lead_n,
+        lead_rate_pct=_pct(lead_n, n),
+        qualified_lead_matched=ql_n,
+        qualified_lead_rate_pct=_pct(ql_n, n),
         prospect_matched=prospect_n,
         prospect_rate_pct=_pct(prospect_n, n),
         opp_matched=opp_n,
@@ -923,14 +1068,23 @@ def analyze(
         under_contract_count=uc_n,
         hhb_closed_count=closed_n,
         reisift_matched_count=reisift_n,
+        lost_to_investor_count=lost_n,
+        lost_to_investor_pct=lost_pct,
+        in_list_investor_count=in_list_investor_n,
+        in_list_non_investor_count=in_list_non_investor_n,
+        lost_by_stage=lost_by_stage,
+        in_list_exits_by_buyer=in_list_exits_by_buyer,
         total_touch_counts=total_touches,
         avg_touches_per_marketed=avg_touches,
         mean_months_list_to_sold=mean_sold,
         median_months_list_to_sold=median_sold,
-        mean_months_list_to_prospect=mean_prospect,
-        median_months_list_to_prospect=median_prospect,
+        mean_months_list_to_qualified_lead=mean_ql,
+        median_months_list_to_qualified_lead=median_ql,
+        mean_months_list_to_prospect=mean_ql,
+        median_months_list_to_prospect=median_ql,
         pipeline_funnel=pipeline_funnel,
         prospect_sources=prospect_sources,
+        lead_sources=lead_sources,
         by_segment=[by_seg[s] for s in SEGMENT_IDS],
         by_sold_month=sorted(by_month.values(), key=lambda x: x["sold_month"]),
         by_county=sorted(by_county.values(), key=lambda x: (-x["count"], x["county"])),
@@ -954,21 +1108,23 @@ def build_export_workbook(result: InvestorSoldResult) -> bytes:
         {"metric": "Sold transactions ingested", "value": result.sold_rows_ingested},
         {"metric": "Property × month rows", "value": result.property_rows},
         {"metric": "Unique addresses", "value": result.unique_addresses},
-        {"metric": "Investor", "value": result.investor_count},
         {"metric": "In Our List", "value": result.in_our_list_count},
+        {"metric": "Lost to investor", "value": result.lost_to_investor_count},
+        {"metric": "Lost to investor % of in-list", "value": result.lost_to_investor_pct},
+        {"metric": "In-list sold to investor", "value": result.in_list_investor_count},
+        {"metric": "In-list sold non-investor", "value": result.in_list_non_investor_count},
+        {"metric": "Investor (market)", "value": result.investor_count},
         {"metric": "Both", "value": result.both_count},
         {"metric": "Neither", "value": result.neither_count},
         {"metric": "Marketed", "value": result.marketed_count},
-        {"metric": "Marketed %", "value": result.marketed_pct},
         {"metric": "Never marketed", "value": result.never_marketed_count},
-        {"metric": "Prospect matched", "value": result.prospect_matched},
-        {"metric": "Prospect %", "value": result.prospect_rate_pct},
-        {"metric": "Prospects via QL", "value": result.prospect_sources.get("ql", 0)},
-        {"metric": "Prospects via SF tag", "value": result.prospect_sources.get("sf_tag", 0)},
-        {"metric": "Prospects via Podio", "value": result.prospect_sources.get("podio", 0)},
+        {"metric": "Lead matched", "value": result.lead_matched},
+        {"metric": "Qualified Lead matched", "value": result.qualified_lead_matched},
+        {"metric": "Leads via SF tag", "value": result.lead_sources.get("sf_tag", 0)},
+        {"metric": "Leads via Podio", "value": result.lead_sources.get("podio", 0)},
         {"metric": "Opportunity matched", "value": result.opp_matched},
         {"metric": "Under contract", "value": result.under_contract_count},
-        {"metric": "Closed with HHB", "value": result.hhb_closed_count},
+        {"metric": "Closed", "value": result.hhb_closed_count},
         {"metric": "Median mo list→sold", "value": result.median_months_list_to_sold},
         {"metric": "Methodology", "value": result.methodology_note},
     ]
@@ -976,12 +1132,18 @@ def build_export_workbook(result: InvestorSoldResult) -> bytes:
     bio = BytesIO()
     with pd.ExcelWriter(bio, engine="openpyxl") as writer:
         pd.DataFrame(summary_rows).to_excel(writer, sheet_name="Summary", index=False)
+        pd.DataFrame(result.lost_by_stage).to_excel(
+            writer, sheet_name="Lost By Stage", index=False
+        )
         pd.DataFrame(result.by_segment).to_excel(writer, sheet_name="By Segment", index=False)
         pd.DataFrame(result.pipeline_funnel).to_excel(
             writer, sheet_name="Pipeline Funnel", index=False
         )
         pd.DataFrame(result.by_sold_month).to_excel(writer, sheet_name="By Month", index=False)
         pd.DataFrame(all_rows).to_excel(writer, sheet_name="Journey", index=False)
+        pd.DataFrame(
+            [r for r in all_rows if r.get("in_my_records") and r.get("investor") and not r.get("hhb_closed_date")]
+        ).to_excel(writer, sheet_name="Lost To Investor", index=False)
         pd.DataFrame([r for r in all_rows if r.get("investor")]).to_excel(
             writer, sheet_name="Investor", index=False
         )

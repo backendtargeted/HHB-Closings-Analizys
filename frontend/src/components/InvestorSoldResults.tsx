@@ -26,8 +26,8 @@ const DETAIL_COLS: Array<{ key: SortKey; label: string }> = [
   { key: 'segment', label: 'Segment' },
   { key: 'pipeline_stage_label', label: 'Pipeline' },
   { key: 'marketed', label: 'Marketed' },
-  { key: 'prospect_source', label: 'Prospect source' },
-  { key: 'prospect_date', label: 'Prospect date' },
+  { key: 'lead_source', label: 'Lead source' },
+  { key: 'qualified_lead_date', label: 'QL date' },
   { key: 'opp_matched', label: 'Opp' },
   { key: 'months_list_to_sold', label: 'Mo list→sold' },
   { key: 'investor_score', label: 'Investor score' },
@@ -42,16 +42,11 @@ const SEGMENT_LABELS: Record<string, string> = {
 
 const PREVIEW_LIMIT = 500;
 
-function fmt(n: number | null | undefined): string {
-  if (n === null || n === undefined) return '—';
-  return String(n);
-}
-
 function cellValue(row: InvestorSoldRow, key: SortKey): string {
   const v = row[key];
   if (typeof v === 'boolean') return v ? 'Yes' : 'No';
   if (v === null || v === undefined || v === '') return '—';
-  if (key === 'prospect_source') {
+  if (key === 'lead_source' || key === 'prospect_source') {
     const map: Record<string, string> = { ql: 'QL', sf_tag: 'SF', podio: 'Podio' };
     return map[String(v)] || String(v);
   }
@@ -65,7 +60,8 @@ function sortValue(row: InvestorSoldRow, key: SortKey): string | number | boolea
     key === 'transaction_count' ||
     key === 'investor_score' ||
     key === 'months_list_to_sold' ||
-    key === 'months_list_to_prospect'
+    key === 'months_list_to_prospect' ||
+    key === 'months_list_to_qualified_lead'
   ) {
     const n = Number(String(v ?? '').replace(/[^0-9.-]/g, ''));
     return Number.isFinite(n) ? n : 0;
@@ -91,6 +87,10 @@ const InvestorSoldResults = ({
     avg_touches_per_marketed: null,
   };
   const match = m.match ?? {
+    lead_matched: 0,
+    lead_rate_pct: 0,
+    qualified_lead_matched: 0,
+    qualified_lead_rate_pct: 0,
     prospect_matched: 0,
     prospect_rate_pct: 0,
     opp_matched: 0,
@@ -99,13 +99,15 @@ const InvestorSoldResults = ({
     hhb_closed_count: 0,
     reisift_matched_count: 0,
   };
-  const lag = m.lag ?? {
-    mean_months_list_to_sold: null,
-    median_months_list_to_sold: null,
-    mean_months_list_to_prospect: null,
-    median_months_list_to_prospect: null,
+  const lost = m.lost ?? {
+    lost_to_investor_count: 0,
+    lost_to_investor_pct: 0,
+    in_list_investor_count: 0,
+    in_list_non_investor_count: 0,
+    lost_by_stage: [],
+    in_list_exits_by_buyer: {},
   };
-  const prospectSources = m.prospect_sources ?? { ql: 0, sf_tag: 0, podio: 0, unmatched: 0 };
+  const leadSources = m.lead_sources ?? { sf_tag: 0, podio: 0 };
   const pipelineFunnel = m.pipeline_funnel ?? [];
   const bySegment = m.by_segment ?? [];
 
@@ -124,7 +126,11 @@ const InvestorSoldResults = ({
     else if (segmentFilter !== 'all') rows = rows.filter((r) => r.segment === segmentFilter);
 
     if (journeyFilter === 'never_marketed') rows = rows.filter((r) => !r.marketed);
-    else if (journeyFilter === 'prospects') rows = rows.filter((r) => r.prospect_matched);
+    else if (journeyFilter === 'lost')
+      rows = rows.filter((r) => r.in_my_records && r.investor && !r.hhb_closed_date);
+    else if (journeyFilter === 'leads') rows = rows.filter((r) => r.lead_matched);
+    else if (journeyFilter === 'qualified_leads')
+      rows = rows.filter((r) => r.qualified_lead_matched);
     else if (journeyFilter === 'opps') rows = rows.filter((r) => r.opp_matched);
     else if (journeyFilter === 'uc') rows = rows.filter((r) => Boolean(r.under_contract_date));
     else if (journeyFilter === 'hhb') rows = rows.filter((r) => Boolean(r.hhb_closed_date));
@@ -135,7 +141,7 @@ const InvestorSoldResults = ({
     if (q) {
       rows = rows.filter((r) => {
         const blob =
-          `${r.address} ${r.buyer_full_name} ${r.segment} ${r.prospect_source} ${r.pipeline_stage_label} ${r.dataflik_id}`.toLowerCase();
+          `${r.address} ${r.buyer_full_name} ${r.segment} ${r.lead_source} ${r.pipeline_stage_label} ${r.dataflik_id}`.toLowerCase();
         return blob.includes(q);
       });
     }
@@ -181,31 +187,41 @@ const InvestorSoldResults = ({
     active?: boolean;
   }> = [
     {
-      label: 'Properties',
-      value: propertyRows.toLocaleString(),
+      label: 'Lost to investor',
+      value: lost.lost_to_investor_count.toLocaleString(),
+      subtitle: `${lost.lost_to_investor_pct}% of in-list · click to filter`,
       onClick: () => {
-        setSegmentFilter('all');
+        setSegmentFilter('in_our_list');
+        setJourneyFilter('lost');
+      },
+      active: journeyFilter === 'lost',
+    },
+    {
+      label: 'In Our List',
+      value: m.segments.in_our_list_count.toLocaleString(),
+      subtitle: `Investor ${lost.in_list_investor_count} · Other ${lost.in_list_non_investor_count}`,
+      onClick: () => {
+        setSegmentFilter('in_our_list');
         setJourneyFilter('all');
       },
-      active: segmentFilter === 'all' && journeyFilter === 'all',
+      active: segmentFilter === 'in_our_list' && journeyFilter === 'all',
     },
     {
       label: 'Marketed',
       value: `${marketing.marketed_count.toLocaleString()} (${marketing.marketed_pct}%)`,
     },
     {
-      label: 'Never marketed',
-      value: marketing.never_marketed_count.toLocaleString(),
-      subtitle: 'Often DNC / suppression — click to spot-check',
-      onClick: () => setJourneyFilter('never_marketed'),
-      active: journeyFilter === 'never_marketed',
+      label: 'Leads',
+      value: `${(match.lead_matched ?? 0).toLocaleString()} (${match.lead_rate_pct ?? 0}%)`,
+      subtitle: `Podio ${leadSources.podio} · SF ${leadSources.sf_tag}`,
+      onClick: () => setJourneyFilter('leads'),
+      active: journeyFilter === 'leads',
     },
     {
-      label: 'Prospects',
-      value: `${match.prospect_matched.toLocaleString()} (${match.prospect_rate_pct}%)`,
-      subtitle: `Podio ${prospectSources.podio} · QL ${prospectSources.ql} · SF ${prospectSources.sf_tag}`,
-      onClick: () => setJourneyFilter('prospects'),
-      active: journeyFilter === 'prospects',
+      label: 'Qualified Leads',
+      value: `${(match.qualified_lead_matched ?? 0).toLocaleString()} (${match.qualified_lead_rate_pct ?? 0}%)`,
+      onClick: () => setJourneyFilter('qualified_leads'),
+      active: journeyFilter === 'qualified_leads',
     },
     {
       label: 'Opportunities',
@@ -220,14 +236,10 @@ const InvestorSoldResults = ({
       active: journeyFilter === 'uc',
     },
     {
-      label: 'HHB closed',
+      label: 'Closed',
       value: match.hhb_closed_count.toLocaleString(),
       onClick: () => setJourneyFilter('hhb'),
       active: journeyFilter === 'hhb',
-    },
-    {
-      label: 'Median mo list→sold',
-      value: fmt(lag.median_months_list_to_sold),
     },
   ];
 
@@ -240,9 +252,10 @@ const InvestorSoldResults = ({
             Investor &amp; In-List Sold
           </h2>
           <p className="text-sm text-stone-600 mt-1">
-            Sold months {m.date_window_start || '—'} → {m.date_window_end || '—'} ·{' '}
-            {propertyRows.toLocaleString()} properties (from {txnRows.toLocaleString()}{' '}
-            transactions) · {m.inputs.unique_addresses.toLocaleString()} unique addresses
+            Lost to investor among in-list sales · Sold months {m.date_window_start || '—'} →{' '}
+            {m.date_window_end || '—'} · {propertyRows.toLocaleString()} properties (from{' '}
+            {txnRows.toLocaleString()} transactions) ·{' '}
+            {m.inputs.unique_addresses.toLocaleString()} unique addresses
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -330,37 +343,33 @@ const InvestorSoldResults = ({
 
       <div className="grid md:grid-cols-2 gap-4">
         <div className="rounded-xl border border-stone-200 bg-white p-4 overflow-x-auto">
-          <h3 className="text-sm font-bold text-stone-800">By segment</h3>
+          <h3 className="text-sm font-bold text-stone-800">Lost by furthest stage</h3>
           <p className="text-xs text-stone-500 mt-1">
-            Marketed / prospect rates within each investor / in-list cut. Podio prospects counted
-            separately.
+            In-list + investor + not closed, counted once at highest stage reached.
           </p>
-          <table className="mt-3 w-full text-sm min-w-[520px]">
+          <table className="mt-3 w-full text-sm">
             <thead>
               <tr className="text-left text-xs uppercase text-stone-500">
-                <th className="py-1">Segment</th>
-                <th className="py-1">N</th>
-                <th className="py-1">Marketed %</th>
-                <th className="py-1">Prospect %</th>
-                <th className="py-1">Podio</th>
+                <th className="py-1">Stage</th>
+                <th className="py-1">Count</th>
+                <th className="py-1">Share</th>
               </tr>
             </thead>
             <tbody>
-              {bySegment.map((row) => (
-                <tr
-                  key={row.segment}
-                  className={`border-t border-stone-100 cursor-pointer hover:bg-violet-50/60 ${
-                    segmentFilter === row.segment ? 'bg-violet-50' : ''
-                  }`}
-                  onClick={() => setSegmentFilter(row.segment as SegmentFilter)}
-                >
-                  <td className="py-1.5">{SEGMENT_LABELS[row.segment] || row.segment}</td>
+              {(lost.lost_by_stage ?? []).map((row) => (
+                <tr key={row.stage} className="border-t border-stone-100">
+                  <td className="py-1.5">{row.label}</td>
                   <td className="py-1.5">{row.count}</td>
-                  <td className="py-1.5">{row.marketed_pct ?? 0}%</td>
-                  <td className="py-1.5">{row.prospect_pct ?? 0}%</td>
-                  <td className="py-1.5">{row.prospects_podio}</td>
+                  <td className="py-1.5">{row.share_pct}%</td>
                 </tr>
               ))}
+              {(lost.lost_by_stage ?? []).length === 0 && (
+                <tr>
+                  <td colSpan={3} className="py-2 text-stone-500 text-xs">
+                    No lost-to-investor rows in this run.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -368,8 +377,8 @@ const InvestorSoldResults = ({
         <div className="rounded-xl border border-stone-200 bg-white p-4">
           <h3 className="text-sm font-bold text-stone-800">Pipeline depth (highest stage)</h3>
           <p className="text-xs text-stone-500 mt-1 leading-relaxed">
-            Each property counted once at its furthest HHB stage. Prospect includes QL, SF engaged
-            tags, or <code className="bg-stone-100 px-1 rounded">PodioSellerLeads</code>.
+            Prospect (8020) → Marketed → Lead (Podio/SF) → Qualified Lead → Opportunity → Under
+            contract → Closed. Each property once at furthest stage.
           </p>
           <table className="mt-3 w-full text-sm">
             <thead>
@@ -398,19 +407,55 @@ const InvestorSoldResults = ({
         </div>
       </div>
 
+      <div className="rounded-xl border border-stone-200 bg-white p-4 overflow-x-auto">
+        <h3 className="text-sm font-bold text-stone-800">By segment</h3>
+        <p className="text-xs text-stone-500 mt-1">
+          Marketed / Lead / Qualified Lead rates within each investor / in-list cut.
+        </p>
+        <table className="mt-3 w-full text-sm min-w-[640px]">
+          <thead>
+            <tr className="text-left text-xs uppercase text-stone-500">
+              <th className="py-1">Segment</th>
+              <th className="py-1">N</th>
+              <th className="py-1">Marketed %</th>
+              <th className="py-1">Lead %</th>
+              <th className="py-1">QL %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bySegment.map((row) => (
+              <tr
+                key={row.segment}
+                className={`border-t border-stone-100 cursor-pointer hover:bg-violet-50/60 ${
+                  segmentFilter === row.segment ? 'bg-violet-50' : ''
+                }`}
+                onClick={() => setSegmentFilter(row.segment as SegmentFilter)}
+              >
+                <td className="py-1.5">{SEGMENT_LABELS[row.segment] || row.segment}</td>
+                <td className="py-1.5">{row.count}</td>
+                <td className="py-1.5">{row.marketed_pct ?? 0}%</td>
+                <td className="py-1.5">{row.lead_pct ?? 0}%</td>
+                <td className="py-1.5">{row.qualified_lead_pct ?? 0}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {m.by_sold_month.length > 0 && (
         <div className="rounded-xl border border-stone-200 bg-white p-4 overflow-x-auto">
           <h3 className="text-sm font-bold text-stone-800">By sold month</h3>
-          <table className="mt-3 w-full text-sm min-w-[640px]">
+          <table className="mt-3 w-full text-sm min-w-[720px]">
             <thead>
               <tr className="text-left text-xs uppercase text-stone-500">
                 <th className="py-1">Sold month</th>
                 <th className="py-1">Count</th>
                 <th className="py-1">Investor</th>
                 <th className="py-1">In list</th>
-                <th className="py-1">Both</th>
+                <th className="py-1">Lost</th>
                 <th className="py-1">Marketed</th>
-                <th className="py-1">Prospects</th>
+                <th className="py-1">Leads</th>
+                <th className="py-1">QL</th>
               </tr>
             </thead>
             <tbody>
@@ -420,9 +465,10 @@ const InvestorSoldResults = ({
                   <td className="py-1.5">{row.count}</td>
                   <td className="py-1.5">{row.investor}</td>
                   <td className="py-1.5">{row.in_our_list}</td>
-                  <td className="py-1.5">{row.both}</td>
+                  <td className="py-1.5">{row.lost_to_investor ?? 0}</td>
                   <td className="py-1.5">{row.marketed ?? 0}</td>
-                  <td className="py-1.5">{row.prospects ?? 0}</td>
+                  <td className="py-1.5">{row.leads ?? 0}</td>
+                  <td className="py-1.5">{row.qualified_leads ?? 0}</td>
                 </tr>
               ))}
             </tbody>
@@ -444,11 +490,13 @@ const InvestorSoldResults = ({
                 className="ml-1 border border-stone-300 rounded-md px-2 py-1 text-sm"
               >
                 <option value="all">All</option>
+                <option value="lost">Lost to investor</option>
                 <option value="never_marketed">Never marketed</option>
-                <option value="prospects">Prospects</option>
+                <option value="leads">Leads</option>
+                <option value="qualified_leads">Qualified Leads</option>
                 <option value="opps">Opportunities</option>
                 <option value="uc">Under contract</option>
-                <option value="hhb">HHB closed</option>
+                <option value="hhb">Closed</option>
                 {pipelineFunnel.map((row) => (
                   <option key={row.stage} value={row.stage}>
                     {row.label}

@@ -200,7 +200,7 @@ const CourtAlertsResults = ({
   const funnelChart = useMemo(
     () => [
       { name: 'Court Alerts listed', count: m.funnel.court_alerts },
-      { name: 'Prospect', count: m.funnel.prospect },
+      { name: 'Qualified Lead', count: m.funnel.prospect },
       { name: 'Opportunity', count: m.funnel.opportunity },
       { name: 'Transaction', count: m.funnel.transaction },
     ],
@@ -303,7 +303,7 @@ const CourtAlertsResults = ({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Court Alerts universe" value={m.inputs.ca_universe.toLocaleString()} />
         <Stat
-          label="Became Prospect"
+          label="Became Qualified Lead"
           value={`${m.match.prospect_matched.toLocaleString()} (${m.match.prospect_rate_pct}%)`}
         />
         <Stat label="Median months to CRM" value={fmt(m.lag.median_months_ca_to_prospect)} />

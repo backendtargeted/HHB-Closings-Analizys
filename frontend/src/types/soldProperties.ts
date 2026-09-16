@@ -16,6 +16,12 @@ export interface SoldPropertyRow {
   dm_touch_count: number;
   first_touch_channel: string;
   first_touch_date: string;
+  lead_matched: boolean;
+  lead_date: string;
+  lead_source: string;
+  qualified_lead_matched: boolean;
+  qualified_lead_date: string;
+  qualified_lead_match_via: string;
   prospect_matched: boolean;
   prospect_date: string;
   prospect_match_via: string;
@@ -29,6 +35,8 @@ export interface SoldPropertyRow {
   pipeline_stage_label: string;
   days_list_to_sold: number | null;
   months_list_to_sold: number | null;
+  days_list_to_qualified_lead: number | null;
+  months_list_to_qualified_lead: number | null;
   days_list_to_prospect: number | null;
   months_list_to_prospect: number | null;
   tags: string;
@@ -45,6 +53,8 @@ export interface SoldMonthRollupRow {
   sold_month: string;
   count: number;
   marketed: number;
+  leads?: number;
+  qualified_leads?: number;
   prospects: number;
   opportunities: number;
   under_contract: number;
@@ -67,6 +77,10 @@ export interface SoldPropertiesMetrics {
     avg_touches_per_marketed: number | null;
   };
   match: {
+    lead_matched?: number;
+    lead_rate_pct?: number;
+    qualified_lead_matched?: number;
+    qualified_lead_rate_pct?: number;
     prospect_matched: number;
     prospect_rate_pct: number;
     opp_matched: number;
@@ -77,6 +91,8 @@ export interface SoldPropertiesMetrics {
   lag: {
     mean_months_list_to_sold: number | null;
     median_months_list_to_sold: number | null;
+    mean_months_list_to_qualified_lead?: number | null;
+    median_months_list_to_qualified_lead?: number | null;
     mean_months_list_to_prospect: number | null;
     median_months_list_to_prospect: number | null;
   };

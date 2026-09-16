@@ -209,7 +209,7 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
   const funnelChart = useMemo(
     () => [
       { name: 'LIP Probates listed', count: m.funnel.lip },
-      { name: 'Prospect', count: m.funnel.prospect },
+      { name: 'Qualified Lead', count: m.funnel.prospect },
       { name: 'Opportunity', count: m.funnel.opportunity },
       { name: 'Transaction', count: m.funnel.transaction },
     ],
@@ -311,7 +311,7 @@ const ProbateResults = ({ result, onNewRun, onExport, exporting }: ProbateResult
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="LIP Probates universe" value={m.inputs.lip_universe.toLocaleString()} />
         <Stat
-          label="Became Prospect"
+          label="Became Qualified Lead"
           value={`${m.match.prospect_matched.toLocaleString()} (${m.match.prospect_rate_pct}%)`}
         />
         <Stat label="Median months to CRM" value={fmt(m.lag.median_months_lip_to_prospect)} />

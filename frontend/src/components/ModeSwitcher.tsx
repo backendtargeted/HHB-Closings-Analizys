@@ -163,8 +163,8 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
               <p className="text-xs font-bold uppercase tracking-wider text-rose-800 mb-1">Gate 5</p>
               <h2 className="text-lg font-bold text-rose-950 tracking-tight">Probate lifecycle</h2>
               <p className="text-rose-950/80 text-sm mt-2 leading-relaxed">
-                Long Island Profiles vs 8020 on the same REISift row, time to Salesforce Prospect,
-                and Transactions reason for selling.
+                Long Island Profiles vs 8020 on the same REISift row, time to Salesforce Qualified
+                Lead, and Transactions reason for selling.
               </p>
             </div>
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-rose-200/80 text-rose-950">
@@ -219,8 +219,8 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
               <p className="text-xs font-bold uppercase tracking-wider text-sky-800 mb-1">Gate 7</p>
               <h2 className="text-lg font-bold text-sky-950 tracking-tight">Court Alerts lifecycle</h2>
               <p className="text-sky-950/80 text-sm mt-2 leading-relaxed">
-                Court Alerts CSV vs 8020 on the matched REISift address, time to Salesforce Prospect,
-                and Transactions reason for selling.
+                Court Alerts CSV vs 8020 on the matched REISift address, time to Salesforce Qualified
+                Lead, and Transactions reason for selling.
               </p>
             </div>
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-sky-200/80 text-sky-950">
@@ -249,8 +249,9 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
                 Investor &amp; In-List Sold
               </h2>
               <p className="text-violet-950/80 text-sm mt-2 leading-relaxed">
-                Sold transactions + marketing/pipeline before sale; PodioSellerLeads = pre-Salesforce
-                Prospect. Investor / in-list segments on CleanREISift sold CSV.
+                Sold transactions + marketing/pipeline before sale; lost-to-investor KPIs on
+                CleanREISift sold CSV. Pipeline: Prospect → Marketed → Lead → Qualified Lead → Opp →
+                Closed.
               </p>
             </div>
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-violet-200/80 text-violet-950">

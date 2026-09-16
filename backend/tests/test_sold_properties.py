@@ -63,11 +63,18 @@ def test_prospect_match_from_ql(sp_paths):
     result = analyze(sp_paths["reisift"], sp_paths["ql"])
     by_street = {r.street.lower(): r for r in result.rows}
     main = by_street["100 main st"]
+    assert main.qualified_lead_matched is True
     assert main.prospect_matched is True
     assert main.prospect_source == "ql"
-    assert main.pipeline_stage in ("PROSPECT", "OPPORTUNITY", "UNDER_CONTRACT", "HHB_CLOSED")
+    assert main.pipeline_stage in (
+        "QUALIFIED_LEAD",
+        "OPPORTUNITY",
+        "UNDER_CONTRACT",
+        "HHB_CLOSED",
+    )
     oak = by_street["200 oak ave"]
-    assert oak.prospect_matched is False
+    assert oak.qualified_lead_matched is False
+    assert oak.lead_matched is False
     assert oak.pipeline_stage == "MARKETED"
 
 
@@ -75,13 +82,15 @@ def test_prospect_from_podio_seller_leads(sp_paths):
     result = analyze(sp_paths["reisift"], sp_paths["ql"])
     by_street = {r.street.lower(): r for r in result.rows}
     willow = by_street["600 willow ln"]
+    assert willow.lead_matched is True
+    assert willow.lead_source == "podio"
     assert willow.prospect_matched is True
     assert willow.prospect_source == "podio"
-    assert willow.pipeline_stage == "PROSPECT"
+    assert willow.pipeline_stage == "LEAD"
     # Spaced "Podio Seller Leads" must not count
     cedar = by_street["700 cedar ct"]
     assert cedar.prospect_matched is False
-    assert cedar.pipeline_stage == "ON_LIST"
+    assert cedar.pipeline_stage == "PROSPECT"
 
 
 def test_podio_prospect_plus_opportunity(sp_paths):
@@ -92,7 +101,7 @@ def test_podio_prospect_plus_opportunity(sp_paths):
     )
     by_street = {r.street.lower(): r for r in result.rows}
     willow = by_street["600 willow ln"]
-    assert willow.prospect_matched is True
+    assert willow.lead_matched is True
     assert willow.prospect_source == "podio"
     assert willow.opp_matched is True
     assert willow.pipeline_stage == "OPPORTUNITY"

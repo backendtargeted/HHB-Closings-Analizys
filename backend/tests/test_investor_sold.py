@@ -65,18 +65,36 @@ def test_segment_counts_and_pipeline(sold_path, reisift_path, ql_path):
     assert by_street["100 main st"].marketed is True
     assert by_street["100 main st"].cc_touch_count >= 1
     assert by_street["200 oak ave"].prospect_matched is True
+    assert by_street["200 oak ave"].lead_matched is True
+    assert by_street["200 oak ave"].lead_source == "podio"
     assert by_street["200 oak ave"].prospect_source == "podio"
+    assert by_street["200 oak ave"].pipeline_stage == "LEAD"
     assert by_street["300 pine rd"].segment == "both"
+    assert by_street["300 pine rd"].qualified_lead_matched is True
     assert by_street["300 pine rd"].prospect_matched is True
     assert by_street["300 pine rd"].prospect_source == "ql"
     assert by_street["300 pine rd"].marketed is True
+    assert by_street["300 pine rd"].pipeline_stage in (
+        "QUALIFIED_LEAD",
+        "OPPORTUNITY",
+        "UNDER_CONTRACT",
+        "HHB_CLOSED",
+    )
     assert by_street["400 elm st"].reisift_matched is False
     assert by_street["400 elm st"].marketed is False
 
     assert result.marketed_count >= 2
+    assert result.lead_matched >= 1
+    assert result.qualified_lead_matched >= 1
     assert result.prospect_matched >= 2
     assert result.prospect_sources["podio"] >= 1
     assert result.prospect_sources["ql"] >= 1
+    assert result.lead_sources["podio"] >= 1
+    # Lost = in_list + investor + not closed (pine is both investor+in_list)
+    assert result.lost_to_investor_count >= 1
+    assert result.in_list_investor_count >= 1
+    assert result.lost_by_stage
+    assert "lost" in result.to_api_dict()
     assert any(s["segment"] == "in_our_list" and s["prospects_podio"] >= 1 for s in result.by_segment)
     assert result.pipeline_funnel
     assert result.to_api_dict()["inputs"]["property_rows"] == 5
@@ -105,9 +123,11 @@ def test_export_workbook_sheets(sold_path, reisift_path, ql_path):
     assert restored.property_rows == 5
     assert restored.both_count == 1
     assert restored.prospect_sources.get("podio", 0) >= 1
+    assert restored.lost_to_investor_count == result.lost_to_investor_count
     assert len(restored.rows) == 5
     assert any(r.transaction_count == 2 for r in restored.rows)
     assert any(r.prospect_source == "podio" for r in restored.rows)
+    assert any(r.lead_matched for r in restored.rows)
 
 
 def test_missing_flags_raises(tmp_path, reisift_path, ql_path):

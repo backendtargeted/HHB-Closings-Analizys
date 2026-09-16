@@ -61,6 +61,17 @@ STAGE_ORDER = (
     "CLOSED",
 )
 
+# User-facing labels aligned with the workspace business ladder.
+STAGE_DISPLAY_LABELS = {
+    "ACQUIRED": "Prospect (8020)",
+    "RESEARCHED": "Researched",
+    "FIRST_CONTACTED": "Marketed",
+    "ENGAGED": "Lead",
+    "CONVERTED": "Under contract",
+    "CLOSED": "Closed",
+    "NONE": "No stage",
+}
+
 # CLOSED is always true for a closed deal — do not use it for "highest" ranking.
 _STAGES_FOR_HIGHEST = ("ACQUIRED", "RESEARCHED", "FIRST_CONTACTED", "ENGAGED", "CONVERTED")
 
@@ -282,6 +293,7 @@ def aggregate_stuck_at_stage(highest_stages: List[str]) -> Dict[str, Any]:
     stuck = [
         {
             "stage": stage,
+            "label": STAGE_DISPLAY_LABELS.get(stage, stage),
             "count": cnt,
             "share_pct": round(100.0 * cnt / total, 1),
         }

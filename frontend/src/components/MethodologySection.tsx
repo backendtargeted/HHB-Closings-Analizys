@@ -61,7 +61,7 @@ const MethodologySection = () => {
             {' '}(38 locked tags; Nassau from Apr 2025, including Nassau/Queens 3-2026 with no drop).
             8020 is a competing list provider on the same row (
             <code className="bg-stone-100 px-1 rounded">List Purchased 8020</code>
-            ). First list is the QL credit when the row matches a Prospect whose Create Date is
+            ). First list is the QL credit when the row matches a Qualified Lead whose Create Date is
             on or after that first-list month. Earlier CRM rows are not conversions. Campaign is
             extra. Primary/Secondary Reason for Selling comes only from the Transactions pipeline
             after address match. Lag buckets (Same month / 1–3 / 4–6 / 7–12 / 13+) are split by
@@ -71,11 +71,11 @@ const MethodologySection = () => {
             <strong className="text-stone-800">Gate 6 sold properties:</strong> Cohort is REISift rows
             with a parseable{' '}
             <code className="bg-stone-100 px-1 rounded">in_sold_properties_full</code> sale month
-            (external sale, not an HHB closing). Measures marketing touches and pipeline depth
-            (list → marketed → Prospect → Opportunity → under contract → HHB close) on or before
-            that sold month. QL Create Date is Prospect lag only; list tags remain credit.{' '}
-            <code className="bg-stone-100 px-1 rounded">PodioSellerLeads</code> is a pre-Salesforce
-            CRM lead presence tag (Prospect-equivalent when QL/SF engaged are missing).
+            (external sale, not an HHB closing). Canonical pipeline: Prospect (8020) → Marketed →
+            Lead (Podio/SF) → Qualified Lead → Opportunity → Under contract → Closed. QL Create Date
+            is Qualified Lead lag only; list tags remain credit.{' '}
+            <code className="bg-stone-100 px-1 rounded">PodioSellerLeads</code> is Lead (pre-Salesforce
+            CRM presence).
           </p>
           <p>
             <strong className="text-stone-800">Gate 7 Court Alerts:</strong> Universe is the Court
@@ -89,14 +89,10 @@ const MethodologySection = () => {
             CleanREISift{' '}
             <code className="bg-stone-100 px-1 rounded">sold_properties_full.csv</code> with{' '}
             <code className="bg-stone-100 px-1 rounded">investor</code> and{' '}
-            <code className="bg-stone-100 px-1 rounded">in_my_records</code> flags. Grain = unique
-            property × sold month (multi-txn Dataflik rows collapse with{' '}
-            <code className="bg-stone-100 px-1 rounded">transaction_count</code>). Requires REISift +
-            Salesforce QL (Opps optional) for Gate 6–parity pipeline depth. Prospect = QL Create Date
-            clock, SF engaged tag, or{' '}
-            <code className="bg-stone-100 px-1 rounded">PodioSellerLeads</code> presence. Segments:
-            Investor, In Our List, Both, Neither — with by-segment marketed/prospect cuts. Distinct
-            from Gate 6’s REISift{' '}
+            <code className="bg-stone-100 px-1 rounded">in_my_records</code> flags. Primary KPI:{' '}
+            <em>lost to investor</em> = in-list AND investor AND not Closed (rate vs in-list), with
+            furthest-stage breakdown. Same canonical pipeline as Gate 6. Grain = unique property ×
+            sold month. Distinct from Gate 6’s REISift{' '}
             <code className="bg-stone-100 px-1 rounded">in_sold_properties_full</code> cohort.
           </p>
           <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">

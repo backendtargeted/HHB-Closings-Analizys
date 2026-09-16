@@ -27,6 +27,11 @@ export interface InvestorSoldRow {
   dm_touch_count: number;
   first_touch_channel: string;
   first_touch_date: string;
+  lead_matched: boolean;
+  lead_date: string;
+  lead_source: string;
+  qualified_lead_matched: boolean;
+  qualified_lead_date: string;
   prospect_matched: boolean;
   prospect_date: string;
   prospect_source: string;
@@ -37,6 +42,7 @@ export interface InvestorSoldRow {
   pipeline_stage: string;
   pipeline_stage_label: string;
   months_list_to_sold: number | null;
+  months_list_to_qualified_lead: number | null;
   months_list_to_prospect: number | null;
 }
 
@@ -49,7 +55,10 @@ export interface InvestorSoldRollupRow {
   both: number;
   neither: number;
   marketed?: number;
+  leads?: number;
+  qualified_leads?: number;
   prospects?: number;
+  lost_to_investor?: number;
 }
 
 export interface InvestorSoldSegmentRow {
@@ -57,6 +66,8 @@ export interface InvestorSoldSegmentRow {
   count: number;
   marketed: number;
   never_marketed: number;
+  leads?: number;
+  qualified_leads?: number;
   prospects: number;
   prospects_podio: number;
   prospects_ql: number;
@@ -66,6 +77,8 @@ export interface InvestorSoldSegmentRow {
   hhb_closed: number;
   median_months_list_to_sold: number | null;
   marketed_pct?: number;
+  lead_pct?: number;
+  qualified_lead_pct?: number;
   prospect_pct?: number;
 }
 
@@ -74,6 +87,15 @@ export interface InvestorSoldPipelineFunnelRow {
   label: string;
   count: number;
   share_pct: number;
+}
+
+export interface InvestorSoldLostBlock {
+  lost_to_investor_count: number;
+  lost_to_investor_pct: number;
+  in_list_investor_count: number;
+  in_list_non_investor_count: number;
+  lost_by_stage: InvestorSoldPipelineFunnelRow[];
+  in_list_exits_by_buyer: Record<string, number>;
 }
 
 export interface InvestorSoldMetrics {
@@ -96,6 +118,7 @@ export interface InvestorSoldMetrics {
     neither_count: number;
     neither_pct: number;
   };
+  lost?: InvestorSoldLostBlock;
   marketing: {
     marketed_count: number;
     marketed_pct: number;
@@ -104,6 +127,10 @@ export interface InvestorSoldMetrics {
     avg_touches_per_marketed: number | null;
   };
   match: {
+    lead_matched?: number;
+    lead_rate_pct?: number;
+    qualified_lead_matched?: number;
+    qualified_lead_rate_pct?: number;
     prospect_matched: number;
     prospect_rate_pct: number;
     opp_matched: number;
@@ -115,6 +142,8 @@ export interface InvestorSoldMetrics {
   lag: {
     mean_months_list_to_sold: number | null;
     median_months_list_to_sold: number | null;
+    mean_months_list_to_qualified_lead?: number | null;
+    median_months_list_to_qualified_lead?: number | null;
     mean_months_list_to_prospect: number | null;
     median_months_list_to_prospect: number | null;
   };
@@ -125,10 +154,16 @@ export interface InvestorSoldMetrics {
     podio: number;
     unmatched: number;
   };
+  lead_sources?: {
+    sf_tag: number;
+    podio: number;
+  };
   by_segment: InvestorSoldSegmentRow[];
   enrichment?: {
     reisift_matched_count: number;
     marketed_count: number;
+    lead_matched?: number;
+    qualified_lead_matched?: number;
     prospect_matched: number;
     opp_matched: number;
   };
@@ -175,6 +210,10 @@ function emptyMarketing(): InvestorSoldMetrics['marketing'] {
 
 function emptyMatch(enrichment?: InvestorSoldMetrics['enrichment']): InvestorSoldMetrics['match'] {
   return {
+    lead_matched: enrichment?.lead_matched ?? 0,
+    lead_rate_pct: 0,
+    qualified_lead_matched: enrichment?.qualified_lead_matched ?? 0,
+    qualified_lead_rate_pct: 0,
     prospect_matched: enrichment?.prospect_matched ?? 0,
     prospect_rate_pct: 0,
     opp_matched: enrichment?.opp_matched ?? 0,
@@ -208,13 +247,28 @@ export function asInvestorSoldCompleted(
     metrics.lag = {
       mean_months_list_to_sold: null,
       median_months_list_to_sold: null,
+      mean_months_list_to_qualified_lead: null,
+      median_months_list_to_qualified_lead: null,
       mean_months_list_to_prospect: null,
       median_months_list_to_prospect: null,
+    };
+  }
+  if (!metrics.lost) {
+    metrics.lost = {
+      lost_to_investor_count: 0,
+      lost_to_investor_pct: 0,
+      in_list_investor_count: 0,
+      in_list_non_investor_count: 0,
+      lost_by_stage: [],
+      in_list_exits_by_buyer: {},
     };
   }
   if (!metrics.pipeline_funnel) metrics.pipeline_funnel = [];
   if (!metrics.prospect_sources) {
     metrics.prospect_sources = { ql: 0, sf_tag: 0, podio: 0, unmatched: 0 };
+  }
+  if (!metrics.lead_sources) {
+    metrics.lead_sources = { sf_tag: 0, podio: 0 };
   }
   if (!metrics.by_segment) metrics.by_segment = [];
   return {

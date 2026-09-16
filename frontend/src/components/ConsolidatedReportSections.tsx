@@ -198,7 +198,12 @@ const ConsolidatedReportSections = ({
             rows={openPipeline.stuck_at_stage}
             rowKey={(row) => row.stage}
             columns={[
-              { key: 'stage', label: 'Highest stage', sticky: true },
+              {
+                key: 'stage',
+                label: 'Highest stage',
+                sticky: true,
+                render: (row) => row.label || row.stage,
+              },
               { key: 'count', label: 'Properties', align: 'right' },
               {
                 key: 'share_pct',

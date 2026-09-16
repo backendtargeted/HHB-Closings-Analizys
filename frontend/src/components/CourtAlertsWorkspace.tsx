@@ -106,7 +106,7 @@ const CourtAlertsWorkspace = ({ onRunComplete, onOpenResult }: CourtAlertsWorksp
       <h2 className="text-xl font-bold text-sky-950">Court Alerts lifecycle</h2>
       <p className="text-sm text-sky-950/80 mt-2 leading-relaxed max-w-2xl">
         Court Alerts CSV is the universe. REISift supplies competing 8020 list tags on the same
-        address. First list is the QL credit. A Prospect counts only when Salesforce Create Date is
+        address. First list is the QL credit. A Qualified Lead counts only when Salesforce Create Date is
         on or after that first-list month. Campaign is how they worked it. Transactions supply
         reason for selling after the match.
       </p>
