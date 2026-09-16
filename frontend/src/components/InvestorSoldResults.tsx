@@ -13,6 +13,7 @@ interface InvestorSoldResultsProps {
 }
 
 type SegmentFilter = 'all' | 'investor' | 'in_our_list' | 'both' | 'neither';
+type JourneyFilter = 'all' | 'never_marketed' | 'prospects' | 'opps' | 'uc' | 'hhb' | string;
 type SortKey = keyof InvestorSoldRow;
 type SortDir = 'asc' | 'desc';
 
@@ -22,29 +23,50 @@ const DETAIL_COLS: Array<{ key: SortKey; label: string }> = [
   { key: 'buyer_full_name', label: 'Buyer' },
   { key: 'sale_amount', label: 'Sale amount' },
   { key: 'transaction_count', label: 'Txns' },
-  { key: 'investor', label: 'Investor' },
-  { key: 'in_my_records', label: 'In our list' },
   { key: 'segment', label: 'Segment' },
-  { key: 'investor_score', label: 'Investor score' },
-  { key: 'reisift_matched', label: 'REISift match' },
-  { key: 'marketed', label: 'Marketed' },
-  { key: 'prospect_matched', label: 'Prospect' },
-  { key: 'opp_matched', label: 'Opp' },
   { key: 'pipeline_stage_label', label: 'Pipeline' },
+  { key: 'marketed', label: 'Marketed' },
+  { key: 'prospect_source', label: 'Prospect source' },
+  { key: 'prospect_date', label: 'Prospect date' },
+  { key: 'opp_matched', label: 'Opp' },
+  { key: 'months_list_to_sold', label: 'Mo list→sold' },
+  { key: 'investor_score', label: 'Investor score' },
 ];
 
+const SEGMENT_LABELS: Record<string, string> = {
+  investor: 'Investor',
+  in_our_list: 'In Our List',
+  both: 'Both',
+  neither: 'Neither',
+};
+
 const PREVIEW_LIMIT = 500;
+
+function fmt(n: number | null | undefined): string {
+  if (n === null || n === undefined) return '—';
+  return String(n);
+}
 
 function cellValue(row: InvestorSoldRow, key: SortKey): string {
   const v = row[key];
   if (typeof v === 'boolean') return v ? 'Yes' : 'No';
   if (v === null || v === undefined || v === '') return '—';
+  if (key === 'prospect_source') {
+    const map: Record<string, string> = { ql: 'QL', sf_tag: 'SF', podio: 'Podio' };
+    return map[String(v)] || String(v);
+  }
   return String(v);
 }
 
 function sortValue(row: InvestorSoldRow, key: SortKey): string | number | boolean {
   const v = row[key];
-  if (key === 'sale_amount' || key === 'transaction_count' || key === 'investor_score') {
+  if (
+    key === 'sale_amount' ||
+    key === 'transaction_count' ||
+    key === 'investor_score' ||
+    key === 'months_list_to_sold' ||
+    key === 'months_list_to_prospect'
+  ) {
     const n = Number(String(v ?? '').replace(/[^0-9.-]/g, ''));
     return Number.isFinite(n) ? n : 0;
   }
@@ -61,8 +83,35 @@ const InvestorSoldResults = ({
   const m = result.metrics;
   const propertyRows = m.inputs.property_rows ?? m.rows.length;
   const txnRows = m.inputs.sold_rows_ingested;
+  const marketing = m.marketing ?? {
+    marketed_count: 0,
+    marketed_pct: 0,
+    never_marketed_count: 0,
+    total_touch_counts: {},
+    avg_touches_per_marketed: null,
+  };
+  const match = m.match ?? {
+    prospect_matched: 0,
+    prospect_rate_pct: 0,
+    opp_matched: 0,
+    opp_rate_pct: 0,
+    under_contract_count: 0,
+    hhb_closed_count: 0,
+    reisift_matched_count: 0,
+  };
+  const lag = m.lag ?? {
+    mean_months_list_to_sold: null,
+    median_months_list_to_sold: null,
+    mean_months_list_to_prospect: null,
+    median_months_list_to_prospect: null,
+  };
+  const prospectSources = m.prospect_sources ?? { ql: 0, sf_tag: 0, podio: 0, unmatched: 0 };
+  const pipelineFunnel = m.pipeline_funnel ?? [];
+  const bySegment = m.by_segment ?? [];
+
   const [shareMsg, setShareMsg] = useState('');
   const [segmentFilter, setSegmentFilter] = useState<SegmentFilter>('all');
+  const [journeyFilter, setJourneyFilter] = useState<JourneyFilter>('all');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('sold_month');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -74,9 +123,19 @@ const InvestorSoldResults = ({
     else if (segmentFilter === 'in_our_list') rows = rows.filter((r) => r.in_my_records);
     else if (segmentFilter !== 'all') rows = rows.filter((r) => r.segment === segmentFilter);
 
+    if (journeyFilter === 'never_marketed') rows = rows.filter((r) => !r.marketed);
+    else if (journeyFilter === 'prospects') rows = rows.filter((r) => r.prospect_matched);
+    else if (journeyFilter === 'opps') rows = rows.filter((r) => r.opp_matched);
+    else if (journeyFilter === 'uc') rows = rows.filter((r) => Boolean(r.under_contract_date));
+    else if (journeyFilter === 'hhb') rows = rows.filter((r) => Boolean(r.hhb_closed_date));
+    else if (journeyFilter !== 'all') {
+      rows = rows.filter((r) => r.pipeline_stage === journeyFilter);
+    }
+
     if (q) {
       rows = rows.filter((r) => {
-        const blob = `${r.address} ${r.buyer_full_name} ${r.segment} ${r.dataflik_id}`.toLowerCase();
+        const blob =
+          `${r.address} ${r.buyer_full_name} ${r.segment} ${r.prospect_source} ${r.pipeline_stage_label} ${r.dataflik_id}`.toLowerCase();
         return blob.includes(q);
       });
     }
@@ -89,7 +148,7 @@ const InvestorSoldResults = ({
       return 0;
     });
     return sorted;
-  }, [m.rows, segmentFilter, search, sortKey, sortDir]);
+  }, [m.rows, segmentFilter, journeyFilter, search, sortKey, sortDir]);
 
   const handleShare = async () => {
     const mode = await copyReportShareUrl(result.job_id, 'investor_sold');
@@ -112,6 +171,64 @@ const InvestorSoldResults = ({
     { id: 'in_our_list', label: 'In Our List', count: m.segments.in_our_list_count },
     { id: 'both', label: 'Both', count: m.segments.both_count },
     { id: 'neither', label: 'Neither', count: m.segments.neither_count },
+  ];
+
+  const kpiCards: Array<{
+    label: string;
+    value: string;
+    subtitle?: string;
+    onClick?: () => void;
+    active?: boolean;
+  }> = [
+    {
+      label: 'Properties',
+      value: propertyRows.toLocaleString(),
+      onClick: () => {
+        setSegmentFilter('all');
+        setJourneyFilter('all');
+      },
+      active: segmentFilter === 'all' && journeyFilter === 'all',
+    },
+    {
+      label: 'Marketed',
+      value: `${marketing.marketed_count.toLocaleString()} (${marketing.marketed_pct}%)`,
+    },
+    {
+      label: 'Never marketed',
+      value: marketing.never_marketed_count.toLocaleString(),
+      subtitle: 'Often DNC / suppression — click to spot-check',
+      onClick: () => setJourneyFilter('never_marketed'),
+      active: journeyFilter === 'never_marketed',
+    },
+    {
+      label: 'Prospects',
+      value: `${match.prospect_matched.toLocaleString()} (${match.prospect_rate_pct}%)`,
+      subtitle: `Podio ${prospectSources.podio} · QL ${prospectSources.ql} · SF ${prospectSources.sf_tag}`,
+      onClick: () => setJourneyFilter('prospects'),
+      active: journeyFilter === 'prospects',
+    },
+    {
+      label: 'Opportunities',
+      value: `${match.opp_matched.toLocaleString()} (${match.opp_rate_pct}%)`,
+      onClick: () => setJourneyFilter('opps'),
+      active: journeyFilter === 'opps',
+    },
+    {
+      label: 'Under contract',
+      value: match.under_contract_count.toLocaleString(),
+      onClick: () => setJourneyFilter('uc'),
+      active: journeyFilter === 'uc',
+    },
+    {
+      label: 'HHB closed',
+      value: match.hhb_closed_count.toLocaleString(),
+      onClick: () => setJourneyFilter('hhb'),
+      active: journeyFilter === 'hhb',
+    },
+    {
+      label: 'Median mo list→sold',
+      value: fmt(lag.median_months_list_to_sold),
+    },
   ];
 
   return (
@@ -163,74 +280,36 @@ const InvestorSoldResults = ({
         </ul>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        {[
-          {
-            label: 'Properties',
-            value: propertyRows.toLocaleString(),
-            filter: 'all' as SegmentFilter,
-          },
-          {
-            label: 'Investor',
-            value: `${m.segments.investor_count.toLocaleString()} (${m.segments.investor_pct}%)`,
-            filter: 'investor' as SegmentFilter,
-          },
-          {
-            label: 'In Our List',
-            value: `${m.segments.in_our_list_count.toLocaleString()} (${m.segments.in_our_list_pct}%)`,
-            filter: 'in_our_list' as SegmentFilter,
-          },
-          {
-            label: 'Both',
-            value: `${m.segments.both_count.toLocaleString()} (${m.segments.both_pct}%)`,
-            filter: 'both' as SegmentFilter,
-          },
-          {
-            label: 'Neither',
-            value: `${m.segments.neither_count.toLocaleString()} (${m.segments.neither_pct}%)`,
-            filter: 'neither' as SegmentFilter,
-          },
-        ].map((card) => (
-          <button
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {kpiCards.map((card) => (
+          <div
             key={card.label}
-            type="button"
-            onClick={() => setSegmentFilter(card.filter)}
-            className={`text-left rounded-xl border px-4 py-3 shadow-sm ${
-              segmentFilter === card.filter
+            className={`rounded-xl border px-4 py-3 shadow-sm ${
+              card.active
                 ? 'border-violet-400 bg-violet-50'
-                : 'border-violet-100 bg-white hover:border-violet-300'
-            }`}
+                : 'border-violet-100 bg-white'
+            } ${card.onClick ? 'cursor-pointer hover:border-violet-300' : ''}`}
+            onClick={card.onClick}
+            onKeyDown={
+              card.onClick
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') card.onClick?.();
+                  }
+                : undefined
+            }
+            role={card.onClick ? 'button' : undefined}
+            tabIndex={card.onClick ? 0 : undefined}
           >
             <p className="text-[11px] uppercase tracking-wide text-stone-500 font-semibold">
               {card.label}
             </p>
             <p className="text-lg font-bold text-violet-950 mt-1">{card.value}</p>
-          </button>
+            {card.subtitle ? (
+              <p className="text-[10px] text-stone-500 mt-1 leading-snug">{card.subtitle}</p>
+            ) : null}
+          </div>
         ))}
       </div>
-
-      {m.inputs.enrichment_enabled ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { label: 'REISift matched', value: m.enrichment.reisift_matched_count },
-            { label: 'Marketed', value: m.enrichment.marketed_count },
-            { label: 'Prospects', value: m.enrichment.prospect_matched },
-            { label: 'Opportunities', value: m.enrichment.opp_matched },
-          ].map((card) => (
-            <div
-              key={card.label}
-              className="rounded-xl border border-stone-200 bg-white px-4 py-3 shadow-sm"
-            >
-              <p className="text-[11px] uppercase tracking-wide text-stone-500 font-semibold">
-                {card.label}
-              </p>
-              <p className="text-lg font-bold text-stone-900 mt-1">
-                {card.value.toLocaleString()}
-              </p>
-            </div>
-          ))}
-        </div>
-      ) : null}
 
       <div className="flex flex-wrap gap-2">
         {chips.map((chip) => (
@@ -249,86 +328,149 @@ const InvestorSoldResults = ({
         ))}
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-4">
-        <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-          <div className="px-4 py-3 border-b border-stone-100">
-            <h3 className="text-sm font-bold text-stone-800">By sold month</h3>
-          </div>
-          <div className="overflow-x-auto max-h-72">
-            <table className="min-w-full text-sm">
-              <thead className="bg-stone-50 sticky top-0">
-                <tr>
-                  {['Month', 'Total', 'Investor', 'In list', 'Both', 'Neither'].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-stone-500">
-                      {h}
-                    </th>
-                  ))}
+      <div className="grid md:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-stone-200 bg-white p-4 overflow-x-auto">
+          <h3 className="text-sm font-bold text-stone-800">By segment</h3>
+          <p className="text-xs text-stone-500 mt-1">
+            Marketed / prospect rates within each investor / in-list cut. Podio prospects counted
+            separately.
+          </p>
+          <table className="mt-3 w-full text-sm min-w-[520px]">
+            <thead>
+              <tr className="text-left text-xs uppercase text-stone-500">
+                <th className="py-1">Segment</th>
+                <th className="py-1">N</th>
+                <th className="py-1">Marketed %</th>
+                <th className="py-1">Prospect %</th>
+                <th className="py-1">Podio</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bySegment.map((row) => (
+                <tr
+                  key={row.segment}
+                  className={`border-t border-stone-100 cursor-pointer hover:bg-violet-50/60 ${
+                    segmentFilter === row.segment ? 'bg-violet-50' : ''
+                  }`}
+                  onClick={() => setSegmentFilter(row.segment as SegmentFilter)}
+                >
+                  <td className="py-1.5">{SEGMENT_LABELS[row.segment] || row.segment}</td>
+                  <td className="py-1.5">{row.count}</td>
+                  <td className="py-1.5">{row.marketed_pct ?? 0}%</td>
+                  <td className="py-1.5">{row.prospect_pct ?? 0}%</td>
+                  <td className="py-1.5">{row.prospects_podio}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {m.by_sold_month.map((r) => (
-                  <tr key={r.sold_month} className="border-t border-stone-100">
-                    <td className="px-3 py-2">{r.sold_month}</td>
-                    <td className="px-3 py-2">{r.count}</td>
-                    <td className="px-3 py-2">{r.investor}</td>
-                    <td className="px-3 py-2">{r.in_our_list}</td>
-                    <td className="px-3 py-2">{r.both}</td>
-                    <td className="px-3 py-2">{r.neither}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
 
-        <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-          <div className="px-4 py-3 border-b border-stone-100">
-            <h3 className="text-sm font-bold text-stone-800">By county</h3>
-          </div>
-          <div className="overflow-x-auto max-h-72">
-            <table className="min-w-full text-sm">
-              <thead className="bg-stone-50 sticky top-0">
-                <tr>
-                  {['County', 'Total', 'Investor', 'In list', 'Both', 'Neither'].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-stone-500">
-                      {h}
-                    </th>
-                  ))}
+        <div className="rounded-xl border border-stone-200 bg-white p-4">
+          <h3 className="text-sm font-bold text-stone-800">Pipeline depth (highest stage)</h3>
+          <p className="text-xs text-stone-500 mt-1 leading-relaxed">
+            Each property counted once at its furthest HHB stage. Prospect includes QL, SF engaged
+            tags, or <code className="bg-stone-100 px-1 rounded">PodioSellerLeads</code>.
+          </p>
+          <table className="mt-3 w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase text-stone-500">
+                <th className="py-1">Stage</th>
+                <th className="py-1">Count</th>
+                <th className="py-1">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pipelineFunnel.map((row) => (
+                <tr
+                  key={row.stage}
+                  className={`border-t border-stone-100 cursor-pointer hover:bg-violet-50/60 ${
+                    journeyFilter === row.stage ? 'bg-violet-50' : ''
+                  }`}
+                  onClick={() => setJourneyFilter(row.stage)}
+                >
+                  <td className="py-1.5">{row.label}</td>
+                  <td className="py-1.5">{row.count}</td>
+                  <td className="py-1.5">{row.share_pct}%</td>
                 </tr>
-              </thead>
-              <tbody>
-                {m.by_county.slice(0, 40).map((r) => (
-                  <tr key={r.county} className="border-t border-stone-100">
-                    <td className="px-3 py-2">{r.county}</td>
-                    <td className="px-3 py-2">{r.count}</td>
-                    <td className="px-3 py-2">{r.investor}</td>
-                    <td className="px-3 py-2">{r.in_our_list}</td>
-                    <td className="px-3 py-2">{r.both}</td>
-                    <td className="px-3 py-2">{r.neither}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
+
+      {m.by_sold_month.length > 0 && (
+        <div className="rounded-xl border border-stone-200 bg-white p-4 overflow-x-auto">
+          <h3 className="text-sm font-bold text-stone-800">By sold month</h3>
+          <table className="mt-3 w-full text-sm min-w-[640px]">
+            <thead>
+              <tr className="text-left text-xs uppercase text-stone-500">
+                <th className="py-1">Sold month</th>
+                <th className="py-1">Count</th>
+                <th className="py-1">Investor</th>
+                <th className="py-1">In list</th>
+                <th className="py-1">Both</th>
+                <th className="py-1">Marketed</th>
+                <th className="py-1">Prospects</th>
+              </tr>
+            </thead>
+            <tbody>
+              {m.by_sold_month.map((row) => (
+                <tr key={row.sold_month} className="border-t border-stone-100">
+                  <td className="py-1.5 font-mono text-xs">{row.sold_month}</td>
+                  <td className="py-1.5">{row.count}</td>
+                  <td className="py-1.5">{row.investor}</td>
+                  <td className="py-1.5">{row.in_our_list}</td>
+                  <td className="py-1.5">{row.both}</td>
+                  <td className="py-1.5">{row.marketed ?? 0}</td>
+                  <td className="py-1.5">{row.prospects ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
         <div className="px-4 py-3 border-b border-stone-100 flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-sm font-bold text-stone-800">
-            Detail ({filteredRows.length.toLocaleString()} properties)
+            Journey ({filteredRows.length.toLocaleString()} properties)
           </h3>
-          <label className="flex items-center gap-2 text-sm text-stone-600">
-            <span className="sr-only">Search</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs text-stone-600">
+              Stage{' '}
+              <select
+                value={journeyFilter}
+                onChange={(e) => setJourneyFilter(e.target.value)}
+                className="ml-1 border border-stone-300 rounded-md px-2 py-1 text-sm"
+              >
+                <option value="all">All</option>
+                <option value="never_marketed">Never marketed</option>
+                <option value="prospects">Prospects</option>
+                <option value="opps">Opportunities</option>
+                <option value="uc">Under contract</option>
+                <option value="hhb">HHB closed</option>
+                {pipelineFunnel.map((row) => (
+                  <option key={row.stage} value={row.stage}>
+                    {row.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Filter address or buyer…"
-              className="w-64 max-w-full rounded-lg border border-stone-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-56 max-w-full rounded-lg border border-stone-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
             />
-          </label>
+          </div>
         </div>
+        {journeyFilter === 'never_marketed' && (
+          <p className="mx-4 mt-3 text-xs text-amber-900 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+            No <code className="bg-white/80 px-1 rounded">(8020) CC/SMS/DM</code> tags on/before the
+            sold month — often DNC or suppression. Full list is on the Never Marketed XLSX sheet.
+          </p>
+        )}
         <div className="overflow-x-auto max-h-[28rem]">
           <table className="min-w-full text-sm">
             <thead className="bg-stone-50 sticky top-0">
@@ -385,7 +527,7 @@ const InvestorSoldResults = ({
             <p className="px-4 py-2 text-xs text-stone-500 border-t border-stone-100">
               Showing first {PREVIEW_LIMIT.toLocaleString()} of{' '}
               {filteredRows.length.toLocaleString()} filtered properties — download XLSX for full
-              detail. Search and sort apply to the full set before this preview.
+              detail.
             </p>
           ) : null}
           {filteredRows.length === 0 ? (

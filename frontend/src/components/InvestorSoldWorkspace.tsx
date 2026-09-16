@@ -28,9 +28,13 @@ const InvestorSoldWorkspace = ({
   const [result, setResult] = useState<InvestorSoldCompletedResponse | null>(null);
   const [exporting, setExporting] = useState(false);
 
+  const canRun = Boolean(soldFile && reisiftFile && qlFile);
+
   const handleRun = async () => {
-    if (!soldFile) {
-      setError('Upload CleanREISift sold_properties_full.csv (investor + in_my_records columns).');
+    if (!soldFile || !reisiftFile || !qlFile) {
+      setError(
+        'Upload sold CSV, REISift export, and Salesforce Total QL (Opportunities optional).'
+      );
       return;
     }
     setLoading(true);
@@ -40,8 +44,8 @@ const InvestorSoldWorkspace = ({
     try {
       const data = await analyzeInvestorSold(
         soldFile,
-        reisiftFile ?? undefined,
-        qlFile ?? undefined,
+        reisiftFile,
+        qlFile,
         oppsFile ?? undefined,
         (pct, msg) => {
           setProgress(pct);
@@ -105,12 +109,11 @@ const InvestorSoldWorkspace = ({
     <div className="rounded-2xl border border-violet-200/90 bg-violet-50/40 p-6 shadow-sm">
       <h2 className="text-xl font-bold text-violet-950">Investor &amp; In-List Sold</h2>
       <p className="text-sm text-violet-950/80 mt-2 leading-relaxed max-w-2xl">
-        Universe is CleanREISift <code className="text-xs">sold_properties_full.csv</code> (Dataflik
-        All Transactions) with <code className="text-xs">investor</code> and{' '}
-        <code className="text-xs">in_my_records</code> flags. Shows how many external sales are
-        investor buyers, already in your REISift records, both, or neither. Optionally upload REISift
-        + QL (+ Opps) to enrich matched addresses with marketing / pipeline depth (same clocks as
-        Gate 6).
+        Sold transactions + marketing/pipeline before sale. Universe is CleanREISift{' '}
+        <code className="text-xs">sold_properties_full.csv</code> (investor / in_my_records
+        segments). REISift + Salesforce QL are required for Gate 6–parity pipeline depth.
+        <code className="text-xs"> PodioSellerLeads</code> counts as Prospect when QL / SF engaged
+        are missing (pre-Salesforce CRM lead).
       </p>
 
       <div className="mt-6 grid gap-4 max-w-md">
@@ -124,7 +127,7 @@ const InvestorSoldWorkspace = ({
           />
         </label>
         <label className="block text-sm font-medium text-violet-950">
-          REISift export (.csv / .xlsx) — optional enrichment
+          REISift export (.csv / .xlsx) — required
           <input
             type="file"
             accept=".csv,.xlsx,.xls"
@@ -133,7 +136,7 @@ const InvestorSoldWorkspace = ({
           />
         </label>
         <label className="block text-sm font-medium text-violet-950">
-          Salesforce Total Qualified Leads (.csv / .xlsx) — optional
+          Salesforce Total Qualified Leads (.csv / .xlsx) — required
           <input
             type="file"
             accept=".csv,.xlsx,.xls"
@@ -173,7 +176,7 @@ const InvestorSoldWorkspace = ({
       <button
         type="button"
         onClick={handleRun}
-        disabled={loading || !soldFile}
+        disabled={loading || !canRun}
         className="mt-6 px-5 py-2.5 rounded-xl bg-violet-800 text-white text-sm font-semibold hover:bg-violet-900 disabled:opacity-50"
       >
         {loading ? 'Analyzing…' : 'Run investor & in-list sold report'}

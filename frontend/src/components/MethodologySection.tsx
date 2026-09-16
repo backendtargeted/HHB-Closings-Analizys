@@ -91,9 +91,12 @@ const MethodologySection = () => {
             <code className="bg-stone-100 px-1 rounded">investor</code> and{' '}
             <code className="bg-stone-100 px-1 rounded">in_my_records</code> flags. Grain = unique
             property × sold month (multi-txn Dataflik rows collapse with{' '}
-            <code className="bg-stone-100 px-1 rounded">transaction_count</code>). Segments: Investor,
-            In Our List, Both, Neither. Optional REISift + QL (+ Opps) enrich matched addresses with
-            marketing / pipeline depth (same clocks as Gate 6). Distinct from Gate 6’s REISift{' '}
+            <code className="bg-stone-100 px-1 rounded">transaction_count</code>). Requires REISift +
+            Salesforce QL (Opps optional) for Gate 6–parity pipeline depth. Prospect = QL Create Date
+            clock, SF engaged tag, or{' '}
+            <code className="bg-stone-100 px-1 rounded">PodioSellerLeads</code> presence. Segments:
+            Investor, In Our List, Both, Neither — with by-segment marketed/prospect cuts. Distinct
+            from Gate 6’s REISift{' '}
             <code className="bg-stone-100 px-1 rounded">in_sold_properties_full</code> cohort.
           </p>
           <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">

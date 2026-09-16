@@ -381,17 +381,22 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 ## 22. Gate 8 Investor & In-List Sold
 
-**Question:** Of scraped external NY sales (`sold_properties_full.csv`), how many are investor buyers, already in our REISift records (`in_my_records`), both, or neither — and (optionally) how far in-list matches got in the HHB funnel.
+**Question:** Of scraped external NY sales (`sold_properties_full.csv`), how many are investor buyers, already in our REISift records (`in_my_records`), both, or neither — and how far each property got in the HHB marketing / pipeline funnel before the sold month.
 
 **Universe:** CleanREISift sold scrape rows with `investor` and `in_my_records` TRUE/FALSE flags. Address keys rebuilt with `make_address_key` from property address parts (do not trust the scrape `address_key` string for joins).
 
+**Required inputs:** Sold CSV + REISift export + Salesforce Total Qualified Leads. Opportunities optional (Opp stage). Gate 6 remains the REISift `in_sold_properties_full` cohort; Gate 8 is the CleanREISift-driven sibling.
+
 **Grain:** Unique **property × sold month** (`dataflik_id` + month, else `address_key` + month). Multiple Dataflik `transaction_id`s for the same sale collapse to one row with `transaction_count`. Segment KPIs count property rows; `sold_rows_ingested` remains the raw transaction count.
 
-**Segments:** Investor (`investor`), In Our List (`in_my_records`), Both, Neither. Rollups by sold month (`period_date` / `period_label`) and county.
+**Segments:** Investor (`investor`), In Our List (`in_my_records`), Both, Neither. Rollups by sold month and by segment (marketed %, prospect %, Podio prospects, opps, UC, HHB closed, median list→sold).
 
-**Optional enrichment:** REISift + QL (+ Opps) joined by address — marketing touches and pipeline depth on or before the sold month (same clocks as Gate 6).
+**Pipeline clocks (Gate 6 parity, after collapse):**
+- **Marketed:** `(8020)` CC/SMS/DM tag events on/before sold month end.
+- **Prospect:** QL Create Date on/after first list-purchase month and on/before sold month end, **or** SF engaged tag on/before sold month, **or** `PodioSellerLeads` presence (pre-Salesforce CRM lead — no Create Date clock; `prospect_source = podio`).
+- **Opp / under contract / HHB closed:** same date gates as Gate 6.
 
-**Export:** Summary, By Month, By County, Investor, In Our List, Both, All Rows.
+**Export:** Summary, By Segment, Pipeline Funnel, By Month, Journey, Investor, In Our List, Both, Never Marketed.
 
 Canonical implementation: `backend/app/services/investor_sold.py`.
 

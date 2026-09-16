@@ -251,7 +251,7 @@ Each Gate 3 analyze runs **marketing ramp** and **monthly consolidated** in para
 
 ## Investor & In-List Sold (Gate 8)
 
-**When:** You have CleanREISift `sold_properties_full.csv` (Dataflik All Transactions with `investor` / `in_my_records` flags) and want segment counts — investor buyers vs already in your REISift records — separate from Gate 6’s REISift `in_sold_properties_full` cohort.
+**When:** You have CleanREISift `sold_properties_full.csv` (Dataflik All Transactions with `investor` / `in_my_records` flags) and want investor / in-list segment cuts **plus** Gate 6–parity marketing/pipeline depth before sale — including `PodioSellerLeads` as Prospect. Separate from Gate 6’s REISift `in_sold_properties_full` cohort.
 
 **UI:** Docker `http://localhost:3300` → **Investor & In-List Sold** (Gate 8 tab).
 
@@ -262,17 +262,19 @@ Each Gate 3 analyze runs **marketing ramp** and **monthly consolidated** in para
 | File | Required | Role |
 |------|----------|------|
 | **Sold transactions** CSV (`sold_properties_full.csv`) | Yes | Universe + `investor` / `in_my_records` |
-| **REISift export** | Optional | Enrich matched addresses with Tags / marketing |
-| **Salesforce Total Qualified Leads** | Optional | Prospect match (needs REISift join) |
+| **REISift export** | **Yes** | Tags: CC/SMS/DM, list purchase, SF engaged, **PodioSellerLeads** |
+| **Salesforce Total Qualified Leads** | **Yes** | Prospect Create Date clock |
 | **Opportunities** | Optional | Opp stage (same as Gate 6) |
 
 ### Operator checklist
 
 1. Produce `data/sold_properties_full.csv` via CleanREISift `scrape_sold_properties.py` (see CleanREISift `RUN_ENRICH.md`).
-2. Upload sold CSV on Gate 8 (+ optional REISift/QL/Opps).
-3. Review KPI segments (Investor / In Our List / Both / Neither), by-month and by-county tables; download XLSX (Summary, By Month, By County, Investor, In Our List, Both, All Rows).
+2. Upload sold CSV + REISift + Total QL on Gate 8 (+ optional Opps). Run is disabled until all three required files are present.
+3. Review marketed / never marketed / prospects (Podio split in subtitle) / opps / UC / HHB closed KPIs, by-segment comparison, pipeline funnel, and journey table; download XLSX (Summary, By Segment, Pipeline Funnel, By Month, Journey, Investor, In Our List, Both, Never Marketed).
 
 **Grain:** One row per **property × sold month** (`dataflik_id` + month). Multiple Dataflik `transaction_id`s for the same property/sale collapse into one row with `transaction_count`. KPIs use property rows, not raw transaction count.
+
+**Podio rule:** `PodioSellerLeads` (exact token) counts as Prospect when QL / SF engaged are missing — same as Gate 6; presence flag, no Create Date clock.
 
 **Execution:** Async job (202 + poll status), same pattern as Gate 6. Persists under `{REPORTS_DIR}/investor_sold/{job_id}.json`.
 

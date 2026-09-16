@@ -334,12 +334,14 @@ def investor_sold_analyze():
         opps_raw = (data.get("opportunities_path") or "").strip() or None
         if not sold_raw:
             return jsonify({"detail": "sold_path is required"}), 400
+        if not reisift_raw:
+            return jsonify({"detail": "reisift_path is required"}), 400
+        if not ql_raw:
+            return jsonify({"detail": "qualified_leads_path is required"}), 400
         try:
             sold_path = str(resolve_trusted_final_path(sold_raw))
-            reisift_path = (
-                str(resolve_trusted_final_path(reisift_raw)) if reisift_raw else None
-            )
-            ql_path = str(resolve_trusted_final_path(ql_raw)) if ql_raw else None
+            reisift_path = str(resolve_trusted_final_path(reisift_raw))
+            ql_path = str(resolve_trusted_final_path(ql_raw))
             opportunities_path = (
                 str(resolve_trusted_final_path(opps_raw)) if opps_raw else None
             )
@@ -353,16 +355,19 @@ def investor_sold_analyze():
     sold = request.files.get("sold_file") or request.files.get("sold_transactions_file")
     if not sold or not sold.filename:
         return jsonify({"detail": "sold_file is required"}), 400
+    reisift = request.files.get("reisift_file")
+    if not reisift or not reisift.filename:
+        return jsonify({"detail": "reisift_file is required"}), 400
+    ql = request.files.get("qualified_leads_file") or request.files.get("ql_file")
+    if not ql or not ql.filename:
+        return jsonify({"detail": "qualified_leads_file is required"}), 400
 
     job_id = str(uuid.uuid4())
     job_dir = IS_ROOT / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
     sold_path = _save_upload(sold, job_dir)
-    reisift_path = _save_upload(request.files.get("reisift_file"), job_dir)
-    ql_path = _save_upload(
-        request.files.get("qualified_leads_file") or request.files.get("ql_file"),
-        job_dir,
-    )
+    reisift_path = _save_upload(reisift, job_dir)
+    ql_path = _save_upload(ql, job_dir)
     opportunities_path = _save_upload(request.files.get("opportunities_file"), job_dir)
     payload, status = _start_investor_sold_job(
         sold_path or "",

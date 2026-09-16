@@ -249,8 +249,8 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
                 Investor &amp; In-List Sold
               </h2>
               <p className="text-violet-950/80 text-sm mt-2 leading-relaxed">
-                CleanREISift sold_properties_full.csv → investor vs in-our-list segments; optional
-                REISift/QL enrichment for pipeline depth.
+                Sold transactions + marketing/pipeline before sale; PodioSellerLeads = pre-Salesforce
+                Prospect. Investor / in-list segments on CleanREISift sold CSV.
               </p>
             </div>
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-violet-200/80 text-violet-950">

@@ -19,11 +19,14 @@ export interface InvestorSoldRow {
   dataflik_id: string;
   transaction_id: string;
   transaction_count: number;
+  list_purchase_date: string;
   reisift_matched: boolean;
   marketed: boolean;
   cc_touch_count: number;
   sms_touch_count: number;
   dm_touch_count: number;
+  first_touch_channel: string;
+  first_touch_date: string;
   prospect_matched: boolean;
   prospect_date: string;
   prospect_source: string;
@@ -33,6 +36,8 @@ export interface InvestorSoldRow {
   hhb_closed_date: string;
   pipeline_stage: string;
   pipeline_stage_label: string;
+  months_list_to_sold: number | null;
+  months_list_to_prospect: number | null;
 }
 
 export interface InvestorSoldRollupRow {
@@ -43,6 +48,32 @@ export interface InvestorSoldRollupRow {
   in_our_list: number;
   both: number;
   neither: number;
+  marketed?: number;
+  prospects?: number;
+}
+
+export interface InvestorSoldSegmentRow {
+  segment: string;
+  count: number;
+  marketed: number;
+  never_marketed: number;
+  prospects: number;
+  prospects_podio: number;
+  prospects_ql: number;
+  prospects_sf: number;
+  opportunities: number;
+  under_contract: number;
+  hhb_closed: number;
+  median_months_list_to_sold: number | null;
+  marketed_pct?: number;
+  prospect_pct?: number;
+}
+
+export interface InvestorSoldPipelineFunnelRow {
+  stage: string;
+  label: string;
+  count: number;
+  share_pct: number;
 }
 
 export interface InvestorSoldMetrics {
@@ -65,7 +96,37 @@ export interface InvestorSoldMetrics {
     neither_count: number;
     neither_pct: number;
   };
-  enrichment: {
+  marketing: {
+    marketed_count: number;
+    marketed_pct: number;
+    never_marketed_count: number;
+    total_touch_counts: Record<string, number>;
+    avg_touches_per_marketed: number | null;
+  };
+  match: {
+    prospect_matched: number;
+    prospect_rate_pct: number;
+    opp_matched: number;
+    opp_rate_pct: number;
+    under_contract_count: number;
+    hhb_closed_count: number;
+    reisift_matched_count: number;
+  };
+  lag: {
+    mean_months_list_to_sold: number | null;
+    median_months_list_to_sold: number | null;
+    mean_months_list_to_prospect: number | null;
+    median_months_list_to_prospect: number | null;
+  };
+  pipeline_funnel: InvestorSoldPipelineFunnelRow[];
+  prospect_sources: {
+    ql: number;
+    sf_tag: number;
+    podio: number;
+    unmatched: number;
+  };
+  by_segment: InvestorSoldSegmentRow[];
+  enrichment?: {
     reisift_matched_count: number;
     marketed_count: number;
     prospect_matched: number;
@@ -102,6 +163,28 @@ export interface InvestorSoldCompletedResponse {
   created_at?: string;
 }
 
+function emptyMarketing(): InvestorSoldMetrics['marketing'] {
+  return {
+    marketed_count: 0,
+    marketed_pct: 0,
+    never_marketed_count: 0,
+    total_touch_counts: {},
+    avg_touches_per_marketed: null,
+  };
+}
+
+function emptyMatch(enrichment?: InvestorSoldMetrics['enrichment']): InvestorSoldMetrics['match'] {
+  return {
+    prospect_matched: enrichment?.prospect_matched ?? 0,
+    prospect_rate_pct: 0,
+    opp_matched: enrichment?.opp_matched ?? 0,
+    opp_rate_pct: 0,
+    under_contract_count: 0,
+    hhb_closed_count: 0,
+    reisift_matched_count: enrichment?.reisift_matched_count ?? 0,
+  };
+}
+
 export function asInvestorSoldCompleted(
   data: InvestorSoldAnalyzeResponse
 ): InvestorSoldCompletedResponse {
@@ -112,6 +195,28 @@ export function asInvestorSoldCompleted(
   if (metrics.inputs.property_rows == null) {
     metrics.inputs.property_rows = metrics.rows?.length ?? metrics.inputs.sold_rows_ingested ?? 0;
   }
+  if (!metrics.marketing) {
+    metrics.marketing = {
+      ...emptyMarketing(),
+      marketed_count: metrics.enrichment?.marketed_count ?? 0,
+    };
+  }
+  if (!metrics.match) {
+    metrics.match = emptyMatch(metrics.enrichment);
+  }
+  if (!metrics.lag) {
+    metrics.lag = {
+      mean_months_list_to_sold: null,
+      median_months_list_to_sold: null,
+      mean_months_list_to_prospect: null,
+      median_months_list_to_prospect: null,
+    };
+  }
+  if (!metrics.pipeline_funnel) metrics.pipeline_funnel = [];
+  if (!metrics.prospect_sources) {
+    metrics.prospect_sources = { ql: 0, sf_tag: 0, podio: 0, unmatched: 0 };
+  }
+  if (!metrics.by_segment) metrics.by_segment = [];
   return {
     job_id: data.job_id,
     status: 'completed',
