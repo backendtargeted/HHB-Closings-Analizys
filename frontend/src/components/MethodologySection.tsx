@@ -89,7 +89,9 @@ const MethodologySection = () => {
             CleanREISift{' '}
             <code className="bg-stone-100 px-1 rounded">sold_properties_full.csv</code> with{' '}
             <code className="bg-stone-100 px-1 rounded">investor</code> and{' '}
-            <code className="bg-stone-100 px-1 rounded">in_my_records</code> flags. Segments: Investor,
+            <code className="bg-stone-100 px-1 rounded">in_my_records</code> flags. Grain = unique
+            property × sold month (multi-txn Dataflik rows collapse with{' '}
+            <code className="bg-stone-100 px-1 rounded">transaction_count</code>). Segments: Investor,
             In Our List, Both, Neither. Optional REISift + QL (+ Opps) enrich matched addresses with
             marketing / pipeline depth (same clocks as Gate 6). Distinct from Gate 6’s REISift{' '}
             <code className="bg-stone-100 px-1 rounded">in_sold_properties_full</code> cohort.

@@ -42,6 +42,7 @@ from .sold_properties import (
     _max_pipeline,
     _month_end,
     _pct,
+    _pipeline_rank,
     _podio_crm_present,
     _sf_engaged_before,
     parse_sold_month,
@@ -129,6 +130,7 @@ class InvestorSoldRow:
     distressors: str = ""
     dataflik_id: str = ""
     transaction_id: str = ""
+    transaction_count: int = 1
     reisift_matched: bool = False
     marketed: bool = False
     cc_touch_count: int = 0
@@ -165,6 +167,7 @@ class InvestorSoldRow:
             "distressors": self.distressors,
             "dataflik_id": self.dataflik_id,
             "transaction_id": self.transaction_id,
+            "transaction_count": self.transaction_count,
             "reisift_matched": self.reisift_matched,
             "marketed": self.marketed,
             "cc_touch_count": self.cc_touch_count,
@@ -185,6 +188,7 @@ class InvestorSoldRow:
 @dataclass
 class InvestorSoldResult:
     sold_rows_ingested: int = 0
+    property_rows: int = 0
     unique_addresses: int = 0
     investor_count: int = 0
     investor_pct: float = 0.0
@@ -214,6 +218,7 @@ class InvestorSoldResult:
             "date_window_end": self.date_window_end,
             "inputs": {
                 "sold_rows_ingested": self.sold_rows_ingested,
+                "property_rows": self.property_rows,
                 "unique_addresses": self.unique_addresses,
                 "enrichment_enabled": self.enrichment_enabled,
             },
@@ -241,6 +246,67 @@ class InvestorSoldResult:
         }
 
 
+def _collapse_key(row: InvestorSoldRow) -> str:
+    """One property × sold month: prefer dataflik_id, else address_key."""
+    month = row.sold_month or "(unknown)"
+    if row.dataflik_id:
+        return f"df:{row.dataflik_id}|{month}"
+    if row.address_key:
+        return f"ak:{row.address_key}|{month}"
+    return f"addr:{row.address.lower()}|{month}|{row.sale_amount}|{row.buyer_full_name}"
+
+
+def _pipeline_better(a: str, b: str) -> str:
+    return a if _pipeline_rank(a) >= _pipeline_rank(b) else b
+
+
+def collapse_property_month_rows(txn_rows: List[InvestorSoldRow]) -> List[InvestorSoldRow]:
+    """Collapse Dataflik multi-txn duplicates to one row per property×sold month."""
+    groups: Dict[str, InvestorSoldRow] = {}
+    order: List[str] = []
+    for row in txn_rows:
+        key = _collapse_key(row)
+        if key not in groups:
+            row.transaction_count = 1
+            if not row.pipeline_stage_label and row.pipeline_stage:
+                row.pipeline_stage_label = PIPELINE_LABELS.get(
+                    row.pipeline_stage, row.pipeline_stage
+                )
+            groups[key] = row
+            order.append(key)
+            continue
+        base = groups[key]
+        base.transaction_count += 1
+        base.investor = base.investor or row.investor
+        base.in_my_records = base.in_my_records or row.in_my_records
+        base.segment = segment_for(base.investor, base.in_my_records)
+        base.reisift_matched = base.reisift_matched or row.reisift_matched
+        base.marketed = base.marketed or row.marketed
+        base.prospect_matched = base.prospect_matched or row.prospect_matched
+        base.opp_matched = base.opp_matched or row.opp_matched
+        base.cc_touch_count = max(base.cc_touch_count, row.cc_touch_count)
+        base.sms_touch_count = max(base.sms_touch_count, row.sms_touch_count)
+        base.dm_touch_count = max(base.dm_touch_count, row.dm_touch_count)
+        if not base.prospect_date and row.prospect_date:
+            base.prospect_date = row.prospect_date
+            base.prospect_source = row.prospect_source
+        if not base.opp_created_date and row.opp_created_date:
+            base.opp_created_date = row.opp_created_date
+        if not base.under_contract_date and row.under_contract_date:
+            base.under_contract_date = row.under_contract_date
+        if not base.hhb_closed_date and row.hhb_closed_date:
+            base.hhb_closed_date = row.hhb_closed_date
+        better = _pipeline_better(base.pipeline_stage, row.pipeline_stage)
+        if better != base.pipeline_stage:
+            base.pipeline_stage = better
+            base.pipeline_stage_label = PIPELINE_LABELS.get(better, better)
+        if not base.investor_score and row.investor_score:
+            base.investor_score = row.investor_score
+        if not base.distressors and row.distressors:
+            base.distressors = row.distressors
+    return [groups[k] for k in order]
+
+
 def _row_kwargs(item: Dict[str, Any]) -> Dict[str, Any]:
     allowed = {f.name for f in InvestorSoldRow.__dataclass_fields__.values()}  # type: ignore[attr-defined]
     out: Dict[str, Any] = {}
@@ -255,8 +321,8 @@ def _row_kwargs(item: Dict[str, Any]) -> Dict[str, Any]:
         "opp_matched",
     ):
         out[b] = bool(out.get(b))
-    for i in ("cc_touch_count", "sms_touch_count", "dm_touch_count"):
-        out[i] = int(out.get(i) or 0)
+    for i in ("cc_touch_count", "sms_touch_count", "dm_touch_count", "transaction_count"):
+        out[i] = int(out.get(i) or (1 if i == "transaction_count" else 0))
     for s in allowed - {
         "investor",
         "in_my_records",
@@ -267,6 +333,7 @@ def _row_kwargs(item: Dict[str, Any]) -> Dict[str, Any]:
         "cc_touch_count",
         "sms_touch_count",
         "dm_touch_count",
+        "transaction_count",
     }:
         out[s] = str(out.get(s) or "")
     return out
@@ -277,8 +344,10 @@ def result_from_metrics_dict(metrics: Dict[str, Any]) -> InvestorSoldResult:
     inputs = metrics.get("inputs") or {}
     segments = metrics.get("segments") or {}
     enrichment = metrics.get("enrichment") or {}
+    property_rows = int(inputs.get("property_rows") or len(rows) or 0)
     return InvestorSoldResult(
         sold_rows_ingested=int(inputs.get("sold_rows_ingested") or 0),
+        property_rows=property_rows,
         unique_addresses=int(inputs.get("unique_addresses") or 0),
         investor_count=int(segments.get("investor_count") or 0),
         investor_pct=float(segments.get("investor_pct") or 0),
@@ -596,7 +665,11 @@ def analyze(
 
         rows.append(sold_row)
 
-    report(85, "Building rollups…")
+    txn_n = len(rows)
+    report(82, "Collapsing multi-txn property rows…")
+    rows = collapse_property_month_rows(rows)
+
+    report(88, "Building rollups…")
     n = len(rows)
     investor_n = sum(1 for r in rows if r.investor)
     in_list_n = sum(1 for r in rows if r.in_my_records)
@@ -637,18 +710,21 @@ def analyze(
         date_window_start = ""
         date_window_end = ""
 
+    multi_txn = sum(1 for r in rows if r.transaction_count > 1)
     methodology_note = (
         "Universe = CleanREISift sold_properties_full.csv (Dataflik All Transactions). "
-        "investor = address matched Investor tab; in_my_records = In My Records tab. "
-        "Segments: Investor, In Our List, Both, Neither. Address keys rebuilt with "
-        "make_address_key (not the scrape address_key string). Optional REISift+QL+Opps "
-        "enrich matched addresses with marketing touches and pipeline depth on/before "
-        "the sold month (same clocks as Gate 6)."
+        "Report grain = unique property × sold month (dataflik_id + month, else address_key + month). "
+        "Dataflik often returns multiple transaction_ids for the same property sale — those collapse "
+        f"into one row with transaction_count (this run: {multi_txn:,} properties had >1 txn). "
+        "investor = Investor tab match; in_my_records = In My Records. "
+        "Segments: Investor, In Our List, Both, Neither. Optional REISift+QL+Opps enrich matched "
+        "addresses with marketing / pipeline depth on/before the sold month (same clocks as Gate 6)."
     )
 
     report(100, "Done")
     return InvestorSoldResult(
-        sold_rows_ingested=n,
+        sold_rows_ingested=txn_n,
+        property_rows=n,
         unique_addresses=len(unique_keys),
         investor_count=investor_n,
         investor_pct=_pct(investor_n, n),
@@ -681,7 +757,8 @@ def build_export_workbook(result: InvestorSoldResult) -> bytes:
 
     all_rows = [r.to_dict() for r in result.rows]
     summary_rows = [
-        {"metric": "Sold rows ingested", "value": result.sold_rows_ingested},
+        {"metric": "Sold transactions ingested", "value": result.sold_rows_ingested},
+        {"metric": "Property × month rows", "value": result.property_rows},
         {"metric": "Unique addresses", "value": result.unique_addresses},
         {"metric": "Investor", "value": result.investor_count},
         {"metric": "Investor %", "value": result.investor_pct},

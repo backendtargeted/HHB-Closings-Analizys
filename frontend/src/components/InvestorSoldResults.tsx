@@ -13,13 +13,15 @@ interface InvestorSoldResultsProps {
 }
 
 type SegmentFilter = 'all' | 'investor' | 'in_our_list' | 'both' | 'neither';
+type SortKey = keyof InvestorSoldRow;
+type SortDir = 'asc' | 'desc';
 
-const DETAIL_COLS: Array<{ key: keyof InvestorSoldRow; label: string }> = [
+const DETAIL_COLS: Array<{ key: SortKey; label: string }> = [
   { key: 'address', label: 'Address' },
   { key: 'sold_month', label: 'Sold month' },
   { key: 'buyer_full_name', label: 'Buyer' },
   { key: 'sale_amount', label: 'Sale amount' },
-  { key: 'county', label: 'County' },
+  { key: 'transaction_count', label: 'Txns' },
   { key: 'investor', label: 'Investor' },
   { key: 'in_my_records', label: 'In our list' },
   { key: 'segment', label: 'Segment' },
@@ -31,11 +33,23 @@ const DETAIL_COLS: Array<{ key: keyof InvestorSoldRow; label: string }> = [
   { key: 'pipeline_stage_label', label: 'Pipeline' },
 ];
 
-function cellValue(row: InvestorSoldRow, key: keyof InvestorSoldRow): string {
+const PREVIEW_LIMIT = 500;
+
+function cellValue(row: InvestorSoldRow, key: SortKey): string {
   const v = row[key];
   if (typeof v === 'boolean') return v ? 'Yes' : 'No';
   if (v === null || v === undefined || v === '') return '—';
   return String(v);
+}
+
+function sortValue(row: InvestorSoldRow, key: SortKey): string | number | boolean {
+  const v = row[key];
+  if (key === 'sale_amount' || key === 'transaction_count' || key === 'investor_score') {
+    const n = Number(String(v ?? '').replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  }
+  if (typeof v === 'boolean') return v ? 1 : 0;
+  return String(v ?? '').toLowerCase();
 }
 
 const InvestorSoldResults = ({
@@ -45,15 +59,37 @@ const InvestorSoldResults = ({
   exporting,
 }: InvestorSoldResultsProps) => {
   const m = result.metrics;
+  const propertyRows = m.inputs.property_rows ?? m.rows.length;
+  const txnRows = m.inputs.sold_rows_ingested;
   const [shareMsg, setShareMsg] = useState('');
   const [segmentFilter, setSegmentFilter] = useState<SegmentFilter>('all');
+  const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('sold_month');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const filteredRows = useMemo(() => {
-    if (segmentFilter === 'all') return m.rows;
-    if (segmentFilter === 'investor') return m.rows.filter((r) => r.investor);
-    if (segmentFilter === 'in_our_list') return m.rows.filter((r) => r.in_my_records);
-    return m.rows.filter((r) => r.segment === segmentFilter);
-  }, [m.rows, segmentFilter]);
+    const q = search.trim().toLowerCase();
+    let rows = m.rows;
+    if (segmentFilter === 'investor') rows = rows.filter((r) => r.investor);
+    else if (segmentFilter === 'in_our_list') rows = rows.filter((r) => r.in_my_records);
+    else if (segmentFilter !== 'all') rows = rows.filter((r) => r.segment === segmentFilter);
+
+    if (q) {
+      rows = rows.filter((r) => {
+        const blob = `${r.address} ${r.buyer_full_name} ${r.segment} ${r.dataflik_id}`.toLowerCase();
+        return blob.includes(q);
+      });
+    }
+
+    const sorted = [...rows].sort((a, b) => {
+      const av = sortValue(a, sortKey);
+      const bv = sortValue(b, sortKey);
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [m.rows, segmentFilter, search, sortKey, sortDir]);
 
   const handleShare = async () => {
     const mode = await copyReportShareUrl(result.job_id, 'investor_sold');
@@ -61,8 +97,17 @@ const InvestorSoldResults = ({
     setTimeout(() => setShareMsg(''), 2500);
   };
 
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'sold_month' || key === 'sale_amount' ? 'desc' : 'asc');
+    }
+  };
+
   const chips: Array<{ id: SegmentFilter; label: string; count: number }> = [
-    { id: 'all', label: 'All', count: m.inputs.sold_rows_ingested },
+    { id: 'all', label: 'All', count: propertyRows },
     { id: 'investor', label: 'Investor', count: m.segments.investor_count },
     { id: 'in_our_list', label: 'In Our List', count: m.segments.in_our_list_count },
     { id: 'both', label: 'Both', count: m.segments.both_count },
@@ -79,8 +124,8 @@ const InvestorSoldResults = ({
           </h2>
           <p className="text-sm text-stone-600 mt-1">
             Sold months {m.date_window_start || '—'} → {m.date_window_end || '—'} ·{' '}
-            {m.inputs.sold_rows_ingested.toLocaleString()} sale rows ·{' '}
-            {m.inputs.unique_addresses.toLocaleString()} unique addresses
+            {propertyRows.toLocaleString()} properties (from {txnRows.toLocaleString()}{' '}
+            transactions) · {m.inputs.unique_addresses.toLocaleString()} unique addresses
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -121,8 +166,8 @@ const InvestorSoldResults = ({
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
           {
-            label: 'Sale rows',
-            value: m.inputs.sold_rows_ingested.toLocaleString(),
+            label: 'Properties',
+            value: propertyRows.toLocaleString(),
             filter: 'all' as SegmentFilter,
           },
           {
@@ -269,45 +314,82 @@ const InvestorSoldResults = ({
       </div>
 
       <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-        <div className="px-4 py-3 border-b border-stone-100 flex items-center justify-between gap-2">
+        <div className="px-4 py-3 border-b border-stone-100 flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-sm font-bold text-stone-800">
-            Detail ({filteredRows.length.toLocaleString()} rows)
+            Detail ({filteredRows.length.toLocaleString()} properties)
           </h3>
+          <label className="flex items-center gap-2 text-sm text-stone-600">
+            <span className="sr-only">Search</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter address or buyer…"
+              className="w-64 max-w-full rounded-lg border border-stone-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
+          </label>
         </div>
         <div className="overflow-x-auto max-h-[28rem]">
           <table className="min-w-full text-sm">
             <thead className="bg-stone-50 sticky top-0">
               <tr>
-                {DETAIL_COLS.map((c) => (
-                  <th
-                    key={c.key}
-                    className="px-3 py-2 text-left text-xs font-semibold text-stone-500 whitespace-nowrap"
-                  >
-                    {c.label}
-                  </th>
-                ))}
+                {DETAIL_COLS.map((c) => {
+                  const active = sortKey === c.key;
+                  return (
+                    <th
+                      key={c.key}
+                      className="px-3 py-2 text-left text-xs font-semibold text-stone-500 whitespace-nowrap"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleSort(c.key)}
+                        className={`inline-flex items-center gap-1 hover:text-violet-900 ${
+                          active ? 'text-violet-900' : ''
+                        }`}
+                      >
+                        {c.label}
+                        <span className="text-[10px] tabular-nums">
+                          {active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                        </span>
+                      </button>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
-              {filteredRows.slice(0, 500).map((row, idx) => (
+              {filteredRows.slice(0, PREVIEW_LIMIT).map((row, idx) => (
                 <tr
-                  key={`${row.address_key}-${row.transaction_id || row.dataflik_id || idx}`}
+                  key={`${row.dataflik_id || row.address_key}-${row.sold_month}-${idx}`}
                   className="border-t border-stone-100"
                 >
                   {DETAIL_COLS.map((c) => (
                     <td key={c.key} className="px-3 py-2 whitespace-nowrap">
-                      {cellValue(row, c.key)}
+                      {c.key === 'transaction_count' && row.transaction_count > 1 ? (
+                        <span
+                          className="inline-flex min-w-[1.5rem] justify-center rounded-md bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-950"
+                          title="Multiple Dataflik transaction_ids for this property×month"
+                        >
+                          {row.transaction_count}
+                        </span>
+                      ) : (
+                        cellValue(row, c.key)
+                      )}
                     </td>
                   ))}
                 </tr>
               ))}
             </tbody>
           </table>
-          {filteredRows.length > 500 ? (
+          {filteredRows.length > PREVIEW_LIMIT ? (
             <p className="px-4 py-2 text-xs text-stone-500 border-t border-stone-100">
-              Showing first 500 of {filteredRows.length.toLocaleString()} — download XLSX for full
-              detail.
+              Showing first {PREVIEW_LIMIT.toLocaleString()} of{' '}
+              {filteredRows.length.toLocaleString()} filtered properties — download XLSX for full
+              detail. Search and sort apply to the full set before this preview.
             </p>
+          ) : null}
+          {filteredRows.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-stone-500">No rows match the current filters.</p>
           ) : null}
         </div>
       </div>

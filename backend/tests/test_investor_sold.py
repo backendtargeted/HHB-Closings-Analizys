@@ -28,9 +28,12 @@ def test_segment_for_matrix():
     assert segment_for(False, False) == "neither"
 
 
-def test_segment_counts(sold_path):
+def test_segment_counts_on_property_grain(sold_path):
     result = analyze(sold_path)
-    assert result.sold_rows_ingested == 5
+    # 6 CSV txns; Main St has 2 txns same dataflik+month → 5 property rows
+    assert result.sold_rows_ingested == 6
+    assert result.property_rows == 5
+    assert len(result.rows) == 5
     assert result.unique_addresses == 5
     assert result.investor_count == 3  # main, pine, cedar
     assert result.in_our_list_count == 2  # oak, pine
@@ -38,9 +41,12 @@ def test_segment_counts(sold_path):
     assert result.neither_count == 1  # elm
     assert result.date_window_start == "2026-05"
     assert result.date_window_end == "2026-07"
-    by_seg = {r.segment: r for r in result.rows}
-    assert by_seg["both"].street.lower().startswith("300 pine")
+    by_street = {r.street.lower(): r for r in result.rows}
+    assert by_street["100 main st"].transaction_count == 2
+    assert by_street["200 oak ave"].transaction_count == 1
+    assert by_street["300 pine rd"].segment == "both"
     assert result.enrichment_enabled is False
+    assert result.to_api_dict()["inputs"]["property_rows"] == 5
 
 
 def test_by_month_and_county(sold_path):
@@ -59,9 +65,11 @@ def test_export_workbook_sheets(sold_path):
     xlsx = build_export_workbook(result)
     assert xlsx[:2] == b"PK"
     restored = result_from_metrics_dict(result.to_api_dict())
-    assert restored.sold_rows_ingested == 5
+    assert restored.sold_rows_ingested == 6
+    assert restored.property_rows == 5
     assert restored.both_count == 1
     assert len(restored.rows) == 5
+    assert any(r.transaction_count == 2 for r in restored.rows)
 
 
 def test_missing_flags_raises(tmp_path):

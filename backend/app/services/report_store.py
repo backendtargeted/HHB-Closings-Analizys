@@ -349,10 +349,10 @@ def _summary_for_court_alerts(metrics: Dict[str, Any]) -> str:
 def _summary_for_investor_sold(metrics: Dict[str, Any]) -> str:
     inputs = metrics.get("inputs") or {}
     segments = metrics.get("segments") or {}
-    rows = inputs.get("sold_rows_ingested", 0)
+    props = inputs.get("property_rows") or inputs.get("sold_rows_ingested", 0)
     investor = segments.get("investor_count", 0)
     in_list = segments.get("in_our_list_count", 0)
-    return f"{rows:,} sold · {investor:,} investor · {in_list:,} in-list"
+    return f"{props:,} properties · {investor:,} investor · {in_list:,} in-list"
 
 
 def list_report_index(reports_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
@@ -504,7 +504,8 @@ def list_report_index(reports_dir: Optional[Path] = None) -> List[Dict[str, Any]
                     "summary": _summary_for_investor_sold(metrics),
                     "date_window_start": metrics.get("date_window_start"),
                     "date_window_end": metrics.get("date_window_end"),
-                    "cohort_rows": inputs.get("sold_rows_ingested", 0),
+                    "cohort_rows": inputs.get("property_rows")
+                    or inputs.get("sold_rows_ingested", 0),
                     "reisift_matched": enrichment.get("reisift_matched_count", 0),
                 }
             )

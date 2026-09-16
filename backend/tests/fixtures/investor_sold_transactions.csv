@@ -1,5 +1,6 @@
 period_date,period_label,dataflik_id,transaction_id,parcel_number,buyer_full_name,property_address,property_city,property_zip,county,state,sale_amount,investor,in_my_records,investor_score,distressors,address_key
 2026-07-01,Jul 2026,1,t1,,Buyer Inv,100 Main St,Buffalo,14201,Erie,NY,250000,TRUE,FALSE,80,,main
+2026-07-01,Jul 2026,1,t1b,,Buyer Inv,100 Main St,Buffalo,14201,Erie,NY,250000,TRUE,FALSE,80,,main
 2026-07-01,Jul 2026,2,t2,,Buyer List,200 Oak Ave,Buffalo,14201,Erie,NY,180000,FALSE,TRUE,10,,oak
 2026-06-01,Jun 2026,3,t3,,Buyer Both,300 Pine Rd,Rochester,14604,Monroe,NY,310000,TRUE,TRUE,90,,pine
 2026-06-01,Jun 2026,4,t4,,Buyer Neither,400 Elm St,Albany,12207,Albany,NY,220000,FALSE,FALSE,5,,elm

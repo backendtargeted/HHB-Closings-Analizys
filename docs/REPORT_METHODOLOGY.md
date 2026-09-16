@@ -385,6 +385,8 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 **Universe:** CleanREISift sold scrape rows with `investor` and `in_my_records` TRUE/FALSE flags. Address keys rebuilt with `make_address_key` from property address parts (do not trust the scrape `address_key` string for joins).
 
+**Grain:** Unique **property × sold month** (`dataflik_id` + month, else `address_key` + month). Multiple Dataflik `transaction_id`s for the same sale collapse to one row with `transaction_count`. Segment KPIs count property rows; `sold_rows_ingested` remains the raw transaction count.
+
 **Segments:** Investor (`investor`), In Our List (`in_my_records`), Both, Neither. Rollups by sold month (`period_date` / `period_label`) and county.
 
 **Optional enrichment:** REISift + QL (+ Opps) joined by address — marketing touches and pipeline depth on or before the sold month (same clocks as Gate 6).

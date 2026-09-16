@@ -18,6 +18,7 @@ export interface InvestorSoldRow {
   distressors: string;
   dataflik_id: string;
   transaction_id: string;
+  transaction_count: number;
   reisift_matched: boolean;
   marketed: boolean;
   cc_touch_count: number;
@@ -50,6 +51,7 @@ export interface InvestorSoldMetrics {
   date_window_end: string;
   inputs: {
     sold_rows_ingested: number;
+    property_rows: number;
     unique_addresses: number;
     enrichment_enabled: boolean;
   };
@@ -106,10 +108,14 @@ export function asInvestorSoldCompleted(
   if (data.status !== 'completed' || !data.metrics) {
     throw new Error(data.message || 'Investor sold analysis not complete');
   }
+  const metrics = data.metrics;
+  if (metrics.inputs.property_rows == null) {
+    metrics.inputs.property_rows = metrics.rows?.length ?? metrics.inputs.sold_rows_ingested ?? 0;
+  }
   return {
     job_id: data.job_id,
     status: 'completed',
-    metrics: data.metrics,
+    metrics,
     warnings: data.warnings ?? data.metrics.warnings ?? [],
     created_at: data.created_at,
   };

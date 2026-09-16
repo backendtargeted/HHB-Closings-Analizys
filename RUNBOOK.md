@@ -272,6 +272,8 @@ Each Gate 3 analyze runs **marketing ramp** and **monthly consolidated** in para
 2. Upload sold CSV on Gate 8 (+ optional REISift/QL/Opps).
 3. Review KPI segments (Investor / In Our List / Both / Neither), by-month and by-county tables; download XLSX (Summary, By Month, By County, Investor, In Our List, Both, All Rows).
 
+**Grain:** One row per **property × sold month** (`dataflik_id` + month). Multiple Dataflik `transaction_id`s for the same property/sale collapse into one row with `transaction_count`. KPIs use property rows, not raw transaction count.
+
 **Execution:** Async job (202 + poll status), same pattern as Gate 6. Persists under `{REPORTS_DIR}/investor_sold/{job_id}.json`.
 
 ---
