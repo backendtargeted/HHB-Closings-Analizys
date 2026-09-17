@@ -1,0 +1,38 @@
+---
+description: Locked HHB Closings analysis truth — gates, pipeline, Prospect sources, lost-to-investor
+alwaysApply: true
+---
+
+# HHB Closings — canonical analysis
+
+Before changing reports, tags, or gate copy, read `docs/SOP.md` and `docs/ECOSYSTEM.md`.
+
+## Gates
+
+- Gate 1 Past patches · Gate 2 Consolidated · Gate 3 Marketing ramp · Gate 4 Web leads · Gate 5 Probate · Gate 6 Court Alerts · Gate 7 Investor & In-List Sold
+- Do **not** revive the removed REISift Sold Properties product gate (`in_sold_properties_full` report). API type `sold_properties` deep links clear; do not re-list those jobs.
+- Display gate numbers only; keep API paths (`/api/court-alerts`, `/api/investor-sold`, …).
+
+## Canonical marketing pipeline
+
+Prospect (8020 / Court Alerts / LI Profiles) → Marketed (CC/DM/SMS) → Lead (Salesforce/Podio) → Qualified Lead → Opportunity (includes under contract) → Closed
+
+- Constant: `CANONICAL_PIPELINE` in `backend/app/services/sold_properties.py`
+- Under contract = Opportunity, not its own stage
+- Prospect list tags parsed in `analysis.parse_tags` (`list_purchase` labels `8020` | `court_alerts` | `lip`); same events feed lifecycle ACQUIRED
+
+## Create Date
+
+Salesforce Create Date is a **clock**, not list credit. First Prospect list owns source credit. Never relabel credit as “already in Salesforce” / After LIP / After 8020 from Create Date vs list month.
+
+## Gate 7 Sold KPIs
+
+Primary: **Never prospected (investor)** = investor AND not HHB closed AND no Prospect from 8020 / Court Alerts / LI Profiles. Rate vs investor rows.
+
+Secondary (unchanged): **Lost** = we had it (In My Records **or** REISift/CRM presence) AND investor AND not HHB closed. Rate vs properties we had.
+
+CleanREISift supplies `sold_properties_full.csv`; verify In My Records scrape totals before trusting Lost KPIs.
+
+## Ecosystem
+
+Closings owns analysis grammar. CleanREISift owns sold scrape. hhb-data-sidecar owns future ATTOM orchestration → REISift drops. Sidecar must not invent tag shapes Closings cannot parse without updating Closings in the same change.

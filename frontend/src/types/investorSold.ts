@@ -14,6 +14,8 @@ export interface InvestorSoldRow {
   investor: boolean;
   in_my_records: boolean;
   had_presence: boolean;
+  prospect_list_source: string;
+  never_prospected_investor: boolean;
   segment: 'investor' | 'in_our_list' | 'both' | 'neither' | string;
   investor_score: string;
   distressors: string;
@@ -61,6 +63,7 @@ export interface InvestorSoldRollupRow {
   prospects?: number;
   lost_to_investor?: number;
   had_presence?: number;
+  never_prospected_investor?: number;
 }
 
 export interface InvestorSoldSegmentRow {
@@ -92,6 +95,8 @@ export interface InvestorSoldPipelineFunnelRow {
 }
 
 export interface InvestorSoldLostBlock {
+  never_prospected_investor_count: number;
+  never_prospected_investor_pct: number;
   lost_to_investor_count: number;
   lost_to_investor_pct: number;
   had_presence_count: number;
@@ -255,7 +260,24 @@ export function asInvestorSoldCompleted(
     metrics.inputs.property_rows = metrics.rows?.length ?? metrics.inputs.sold_rows_ingested ?? 0;
   }
   if (metrics.rows?.length) {
-    metrics.rows = metrics.rows.map((r) => ({ ...r, had_presence: rowHadPresence(r) }));
+    metrics.rows = metrics.rows.map((r) => {
+      const withPresence = { ...r, had_presence: rowHadPresence(r) };
+      const src = String(withPresence.prospect_list_source || '').toLowerCase();
+      const gotList =
+        src === '8020' ||
+        src === 'eight' ||
+        src === 'lip' ||
+        src === 'court_alerts' ||
+        Boolean(withPresence.list_purchase_date && !src);
+      const neverProspected =
+        withPresence.never_prospected_investor ??
+        (withPresence.investor && !withPresence.hhb_closed_date && !gotList);
+      return {
+        ...withPresence,
+        prospect_list_source: withPresence.prospect_list_source || (gotList && withPresence.list_purchase_date ? '8020' : ''),
+        never_prospected_investor: Boolean(neverProspected),
+      };
+    });
   }
   if (!metrics.marketing) {
     metrics.marketing = {
@@ -278,6 +300,8 @@ export function asInvestorSoldCompleted(
   }
   if (!metrics.lost) {
     metrics.lost = {
+      never_prospected_investor_count: 0,
+      never_prospected_investor_pct: 0,
       lost_to_investor_count: 0,
       lost_to_investor_pct: 0,
       had_presence_count: 0,
@@ -293,6 +317,8 @@ export function asInvestorSoldCompleted(
       in_list_exits_by_buyer?: Record<string, number>;
     };
     metrics.lost = {
+      never_prospected_investor_count: legacy.never_prospected_investor_count ?? 0,
+      never_prospected_investor_pct: legacy.never_prospected_investor_pct ?? 0,
       lost_to_investor_count: legacy.lost_to_investor_count ?? 0,
       lost_to_investor_pct: legacy.lost_to_investor_pct ?? 0,
       had_presence_count: legacy.had_presence_count ?? 0,

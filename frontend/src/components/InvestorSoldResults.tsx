@@ -13,7 +13,14 @@ interface InvestorSoldResultsProps {
 }
 
 type SegmentFilter = 'all' | 'investor' | 'in_our_list' | 'both' | 'neither';
-type JourneyFilter = 'all' | 'never_marketed' | 'prospects' | 'opps' | 'hhb' | string;
+type JourneyFilter =
+  | 'all'
+  | 'never_marketed'
+  | 'never_prospected'
+  | 'prospects'
+  | 'opps'
+  | 'hhb'
+  | string;
 type SortKey = keyof InvestorSoldRow;
 type SortDir = 'asc' | 'desc';
 
@@ -100,6 +107,8 @@ const InvestorSoldResults = ({
     reisift_matched_count: 0,
   };
   const lost = m.lost ?? {
+    never_prospected_investor_count: 0,
+    never_prospected_investor_pct: 0,
     lost_to_investor_count: 0,
     lost_to_investor_pct: 0,
     had_presence_count: 0,
@@ -127,6 +136,8 @@ const InvestorSoldResults = ({
     else if (segmentFilter !== 'all') rows = rows.filter((r) => r.segment === segmentFilter);
 
     if (journeyFilter === 'never_marketed') rows = rows.filter((r) => !r.marketed);
+    else if (journeyFilter === 'never_prospected')
+      rows = rows.filter((r) => r.never_prospected_investor);
     else if (journeyFilter === 'lost')
       rows = rows.filter((r) => r.had_presence && r.investor && !r.hhb_closed_date);
     else if (journeyFilter === 'leads') rows = rows.filter((r) => r.lead_matched);
@@ -188,6 +199,16 @@ const InvestorSoldResults = ({
     active?: boolean;
   }> = [
     {
+      label: 'Never prospected (investor)',
+      value: lost.never_prospected_investor_count.toLocaleString(),
+      subtitle: `${lost.never_prospected_investor_pct}% of ${m.segments.investor_count.toLocaleString()} investor · no 8020/CA/LIP · click`,
+      onClick: () => {
+        setSegmentFilter('all');
+        setJourneyFilter('never_prospected');
+      },
+      active: journeyFilter === 'never_prospected',
+    },
+    {
       label: 'Lost to investor',
       value: lost.lost_to_investor_count.toLocaleString(),
       subtitle: `${lost.lost_to_investor_pct}% of ${lost.had_presence_count.toLocaleString()} we had · click to filter`,
@@ -237,8 +258,8 @@ const InvestorSoldResults = ({
             Investor &amp; In-List Sold
           </h2>
           <p className="text-sm text-stone-600 mt-1">
-            Lost to investor = we had it (list or CRM) and investor bought it · Sold months{' '}
-            {m.date_window_start || '—'} →{' '}
+            Primary: never prospected investor (no 8020 / Court Alerts / LI Profiles) · Lost =
+            we had it and investor bought · Sold months {m.date_window_start || '—'} →{' '}
             {m.date_window_end || '—'} · {propertyRows.toLocaleString()} properties (from{' '}
             {txnRows.toLocaleString()} transactions) ·{' '}
             {m.inputs.unique_addresses.toLocaleString()} unique addresses
@@ -477,6 +498,7 @@ const InvestorSoldResults = ({
                 className="ml-1 border border-stone-300 rounded-md px-2 py-1 text-sm"
               >
                 <option value="all">All</option>
+                <option value="never_prospected">Never prospected (investor)</option>
                 <option value="lost">Lost to investor</option>
                 <option value="never_marketed">Never marketed</option>
                 <option value="leads">Leads</option>
@@ -499,6 +521,12 @@ const InvestorSoldResults = ({
             />
           </div>
         </div>
+        {journeyFilter === 'never_prospected' && (
+          <p className="mx-4 mt-3 text-xs text-amber-900 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+            Investor sale with no Prospect from 8020 / Court Alerts / LI Profiles — coverage /
+            data-quality check. Full list is on the Never Prospected Inv XLSX sheet.
+          </p>
+        )}
         {journeyFilter === 'never_marketed' && (
           <p className="mx-4 mt-3 text-xs text-amber-900 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
             No <code className="bg-white/80 px-1 rounded">(8020) CC/SMS/DM</code> tags on/before the

@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 
 from app.services.investor_sold import (
+    InvestorSoldRow,
     analyze,
     build_export_workbook,
+    is_never_prospected_investor,
     result_from_metrics_dict,
     segment_for,
 )
@@ -93,17 +95,36 @@ def test_segment_counts_and_pipeline(sold_path, reisift_path, ql_path):
     assert result.had_presence_count == 4  # elm has neither scrape nor REISift
     assert result.lost_to_investor_count == 3
     assert result.lost_to_investor_pct == 75.0
+    # Primary KPI: never prospected = investor + not closed + no 8020/CA/LIP (cedar only)
+    assert result.never_prospected_investor_count == 1
+    assert result.never_prospected_investor_pct == pytest.approx(33.3, abs=0.1)
+    assert by_street["500 cedar ln"].never_prospected_investor is True
+    assert by_street["100 main st"].never_prospected_investor is False
     assert by_street["100 main st"].had_presence is True
     assert by_street["500 cedar ln"].had_presence is True
     assert by_street["400 elm st"].had_presence is False
     assert result.had_presence_investor_count >= 3
     assert result.lost_by_stage
-    assert "lost" in result.to_api_dict()
+    lost_api = result.to_api_dict()["lost"]
+    assert lost_api["never_prospected_investor_count"] == 1
+    assert lost_api["lost_to_investor_count"] == 3
     assert any(s["segment"] == "in_our_list" and s["prospects_podio"] >= 1 for s in result.by_segment)
     assert result.pipeline_funnel
     assert result.to_api_dict()["inputs"]["property_rows"] == 5
     assert "marketing" in result.to_api_dict()
     assert "by_segment" in result.to_api_dict()
+
+
+def test_is_never_prospected_investor_helper():
+    base = dict(investor=True, hhb_closed_date="", prospect_list_source="")
+    assert is_never_prospected_investor(InvestorSoldRow(**base)) is True
+    assert is_never_prospected_investor(InvestorSoldRow(**{**base, "prospect_list_source": "8020"})) is False
+    assert is_never_prospected_investor(InvestorSoldRow(**{**base, "prospect_list_source": "lip"})) is False
+    assert is_never_prospected_investor(
+        InvestorSoldRow(**{**base, "prospect_list_source": "court_alerts"})
+    ) is False
+    assert is_never_prospected_investor(InvestorSoldRow(**{**base, "hhb_closed_date": "2026-01-01"})) is False
+    assert is_never_prospected_investor(InvestorSoldRow(**{**base, "investor": False})) is False
 
 
 def test_by_month_and_county(sold_path, reisift_path, ql_path):
@@ -128,10 +149,12 @@ def test_export_workbook_sheets(sold_path, reisift_path, ql_path):
     assert restored.both_count == 1
     assert restored.prospect_sources.get("podio", 0) >= 1
     assert restored.lost_to_investor_count == result.lost_to_investor_count
+    assert restored.never_prospected_investor_count == result.never_prospected_investor_count
     assert len(restored.rows) == 5
     assert any(r.transaction_count == 2 for r in restored.rows)
     assert any(r.prospect_source == "podio" for r in restored.rows)
     assert any(r.lead_matched for r in restored.rows)
+    assert any(r.never_prospected_investor for r in restored.rows)
 
 
 def test_missing_flags_raises(tmp_path, reisift_path, ql_path):

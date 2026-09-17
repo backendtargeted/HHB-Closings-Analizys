@@ -2,6 +2,10 @@
 
 A modern web application for analyzing contact history for closed deals, built with React + Vite frontend and Flask backend.
 
+**SOP:** [docs/SOP.md](docs/SOP.md) — gates, canonical pipeline, monthly checklist (start here).
+
+**Ecosystem:** [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md) — Closings ↔ CleanREISift ↔ hhb-data-sidecar.
+
 **Operations:** [RUNBOOK.md](RUNBOOK.md) — marketing → REISift → analysis pipeline, playbooks, API.
 
 **Report methodology:** [docs/REPORT_METHODOLOGY.md](docs/REPORT_METHODOLOGY.md) — how tags are parsed, deduped, matched, counted, and turned into lifecycle metrics.

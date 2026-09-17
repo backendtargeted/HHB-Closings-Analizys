@@ -363,9 +363,11 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 ## 21. Gate 7 Investor & In-List Sold
 
-**Question:** Of scraped external NY sales (`sold_properties_full.csv`), how many **in-list** properties were **lost to another investor** (investor sale, not HHB closed), at what furthest pipeline stage, and how do investor / in-list / both / neither segments compare?
+**Question:** Of scraped external NY sales (`sold_properties_full.csv`), how many investor sales were **never prospected** (no 8020 / Court Alerts / LI Profiles), how many properties we had were **lost to another investor**, at what furthest pipeline stage, and how do investor / in-list / both / neither segments compare?
 
-**Lost definition:** We had it (scrape `in_my_records` **or** REISift/CRM presence: list tags, marketed, Podio/SF lead, QL, opp, UC, Closed) AND `investor` AND not HHB Closed. Loss rate denominator = properties we had. Scrape “In Our List” remains a segment cut, not a second loss KPI.
+**Primary KPI — Never prospected (investor):** `investor` AND not HHB Closed AND no Prospect list source in `{8020, court_alerts, lip}`. Rate denominator = investor property×month rows. This is the main Sold-gate coverage KPI (not a new product gate).
+
+**Lost definition (secondary, unchanged):** We had it (scrape `in_my_records` **or** REISift/CRM presence: list tags, marketed, Podio/SF lead, QL, opp, UC, Closed) AND `investor` AND not HHB Closed. Loss rate denominator = properties we had. Scrape “In Our List” remains a segment cut, not a second loss KPI.
 
 **Universe:** CleanREISift sold scrape rows with `investor` and `in_my_records` TRUE/FALSE flags. Address keys rebuilt with `make_address_key` from property address parts (do not trust the scrape `address_key` string for joins).
 
@@ -385,7 +387,7 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 **Data caveat:** CleanREISift In My Records scrape must return non-zero totals for every sold month (historically Mar–Jul 2026 returned `total=0`). Re-scrape before trusting Lost KPIs.
 
-**Export:** Summary, Lost By Stage, By Segment, Pipeline Funnel, By Month, Journey, Lost To Investor, Investor, In Our List, Both, Never Marketed.
+**Export:** Summary, Lost By Stage, By Segment, Pipeline Funnel, By Month, Journey, Never Prospected Inv, Lost To Investor, Investor, We Had, In Our List, Both, Never Marketed.
 
 Canonical implementation: `backend/app/services/investor_sold.py`.
 
