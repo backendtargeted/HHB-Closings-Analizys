@@ -111,7 +111,10 @@ export interface InvestorSoldMetrics {
   date_window_start: string;
   date_window_end: string;
   inputs: {
+    sold_rows_scanned?: number;
+    sold_rows_excluded_buybox?: number;
     sold_rows_ingested: number;
+    buybox_town_count?: number;
     property_rows: number;
     unique_addresses: number;
     enrichment_enabled: boolean;

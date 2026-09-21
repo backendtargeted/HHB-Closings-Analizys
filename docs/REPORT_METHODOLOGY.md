@@ -363,13 +363,13 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 ## 21. Gate 7 Investor & In-List Sold
 
-**Question:** Of scraped external NY sales (`sold_properties_full.csv`), how many investor sales were **never prospected** (no 8020 / Court Alerts / LI Profiles), how many properties we had were **lost to another investor**, at what furthest pipeline stage, and how do investor / in-list / both / neither segments compare?
+**Question:** Of scraped external NY sales (`sold_properties_full.csv`) **in HHB marketed-town buybox cities**, how many investor sales were **never prospected** (no 8020 / Court Alerts / LI Profiles), how many properties we had were **lost to another investor**, at what furthest pipeline stage, and how do investor / in-list / both / neither segments compare?
 
 **Primary KPI — Never prospected (investor):** `investor` AND not HHB Closed AND no Prospect list source in `{8020, court_alerts, lip}`. Rate denominator = investor property×month rows. This is the main Sold-gate coverage KPI (not a new product gate).
 
 **Lost definition (secondary, unchanged):** We had it (scrape `in_my_records` **or** REISift/CRM presence: list tags, marketed, Podio/SF lead, QL, opp, UC, Closed) AND `investor` AND not HHB Closed. Loss rate denominator = properties we had. Scrape “In Our List” remains a segment cut, not a second loss KPI.
 
-**Universe:** CleanREISift sold scrape rows with `investor` and `in_my_records` TRUE/FALSE flags. Address keys rebuilt with `make_address_key` from property address parts (do not trust the scrape `address_key` string for joins).
+**Universe:** CleanREISift sold scrape rows whose `property_city` matches the marketed-town allowlist in `backend/app/services/buybox_towns.py` (normalized casefold / strip). Rows outside the buybox are dropped at ingest before collapse/enrich/KPIs. Address keys rebuilt with `make_address_key` from property address parts (do not trust the scrape `address_key` string for joins).
 
 **Required inputs:** Sold CSV + REISift export + Salesforce Total Qualified Leads. Opportunities optional (Opp stage). This is the single sold-properties product report; the former REISift `in_sold_properties_full` cohort report was removed.
 

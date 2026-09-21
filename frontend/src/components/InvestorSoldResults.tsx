@@ -258,7 +258,16 @@ const InvestorSoldResults = ({
             Investor &amp; In-List Sold
           </h2>
           <p className="text-sm text-stone-600 mt-1">
-            Primary: never prospected investor (no 8020 / Court Alerts / LI Profiles) · Lost =
+            Universe = marketed towns only
+            {m.inputs.buybox_town_count != null
+              ? ` (${m.inputs.buybox_town_count.toLocaleString()} towns`
+              : ''}
+            {m.inputs.sold_rows_excluded_buybox != null && m.inputs.sold_rows_scanned != null
+              ? `; ${(m.inputs.sold_rows_excluded_buybox).toLocaleString()} of ${m.inputs.sold_rows_scanned.toLocaleString()} scrape rows excluded)`
+              : m.inputs.buybox_town_count != null
+                ? ')'
+                : ''}{' '}
+            · Primary: never prospected investor (no 8020 / Court Alerts / LI Profiles) · Lost =
             we had it and investor bought · Sold months {m.date_window_start || '—'} →{' '}
             {m.date_window_end || '—'} · {propertyRows.toLocaleString()} properties (from{' '}
             {txnRows.toLocaleString()} transactions) ·{' '}

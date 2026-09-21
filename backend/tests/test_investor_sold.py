@@ -51,6 +51,9 @@ def test_segment_counts_and_pipeline(sold_path, reisift_path, ql_path):
     result = analyze(sold_path, reisift_path=reisift_path, ql_path=ql_path)
     # 6 CSV txns; Main St has 2 txns same dataflik+month → 5 property rows
     assert result.sold_rows_ingested == 6
+    assert result.sold_rows_scanned == 6
+    assert result.sold_rows_excluded_buybox == 0
+    assert result.buybox_town_count >= 200
     assert result.property_rows == 5
     assert len(result.rows) == 5
     assert result.unique_addresses == 5
@@ -135,8 +138,8 @@ def test_by_month_and_county(sold_path, reisift_path, ql_path):
     assert months["2026-07"]["in_our_list"] == 1
     assert months["2026-07"]["marketed"] >= 1
     counties = {r["county"]: r for r in result.by_county}
-    assert counties["Erie"]["count"] == 2
-    assert counties["Monroe"]["both"] == 1
+    assert counties["Nassau"]["count"] == 2
+    assert counties["Suffolk"]["both"] == 1
 
 
 def test_export_workbook_sheets(sold_path, reisift_path, ql_path):

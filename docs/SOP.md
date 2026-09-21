@@ -51,7 +51,7 @@ These same tags feed closings-attribution lifecycle **ACQUIRED** (`lifecycle.py`
 | **4** | Web leads | REISift filtered to web / CourtAlerts cohort + QL | Web-lead credit vs prior list history | `web_leads.py` |
 | **5** | Probate lifecycle | REISift (Probates NY tags) + QL (+ Opps / Txns) | LIP vs 8020 first list → QL lag / reasons | `probate.py` |
 | **6** | Court Alerts lifecycle | Court Alerts CSV + REISift + QL (+ Opps / Txns) | CA vs 8020 first list → QL lag / reasons | `court_alerts.py` |
-| **7** | Investor & In-List Sold | CleanREISift `sold_properties_full.csv` + REISift + QL (+ Opps) | Never prospected (investor) + Lost + pipeline depth | `investor_sold.py` |
+| **7** | Investor & In-List Sold | CleanREISift `sold_properties_full.csv` (buybox cities) + REISift + QL (+ Opps) | Never prospected (investor) + Lost + pipeline depth | `investor_sold.py` |
 
 API path prefixes stay `/api/court-alerts`, `/api/investor-sold`, etc. (display gate numbers only).
 
@@ -60,6 +60,8 @@ Legacy **Regular attribution** (contact-history CSV → closings lifecycle) rema
 ---
 
 ## Gate 7 — Never prospected (investor) + Lost
+
+**Universe:** marketed-town buybox only (`backend/app/services/buybox_towns.py`). Sold scrape rows outside those cities are dropped at ingest; KPIs never see them.
 
 **Primary KPI — Never prospected (investor)** = investor sale **and** not HHB-closed **and** no Prospect list from 8020 / Court Alerts / LI Profiles. Denominator = investor sales. Coverage / data-quality check (not a second loss gate).
 

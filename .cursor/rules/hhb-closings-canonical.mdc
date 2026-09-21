@@ -27,6 +27,8 @@ Salesforce Create Date is a **clock**, not list credit. First Prospect list owns
 
 ## Gate 7 Sold KPIs
 
+**Universe:** marketed-town buybox only (`buybox_towns.py`). Filter sold at ingest; out-of-buybox cities never enter the report.
+
 Primary: **Never prospected (investor)** = investor AND not HHB closed AND no Prospect from 8020 / Court Alerts / LI Profiles. Rate vs investor rows.
 
 Secondary (unchanged): **Lost** = we had it (In My Records **or** REISift/CRM presence) AND investor AND not HHB closed. Rate vs properties we had.

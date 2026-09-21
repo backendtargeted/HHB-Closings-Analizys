@@ -1,7 +1,8 @@
 """
 Gate 7 — Investor & In-List Sold + canonical pipeline depth.
 
-Universe: CleanREISift sold_properties_full.csv (property × sold month).
+Universe: CleanREISift sold_properties_full.csv filtered at ingest to HHB
+marketed-town buybox cities only (see buybox_towns.py). Property × sold month.
 Requires REISift + Salesforce QL. Opportunities optional.
 Lost to investor = we had it (In My Records OR REISift/CRM presence) AND investor
 AND not HHB closed. Loss rate denominator = properties we had.
@@ -22,6 +23,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import pandas as pd
 
 from .analysis import _dedupe_parsed_tag_events, parse_tags
+from .buybox_towns import BUYBOX_TOWN_COUNT, in_buybox
 from .closing_resolution import resolve_milestones_from_parsed
 from .lifecycle import ENGAGED_LABELS, build_events, compute_stage_funnel_open, get_highest_stage
 from .marketing_mapper import find_column_name, make_address_key, normalize_status, smart_read_csv
@@ -277,6 +279,9 @@ class InvestorSoldRow:
 
 @dataclass
 class InvestorSoldResult:
+    sold_rows_scanned: int = 0
+    sold_rows_excluded_buybox: int = 0
+    buybox_town_count: int = 0
     sold_rows_ingested: int = 0
     property_rows: int = 0
     unique_addresses: int = 0
@@ -338,7 +343,10 @@ class InvestorSoldResult:
             "date_window_start": self.date_window_start,
             "date_window_end": self.date_window_end,
             "inputs": {
+                "sold_rows_scanned": self.sold_rows_scanned,
+                "sold_rows_excluded_buybox": self.sold_rows_excluded_buybox,
                 "sold_rows_ingested": self.sold_rows_ingested,
+                "buybox_town_count": self.buybox_town_count,
                 "property_rows": self.property_rows,
                 "unique_addresses": self.unique_addresses,
                 "enrichment_enabled": self.enrichment_enabled,
@@ -513,6 +521,9 @@ def result_from_metrics_dict(metrics: Dict[str, Any]) -> InvestorSoldResult:
     lag = metrics.get("lag") or {}
     property_rows = int(inputs.get("property_rows") or len(rows) or 0)
     return InvestorSoldResult(
+        sold_rows_scanned=int(inputs.get("sold_rows_scanned") or 0),
+        sold_rows_excluded_buybox=int(inputs.get("sold_rows_excluded_buybox") or 0),
+        buybox_town_count=int(inputs.get("buybox_town_count") or BUYBOX_TOWN_COUNT),
         sold_rows_ingested=int(inputs.get("sold_rows_ingested") or 0),
         property_rows=property_rows,
         unique_addresses=int(inputs.get("unique_addresses") or 0),
@@ -874,12 +885,14 @@ def analyze(
     else:
         warnings.append("Opportunities file not uploaded — Opportunity stage counts will be zero.")
 
-    report(35, "Building sold property rows…")
+    report(35, "Building sold property rows (buybox cities only)…")
     txn_rows: List[InvestorSoldRow] = []
     unique_keys: set[str] = set()
     sold_months: List[pd.Timestamp] = []
     sold_ts_by_collapse: Dict[str, Optional[pd.Timestamp]] = {}
     total = len(sold_df)
+    sold_rows_scanned = total
+    sold_rows_excluded_buybox = 0
 
     for i, (_, row) in enumerate(sold_df.iterrows()):
         if total and i % 2000 == 0:
@@ -887,6 +900,9 @@ def analyze(
 
         street = _col_val(row, addr_cols.get("street"))
         city = _col_val(row, addr_cols.get("city"))
+        if not in_buybox(city):
+            sold_rows_excluded_buybox += 1
+            continue
         state = _col_val(row, addr_cols.get("state"))
         zip_code = _col_val(row, addr_cols.get("zip"))
         key = make_address_key(street, city, state, zip_code)
@@ -1145,17 +1161,23 @@ def analyze(
 
     multi_txn = sum(1 for r in rows if r.transaction_count > 1)
     methodology_note = (
+        "Universe = marketed-town buybox only "
+        f"({BUYBOX_TOWN_COUNT:,} towns; {sold_rows_excluded_buybox:,} of "
+        f"{sold_rows_scanned:,} sold scrape rows excluded at ingest). "
         "Primary KPI: never prospected investor = investor sale AND not HHB closed AND no "
         "Prospect list from 8020 / Court Alerts / LI Profiles (coverage / data-quality check). "
         "Lost to investor = we had it (In My Records scrape OR REISift/CRM presence) AND "
         "investor AND not HHB closed (loss rate denominator = properties we had). "
-        "Universe = CleanREISift sold_properties_full.csv. Grain = unique property × sold month "
+        "Grain = unique property × sold month "
         f"(multi-txn Dataflik rows collapse; {multi_txn:,} properties had >1 txn). "
         f"Canonical pipeline: {CANONICAL_PIPELINE}."
     )
 
     report(100, "Done")
     return InvestorSoldResult(
+        sold_rows_scanned=sold_rows_scanned,
+        sold_rows_excluded_buybox=sold_rows_excluded_buybox,
+        buybox_town_count=BUYBOX_TOWN_COUNT,
         sold_rows_ingested=txn_n,
         property_rows=n,
         unique_addresses=len(unique_keys),
@@ -1221,7 +1243,10 @@ def build_export_workbook(result: InvestorSoldResult) -> bytes:
 
     all_rows = [r.to_dict() for r in result.rows]
     summary_rows = [
-        {"metric": "Sold transactions ingested", "value": result.sold_rows_ingested},
+        {"metric": "Sold scrape rows scanned", "value": result.sold_rows_scanned},
+        {"metric": "Sold rows excluded (outside buybox)", "value": result.sold_rows_excluded_buybox},
+        {"metric": "Buybox towns", "value": result.buybox_town_count},
+        {"metric": "Sold transactions ingested (buybox)", "value": result.sold_rows_ingested},
         {"metric": "Property × month rows", "value": result.property_rows},
         {"metric": "Unique addresses", "value": result.unique_addresses},
         {"metric": "Never prospected (investor)", "value": result.never_prospected_investor_count},
