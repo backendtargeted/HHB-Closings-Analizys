@@ -61,11 +61,11 @@ Legacy **Regular attribution** (contact-history CSV → closings lifecycle) rema
 
 ## Gate 7 — Never prospected (investor) + Lost
 
-**Universe:** marketed-town buybox only (`backend/app/services/buybox_towns.py`). Sold scrape rows outside those cities are dropped at ingest; KPIs never see them.
+**Universe (buybox):** marketed-town allowlist only. Full contract: [BUYBOX.md](BUYBOX.md). Sold scrape rows outside those cities are **dropped at ingest**; KPIs never see them. Filter field available on the sold report today: `property_city` (property type / buybox score are **not** on the CSV — do not pretend they are filtered).
 
-**Primary KPI — Never prospected (investor)** = investor sale **and** not HHB-closed **and** no Prospect list from 8020 / Court Alerts / LI Profiles. Denominator = investor sales. Coverage / data-quality check (not a second loss gate).
+**Primary KPI — Never prospected (investor)** = investor sale **and** not HHB-closed **and** no Prospect list from 8020 / Court Alerts / LI Profiles. Denominator = investor sales **inside buybox**. Use this when judging list/provider coverage — always qualify as “among marketed-town sales.”
 
-**Lost** (unchanged) = we had it **and** investor bought it **and** we did not HHB-close it.
+**Lost** (unchanged) = we had it **and** investor bought it **and** we did not HHB-close it (also buybox-scoped).
 
 **We had it** = scrape `in_my_records` **or** REISift/CRM presence (list tags, marketed, Podio/SF lead, QL, opp, UC, Closed).
 
@@ -85,7 +85,7 @@ Legacy **Regular attribution** (contact-history CSV → closings lifecycle) rema
 4. **Export** Salesforce Total Qualified Leads (and Opps / Transactions if needed).
 5. Run **Gate 2** (and/or **Gate 3**) for list + channel performance.
 6. Run **Gate 5** / **Gate 6** when answering probate or Court Alerts first-list questions.
-7. **CleanREISift** — refresh `sold_properties_full.csv` (verify In My Records totals) → **Gate 7**.
+7. **CleanREISift** — refresh `sold_properties_full.csv` (verify In My Records totals) → **Gate 7** (buybox towns only — [BUYBOX.md](BUYBOX.md)).
 8. **Archive** XLSX / share links; saved reports live under `{REPORTS_DIR}/…`.
 
 Docker UI default: `http://localhost:3300`.

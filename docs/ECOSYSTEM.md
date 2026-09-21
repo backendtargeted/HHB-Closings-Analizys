@@ -39,7 +39,7 @@ Operator SOP for Closings: [SOP.md](SOP.md).
 ### CleanREISift (`D:\HHB\CleanREISift`)
 
 - Scrapes external sold transactions (Dataflik / REISift “In My Records” / investor flags).
-- Output consumed by **Gate 7 only** as the sold universe.
+- Output consumed by **Gate 7 only** as the sold scrape input; Closings then **filters to marketed-town buybox** at ingest ([BUYBOX.md](BUYBOX.md)).
 - Before trusting Lost KPIs: every sold month’s In My Records scrape must show non-zero totals (see `RUN_ENRICH.md` / scrape logs).
 
 ### hhb-data-sidecar (`D:\hhb-data-sidecar`)

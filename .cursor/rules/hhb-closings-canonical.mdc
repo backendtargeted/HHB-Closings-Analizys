@@ -5,7 +5,7 @@ alwaysApply: true
 
 # HHB Closings — canonical analysis
 
-Before changing reports, tags, or gate copy, read `docs/SOP.md` and `docs/ECOSYSTEM.md`.
+Before changing reports, tags, or gate copy, read `docs/SOP.md`, `docs/ECOSYSTEM.md`, and for Gate 7 geography `docs/BUYBOX.md`.
 
 ## Gates
 
@@ -27,11 +27,11 @@ Salesforce Create Date is a **clock**, not list credit. First Prospect list owns
 
 ## Gate 7 Sold KPIs
 
-**Universe:** marketed-town buybox only (`buybox_towns.py`). Filter sold at ingest; out-of-buybox cities never enter the report.
+**Universe:** marketed-town buybox only. Locked contract: `docs/BUYBOX.md`. Code: `buybox_towns.py`. Filter sold at ingest on `property_city`; out-of-buybox cities never enter the report. Do not claim property-type / score filters the sold CSV cannot support.
 
-Primary: **Never prospected (investor)** = investor AND not HHB closed AND no Prospect from 8020 / Court Alerts / LI Profiles. Rate vs investor rows.
+Primary: **Never prospected (investor)** = investor AND not HHB closed AND no Prospect from 8020 / Court Alerts / LI Profiles. Rate vs investor rows **inside buybox**. Phrase findings as “among marketed-town sales” when evaluating providers.
 
-Secondary (unchanged): **Lost** = we had it (In My Records **or** REISift/CRM presence) AND investor AND not HHB closed. Rate vs properties we had.
+Secondary (unchanged): **Lost** = we had it (In My Records **or** REISift/CRM presence) AND investor AND not HHB closed. Rate vs properties we had (buybox-scoped).
 
 CleanREISift supplies `sold_properties_full.csv`; verify In My Records scrape totals before trusting Lost KPIs.
 

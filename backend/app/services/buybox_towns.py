@@ -1,6 +1,11 @@
 """HHB marketed-town buybox for Gate 7 Investor Sold.
 
-Gate 7 universe = these cities only. Sold rows outside this set are dropped at ingest.
+Gate 7 universe = these cities only. Sold rows outside this set are dropped at
+ingest (before row build / enrich / KPIs).
+
+Operator contract (why, what sold CSV can filter, how to read provider KPIs):
+`docs/BUYBOX.md`. Regenerate the town appendix with
+`python backend/scripts/gen_buybox_doc.py` after editing this list.
 """
 
 from __future__ import annotations

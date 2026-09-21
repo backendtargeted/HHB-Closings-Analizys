@@ -369,11 +369,11 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 **Lost definition (secondary, unchanged):** We had it (scrape `in_my_records` **or** REISift/CRM presence: list tags, marketed, Podio/SF lead, QL, opp, UC, Closed) AND `investor` AND not HHB Closed. Loss rate denominator = properties we had. Scrape “In Our List” remains a segment cut, not a second loss KPI.
 
-**Universe:** CleanREISift sold scrape rows whose `property_city` matches the marketed-town allowlist in `backend/app/services/buybox_towns.py` (normalized casefold / strip). Rows outside the buybox are dropped at ingest before collapse/enrich/KPIs. Address keys rebuilt with `make_address_key` from property address parts (do not trust the scrape `address_key` string for joins).
+**Universe (buybox — delicate / provider evaluation):** CleanREISift sold scrape rows whose `property_city` matches the marketed-town allowlist in `backend/app/services/buybox_towns.py` (normalized casefold / strip). Rows outside the buybox are dropped at ingest before collapse/enrich/KPIs. **Full contract:** [BUYBOX.md](BUYBOX.md) (what we filter, what sold CSV cannot support, how to phrase KPIs). Address keys rebuilt with `make_address_key` from property address parts (do not trust the scrape `address_key` string for joins).
 
 **Required inputs:** Sold CSV + REISift export + Salesforce Total Qualified Leads. Opportunities optional (Opp stage). This is the single sold-properties product report; the former REISift `in_sold_properties_full` cohort report was removed.
 
-**Grain:** Unique **property × sold month** (`dataflik_id` + month, else `address_key` + month). Multiple Dataflik `transaction_id`s for the same sale collapse to one row with `transaction_count`. Segment KPIs count property rows; `sold_rows_ingested` remains the raw transaction count.
+**Grain:** Unique **property × sold month** (`dataflik_id` + month, else `address_key` + month). Multiple Dataflik `transaction_id`s for the same sale collapse to one row with `transaction_count`. Segment KPIs count property rows; `sold_rows_ingested` = buybox-kept transactions; `sold_rows_scanned` / `sold_rows_excluded_buybox` are transparency only.
 
 **Segments:** Investor (`investor`), In Our List (`in_my_records`), Both, Neither. Rollups by sold month and by segment (marketed %, lead %, qualified lead %, opps, UC, Closed, median list→sold).
 
