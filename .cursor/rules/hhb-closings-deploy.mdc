@@ -5,7 +5,7 @@ alwaysApply: true
 
 # HHB Closings — deploy
 
-After commit + push to `main`, trigger both deploy webhooks (POST). Rebuild API when backend changes; rebuild WEB when frontend changes; trigger **both** when unsure.
+After commit + push to `main`, trigger both deploy webhooks with `POST` and `Content-Type: application/json` (empty `{}` body is fine). Rebuild API when backend changes; rebuild WEB when frontend changes; trigger **both** when unsure.
 
 - **API:** `http://154.38.178.232:3000/api/deploy/8ab7c37e4023e8fdac571a64f8783e45831af7355f8ea5fa`
 - **WEB:** `http://154.38.178.232:3000/api/deploy/b6e5270f5f62d60628af2594c5f563b19053c21243e09696`

@@ -2,7 +2,7 @@
 
 ## Deploy webhooks (production)
 
-After push to `main`, POST both:
+After push to `main`, POST both (`Content-Type: application/json`, body `{}`):
 
 - **API:** `http://154.38.178.232:3000/api/deploy/8ab7c37e4023e8fdac571a64f8783e45831af7355f8ea5fa`
 - **WEB:** `http://154.38.178.232:3000/api/deploy/b6e5270f5f62d60628af2594c5f563b19053c21243e09696`
