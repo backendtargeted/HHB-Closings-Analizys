@@ -44,6 +44,7 @@ from .probate import (
     _counter_table,
     _iso_day,
     _load_crm_file,
+    _load_opportunities_file,
     _mean_median,
     _parse_ts,
     _pct,
@@ -612,7 +613,7 @@ def analyze(
     if opportunities_path:
         report(28, "Loading opportunities…")
         opp_index = _build_match_index(
-            _load_crm_file(opportunities_path), OPP_ADDR, OPP_DATE_CANDIDATES
+            _load_opportunities_file(opportunities_path), OPP_ADDR, OPP_DATE_CANDIDATES
         )
     else:
         warnings.append("Opportunities file not uploaded — Opp funnel counts will be zero.")

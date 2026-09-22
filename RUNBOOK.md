@@ -237,11 +237,12 @@ Each Gate 3 analyze runs **marketing ramp** and **monthly consolidated** in para
 | **REISift export** | **Yes** | Tags: CC/SMS/DM, list purchase, SF engaged, **PodioSellerLeads** |
 | **Salesforce Total Qualified Leads** | **Yes** | Qualified Lead Create Date clock |
 | **Opportunities** | Optional | Opp stage (same pipeline rules as Gate 5 Probate) |
+| **Salesforce Transaction Pipeline** | Optional | `Closed Date` → HHB Closed; `Date Contract Signed` (+ MLS variant) / `Date of Accepted Offer` / `Date of Original Offer` → Opportunity / under contract. Matched by street+zip only (real export has no city column) and bounded to the property's first-list month (or a 24-month lookback when there's no list history) so it can't reach back to an unrelated older transaction at the same address — see [BUYBOX.md](docs/BUYBOX.md#salesforce-transaction-pipeline-overlay-optional-gate-7-input). |
 
 ### Operator checklist
 
-1. Produce `data/sold_properties_full.csv` via CleanREISift `scrape_sold_properties.py`. **Verify In My Records returned non-zero totals for every month** (if Mar–Jul show `reported total=0`, re-scrape those months before trusting Lost KPIs).
-2. Upload sold CSV + REISift + Total QL on Gate 7 (+ optional Opps). Run is disabled until all three required files are present.
+1. Produce `data/sold_properties_full.csv` via CleanREISift `scrape_sold_properties.py`. **Verify In My Records returned non-zero totals for every month** (if Mar–Jul show `reported total=0`, re-scrape those months before trusting Lost KPIs — **confirmed still happening as of 2026-09-21**, only Feb 2026 has non-zero In My Records in the buybox universe).
+2. Upload sold CSV + REISift + Total QL on Gate 7 (+ optional Opps, + optional Transaction Pipeline). Run is disabled until the three required files are present.
 3. Review **Lost to investor** + lost-by-stage, in-list exits, pipeline funnel, and journey table; download XLSX (Summary, Lost By Stage, By Segment, Pipeline Funnel, By Month, Journey, Lost To Investor, Investor, In Our List, Both, Never Marketed).
 
 **Grain:** One row per **property × sold month** (`dataflik_id` + month). Multiple Dataflik `transaction_id`s for the same property/sale collapse into one row with `transaction_count`. KPIs use property rows, not raw transaction count.

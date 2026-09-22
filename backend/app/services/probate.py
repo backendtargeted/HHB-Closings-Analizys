@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from .marketing_mapper import find_column_name, make_address_key, sanitize_phone
+from .marketing_mapper import find_column_name, make_address_key, normalize_status, sanitize_phone
 from .monthly_consolidated import (
     REISIFT_ADDR,
     REISIFT_INDEX_COLUMN_GROUPS,
@@ -416,6 +416,32 @@ def _parse_ts(raw: object) -> Optional[pd.Timestamp]:
 
 def _load_crm_file(file_path: str) -> pd.DataFrame:
     return load_qualified_leads_file(file_path)
+
+
+OPP_STAGE_CANDIDATES = ["Stage", "Opportunity Stage", "Stage Name", "Status"]
+
+
+def _is_dead_opportunity_stage(value: object) -> bool:
+    """True for a lost/dead Opportunity outcome (e.g. "Closed Lost") — real Opportunities
+    exports carry these alongside live pipeline stages, and address-only matching would
+    otherwise credit a dead deal as current Opportunity-stage evidence."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return False
+    norm = normalize_status(str(value).strip())
+    if not norm:
+        return False
+    return "lost" in norm or "dead" in norm or "abandon" in norm
+
+
+def _load_opportunities_file(file_path: str) -> pd.DataFrame:
+    """Load an Opportunities export and drop dead/lost-stage rows before address matching.
+    When no Stage-like column is present, every row is kept (unchanged behavior)."""
+    df = _load_crm_file(file_path)
+    stage_col = find_column_name(df, OPP_STAGE_CANDIDATES)
+    if not stage_col:
+        return df
+    mask = ~df[stage_col].apply(_is_dead_opportunity_stage)
+    return df.loc[mask].copy().reset_index(drop=True)
 
 
 @dataclass
@@ -908,7 +934,7 @@ def analyze(
     if opportunities_path:
         report(26, "Loading opportunities…")
         opp_index = _build_match_index(
-            _load_crm_file(opportunities_path), OPP_ADDR, OPP_DATE_CANDIDATES
+            _load_opportunities_file(opportunities_path), OPP_ADDR, OPP_DATE_CANDIDATES
         )
     else:
         warnings.append("Opportunities file not uploaded — Opp funnel counts will be zero.")

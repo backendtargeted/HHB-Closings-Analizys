@@ -371,7 +371,7 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 **Universe (buybox — delicate / provider evaluation):** CleanREISift sold scrape rows whose `property_city` matches the marketed-town allowlist in `backend/app/services/buybox_towns.py` (normalized casefold / strip). Rows outside the buybox are dropped at ingest before collapse/enrich/KPIs. **Full contract:** [BUYBOX.md](BUYBOX.md) (what we filter, what sold CSV cannot support, how to phrase KPIs). Address keys rebuilt with `make_address_key` from property address parts (do not trust the scrape `address_key` string for joins).
 
-**Required inputs:** Sold CSV + REISift export + Salesforce Total Qualified Leads. Opportunities optional (Opp stage). This is the single sold-properties product report; the former REISift `in_sold_properties_full` cohort report was removed.
+**Required inputs:** Sold CSV + REISift export + Salesforce Total Qualified Leads. Opportunities optional (Opp stage). **Salesforce Transaction Pipeline** optional (`Closed Date` → Closed; `Date Contract Signed` / accepted offer → Opportunity / under contract). This is the single sold-properties product report; the former REISift `in_sold_properties_full` cohort report was removed.
 
 **Grain:** Unique **property × sold month** (`dataflik_id` + month, else `address_key` + month). Multiple Dataflik `transaction_id`s for the same sale collapse to one row with `transaction_count`. Segment KPIs count property rows; `sold_rows_ingested` = buybox-kept transactions; `sold_rows_scanned` / `sold_rows_excluded_buybox` are transparency only.
 
@@ -382,10 +382,12 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 - **Marketed:** `(8020)` CC/SMS/DM tag events on/before sold month end.
 - **Lead:** SF engaged tag on/before sold month, or `PodioSellerLeads` presence (no Create Date clock).
 - **Qualified Lead:** QL Create Date on/after first Prospect list month and on/before sold month end.
-- **Opportunity:** Opportunities file match **or** under-contract milestone (contract is Opp, not a separate stage).
-- **Closed:** HHB `(CLOSED) 8020` on/before sold month end.
+- **Opportunity:** Opportunities file match **or** under-contract milestone (REISift tags) **or** SF Transaction Pipeline contract/accepted-offer date on/before sold month end (contract is Opp, not a separate stage).
+- **Closed:** HHB `(CLOSED) 8020` on/before sold month end **or** SF Transaction Pipeline `Closed Date` on/before sold month end.
 
-**Data caveat:** CleanREISift In My Records scrape must return non-zero totals for every sold month (historically Mar–Jul 2026 returned `total=0`). Re-scrape before trusting Lost KPIs.
+**SF Transaction Pipeline match window:** bounded like QL/Opportunity — on/after the property's first Prospect-list month when known, else on/after `sold month − 24 months` (`TXN_NO_LIST_LOOKBACK_MONTHS`), and on/before sold month end. Without a lower bound, address-only matching (see below) could reach back to an unrelated historical closing at the same street address. The real export has **no Address (City) column**, so matching falls back to street+zip only (measured ~1% key-collision rate on a 526-row sample — low but non-zero). "Date Contract Signed" and "Date Contract Signed (MLS)" / "Date of Accepted Offer" / "Date of Original Offer" can all be populated at once with very different fill rates in the real file — they are coalesced per row by priority (signed > MLS-signed > accepted offer > original offer), not by first-listed-column-wins, so no populated column is silently dropped. Offer dates count even when the source `Path` column says the deal went "Dead" (an offer was made — not currently filtered by deal outcome).
+
+**Data caveat (confirmed still active 2026-09-21 against the live `sold_properties_full.csv`):** CleanREISift In My Records scrape must return non-zero totals for every sold month. The current file has `in_my_records = TRUE` for **0** of 5606 buybox rows in Mar/Apr/May/Jun/Jul 2026 (only Feb 2026 has any) — root cause is on the REISift/Dataflik side (its "In My Records" tab query itself reports `total=0` for those months; the sibling "Investor" tab query succeeds every month, so this is not an auth/scraper bug — see BUYBOX.md). Re-scrape before trusting Lost / had-presence KPIs for those months on that flag alone. **Independent of this gap:** whether HHB purchased a property as a Prospect (8020 / Court Alerts / LI Profiles) is read from REISift `Tags` (`list_purchase_date` / `prospect_list_source`), not from `in_my_records` — that signal still covers Mar–Jul 2026 sold properties normally.
 
 **Export:** Summary, Lost By Stage, By Segment, Pipeline Funnel, By Month, Journey, Never Prospected Inv, Lost To Investor, Investor, We Had, In Our List, Both, Never Marketed.
 

@@ -37,6 +37,7 @@ from .probate import (
     _best_hit,
     _build_match_index,
     _load_crm_file,
+    _load_opportunities_file,
     _phones_from_row,
     months_between,
 )
@@ -741,7 +742,7 @@ def analyze(
     if opportunities_path:
         report(26, "Loading opportunities…")
         opp_index = _build_match_index(
-            _load_crm_file(opportunities_path), OPP_ADDR, OPP_DATE_CANDIDATES
+            _load_opportunities_file(opportunities_path), OPP_ADDR, OPP_DATE_CANDIDATES
         )
     else:
         warnings.append("Opportunities file not uploaded — Opportunity stage counts will be zero.")

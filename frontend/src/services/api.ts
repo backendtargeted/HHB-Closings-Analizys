@@ -955,6 +955,7 @@ async function analyzeInvestorSoldDirect(
   reisiftFile?: File,
   qlFile?: File,
   oppsFile?: File,
+  txnFile?: File,
   onProgress?: (pct: number, message: string) => void
 ): Promise<InvestorSoldCompletedResponse> {
   const form = new FormData();
@@ -962,6 +963,7 @@ async function analyzeInvestorSoldDirect(
   if (reisiftFile) form.append('reisift_file', reisiftFile);
   if (qlFile) form.append('qualified_leads_file', qlFile);
   if (oppsFile) form.append('opportunities_file', oppsFile);
+  if (txnFile) form.append('transactions_file', txnFile);
   onProgress?.(5, 'Uploading…');
   const response = await api.post<{ job_id: string; status: string; message: string }>(
     '/investor-sold/analyze',
@@ -979,35 +981,49 @@ async function analyzeInvestorSoldResumable(
   reisiftFile?: File,
   qlFile?: File,
   oppsFile?: File,
+  txnFile?: File,
   onProgress?: (pct: number, message: string) => void
 ): Promise<InvestorSoldCompletedResponse> {
   onProgress?.(0, `Uploading ${soldFile.name} (chunked fallback)…`);
   const soldPath = await uploadFileResumable('tabular', soldFile, (pct, msg) => {
-    onProgress?.(Math.round(pct * 0.4), msg);
+    onProgress?.(Math.round(pct * 0.35), msg);
   });
   let reisiftPath: string | undefined;
   if (reisiftFile) {
-    onProgress?.(40, `Uploading ${reisiftFile.name}…`);
+    onProgress?.(35, `Uploading ${reisiftFile.name}…`);
     reisiftPath = await uploadFileResumable('reisift', reisiftFile, (pct, msg) => {
-      onProgress?.(40 + Math.round(pct * 0.3), msg);
+      onProgress?.(35 + Math.round(pct * 0.25), msg);
     });
   }
   let qlPath: string | undefined;
   if (qlFile) {
-    onProgress?.(70, `Uploading ${qlFile.name}…`);
+    onProgress?.(60, `Uploading ${qlFile.name}…`);
     qlPath = await uploadFileResumable('qualified_leads', qlFile, (pct, msg) => {
-      onProgress?.(70 + Math.round(pct * 0.1), msg);
+      onProgress?.(60 + Math.round(pct * 0.1), msg);
     });
   }
   let oppsPath: string | undefined;
   if (oppsFile) {
-    onProgress?.(80, `Uploading ${oppsFile.name}…`);
+    onProgress?.(70, `Uploading ${oppsFile.name}…`);
     oppsPath = await uploadFileResumable('tabular', oppsFile, (pct, msg) => {
+      onProgress?.(70 + Math.round(pct * 0.1), msg);
+    });
+  }
+  let txnPath: string | undefined;
+  if (txnFile) {
+    onProgress?.(80, `Uploading ${txnFile.name}…`);
+    txnPath = await uploadFileResumable('tabular', txnFile, (pct, msg) => {
       onProgress?.(80 + Math.round(pct * 0.1), msg);
     });
   }
   onProgress?.(90, 'Starting analysis…');
-  const started = await analyzeInvestorSoldFromPaths(soldPath, reisiftPath, qlPath, oppsPath);
+  const started = await analyzeInvestorSoldFromPaths(
+    soldPath,
+    reisiftPath,
+    qlPath,
+    oppsPath,
+    txnPath
+  );
   const result = await pollInvestorSoldJob(started.job_id, onProgress);
   onProgress?.(100, 'Done');
   return result;
@@ -1018,15 +1034,30 @@ export const analyzeInvestorSold = async (
   reisiftFile?: File,
   qlFile?: File,
   oppsFile?: File,
+  txnFile?: File,
   onProgress?: (pct: number, message: string) => void
 ): Promise<InvestorSoldCompletedResponse> => {
   try {
-    return await analyzeInvestorSoldDirect(soldFile, reisiftFile, qlFile, oppsFile, onProgress);
+    return await analyzeInvestorSoldDirect(
+      soldFile,
+      reisiftFile,
+      qlFile,
+      oppsFile,
+      txnFile,
+      onProgress
+    );
   } catch (err) {
     if (!shouldFallbackToResumableUpload(err)) {
       throw err;
     }
-    return analyzeInvestorSoldResumable(soldFile, reisiftFile, qlFile, oppsFile, onProgress);
+    return analyzeInvestorSoldResumable(
+      soldFile,
+      reisiftFile,
+      qlFile,
+      oppsFile,
+      txnFile,
+      onProgress
+    );
   }
 };
 
@@ -1034,12 +1065,14 @@ export const analyzeInvestorSoldFromPaths = async (
   soldPath: string,
   reisiftPath?: string,
   qlPath?: string,
-  oppsPath?: string
+  oppsPath?: string,
+  txnPath?: string
 ): Promise<{ job_id: string; status: string; message: string }> => {
   const body: Record<string, unknown> = { sold_path: soldPath };
   if (reisiftPath) body.reisift_path = reisiftPath;
   if (qlPath) body.qualified_leads_path = qlPath;
   if (oppsPath) body.opportunities_path = oppsPath;
+  if (txnPath) body.transactions_path = txnPath;
   const response = await api.post<{ job_id: string; status: string; message: string }>(
     '/investor-sold/analyze',
     body

@@ -63,6 +63,10 @@ Legacy **Regular attribution** (contact-history CSV → closings lifecycle) rema
 
 **Universe (buybox):** marketed-town allowlist only. Full contract: [BUYBOX.md](BUYBOX.md). Sold scrape rows outside those cities are **dropped at ingest**; KPIs never see them. Filter field available on the sold report today: `property_city` (property type / buybox score are **not** on the CSV — do not pretend they are filtered).
 
+**Inputs:** Sold CSV + REISift + QL (required). Opportunities optional. **Salesforce Transaction Pipeline** optional (Closed Date → Closed; Date Contract Signed / accepted offer → Opportunity).
+
+**Pipeline depth table:** cumulative “reached at least” (Prospect ≥ Marketed ≥ …). **Lost by furthest stage** stays exclusive. Marketing touches imply Prospect on the ladder.
+
 **Primary KPI — Never prospected (investor)** = investor sale **and** not HHB-closed **and** no Prospect list from 8020 / Court Alerts / LI Profiles. Denominator = investor sales **inside buybox**. Use this when judging list/provider coverage — always qualify as “among marketed-town sales.”
 
 **Lost** (unchanged) = we had it **and** investor bought it **and** we did not HHB-close it (also buybox-scoped).
@@ -73,7 +77,7 @@ Legacy **Regular attribution** (contact-history CSV → closings lifecycle) rema
 
 **Grain:** unique property × sold month (`dataflik_id` + month).
 
-**Data caveat:** CleanREISift In My Records scrape must return non-zero totals for every sold month before trusting Lost KPIs. Produce CSV via `D:\HHB\CleanREISift` (`scrape_sold_properties.py` / enrich). See [ECOSYSTEM.md](ECOSYSTEM.md).
+**Data caveat:** CleanREISift In My Records scrape must return non-zero totals for every sold month before trusting Lost KPIs. Confirmed still `0` for Mar–Jul 2026 as of 2026-09-21 (root cause: the scraper's "In My Records" tab query itself returns `total=0` from the API for those months — not an auth/scraper bug, see BUYBOX.md). This does **not** blind Gate 7 to prospect-list purchases in that window — whether we bought a property as a Prospect (8020 / Court Alerts / LI Profiles) comes from REISift `Tags`, a separate source from `in_my_records`. Produce CSV via `D:\HHB\CleanREISift` (`scrape_sold_properties.py` / enrich). See [ECOSYSTEM.md](ECOSYSTEM.md).
 
 ---
 
@@ -82,7 +86,7 @@ Legacy **Regular attribution** (contact-history CSV → closings lifecycle) rema
 1. **Gather** cold / SMS / CRM (and closings if backfilling).
 2. **Gate 1** — generate REISift import bundle → import into REISift → spot-check.
 3. **Export** contacts with `Tags`, `Lists`, `Created`, address columns.
-4. **Export** Salesforce Total Qualified Leads (and Opps / Transactions if needed).
+4. **Export** Salesforce Total Qualified Leads (and Opps / Transaction Pipeline if needed for Gate 5–7).
 5. Run **Gate 2** (and/or **Gate 3**) for list + channel performance.
 6. Run **Gate 5** / **Gate 6** when answering probate or Court Alerts first-list questions.
 7. **CleanREISift** — refresh `sold_properties_full.csv` (verify In My Records totals) → **Gate 7** (buybox towns only — [BUYBOX.md](BUYBOX.md)).

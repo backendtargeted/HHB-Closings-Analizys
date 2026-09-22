@@ -70,6 +70,7 @@ def _analyze_in_subprocess(
     reisift_path: Optional[str],
     ql_path: Optional[str],
     opportunities_path: Optional[str],
+    transactions_path: Optional[str],
     job_dir_str: str,
 ) -> None:
     job_dir = Path(job_dir_str)
@@ -100,6 +101,7 @@ def _analyze_in_subprocess(
             reisift_path=reisift_path,
             ql_path=ql_path,
             opportunities_path=opportunities_path,
+            transactions_path=transactions_path,
             on_progress=on_progress,
         )
         metrics = result.to_api_dict()
@@ -251,6 +253,7 @@ def _run_investor_sold_job(
     reisift_path: Optional[str],
     ql_path: Optional[str],
     opportunities_path: Optional[str],
+    transactions_path: Optional[str],
 ) -> None:
     job_dir = IS_ROOT / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -274,6 +277,7 @@ def _run_investor_sold_job(
             reisift_path,
             ql_path,
             opportunities_path,
+            transactions_path,
             str(job_dir),
         ),
         daemon=True,
@@ -289,6 +293,7 @@ def _start_investor_sold_job(
     reisift_path: Optional[str],
     ql_path: Optional[str],
     opportunities_path: Optional[str],
+    transactions_path: Optional[str] = None,
     job_id: str | None = None,
 ) -> tuple[dict[str, Any], int]:
     job_id = job_id or str(uuid.uuid4())
@@ -305,7 +310,14 @@ def _start_investor_sold_job(
     }
     thread = threading.Thread(
         target=_run_investor_sold_job,
-        args=(job_id, sold_path, reisift_path, ql_path, opportunities_path),
+        args=(
+            job_id,
+            sold_path,
+            reisift_path,
+            ql_path,
+            opportunities_path,
+            transactions_path,
+        ),
         daemon=True,
     )
     thread.start()
@@ -332,6 +344,7 @@ def investor_sold_analyze():
         reisift_raw = (data.get("reisift_path") or "").strip() or None
         ql_raw = (data.get("qualified_leads_path") or data.get("ql_path") or "").strip() or None
         opps_raw = (data.get("opportunities_path") or "").strip() or None
+        txn_raw = (data.get("transactions_path") or "").strip() or None
         if not sold_raw:
             return jsonify({"detail": "sold_path is required"}), 400
         if not reisift_raw:
@@ -345,10 +358,17 @@ def investor_sold_analyze():
             opportunities_path = (
                 str(resolve_trusted_final_path(opps_raw)) if opps_raw else None
             )
+            transactions_path = (
+                str(resolve_trusted_final_path(txn_raw)) if txn_raw else None
+            )
         except ValueError as exc:
             return jsonify({"detail": str(exc)}), 400
         payload, status = _start_investor_sold_job(
-            sold_path, reisift_path, ql_path, opportunities_path
+            sold_path,
+            reisift_path,
+            ql_path,
+            opportunities_path,
+            transactions_path,
         )
         return jsonify(_sanitize_for_json(payload)), status
 
@@ -369,11 +389,13 @@ def investor_sold_analyze():
     reisift_path = _save_upload(reisift, job_dir)
     ql_path = _save_upload(ql, job_dir)
     opportunities_path = _save_upload(request.files.get("opportunities_file"), job_dir)
+    transactions_path = _save_upload(request.files.get("transactions_file"), job_dir)
     payload, status = _start_investor_sold_job(
         sold_path or "",
         reisift_path,
         ql_path,
         opportunities_path,
+        transactions_path,
         job_id=job_id,
     )
     return jsonify(_sanitize_for_json(payload)), status

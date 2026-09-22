@@ -21,6 +21,7 @@ const InvestorSoldWorkspace = ({
   const [reisiftFile, setReisiftFile] = useState<File | null>(null);
   const [qlFile, setQlFile] = useState<File | null>(null);
   const [oppsFile, setOppsFile] = useState<File | null>(null);
+  const [txnFile, setTxnFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
@@ -33,7 +34,7 @@ const InvestorSoldWorkspace = ({
   const handleRun = async () => {
     if (!soldFile || !reisiftFile || !qlFile) {
       setError(
-        'Upload sold CSV, REISift export, and Salesforce Total QL (Opportunities optional).'
+        'Upload sold CSV, REISift export, and Salesforce Total QL (Opps / Transactions optional).'
       );
       return;
     }
@@ -47,6 +48,7 @@ const InvestorSoldWorkspace = ({
         reisiftFile,
         qlFile,
         oppsFile ?? undefined,
+        txnFile ?? undefined,
         (pct, msg) => {
           setProgress(pct);
           setStatusMessage(msg);
@@ -76,6 +78,7 @@ const InvestorSoldWorkspace = ({
     setReisiftFile(null);
     setQlFile(null);
     setOppsFile(null);
+    setTxnFile(null);
   };
 
   const handleExport = async () => {
@@ -111,9 +114,9 @@ const InvestorSoldWorkspace = ({
       <p className="text-sm text-violet-950/80 mt-2 leading-relaxed max-w-2xl">
         Primary question: how many properties we had (list or CRM) were lost to another investor
         (investor sale, not HHB closed), and at what furthest pipeline stage. Universe is
-        CleanREISift <code className="text-xs">sold_properties_full.csv</code>. Canonical
-        pipeline: Prospect (8020 / Court Alerts / LI Profiles) → Marketed (CC/DM/SMS) → Lead
-        (Salesforce/Podio) → Qualified Lead → Opportunity (includes under contract) → Closed.
+        CleanREISift <code className="text-xs">sold_properties_full.csv</code> filtered to
+        marketed-town buybox. Canonical pipeline: Prospect → Marketed → Lead → Qualified Lead →
+        Opportunity → Closed. Optional Salesforce Transaction Pipeline fills Closed / contract.
       </p>
 
       <div className="mt-6 grid gap-4 max-w-md">
@@ -150,6 +153,15 @@ const InvestorSoldWorkspace = ({
             type="file"
             accept=".csv,.xlsx,.xls"
             onChange={(e) => setOppsFile(e.target.files?.[0] ?? null)}
+            className="mt-1 block w-full text-sm"
+          />
+        </label>
+        <label className="block text-sm font-medium text-violet-950">
+          Transaction Pipeline (.xlsx) — optional
+          <input
+            type="file"
+            accept=".csv,.xlsx,.xls"
+            onChange={(e) => setTxnFile(e.target.files?.[0] ?? null)}
             className="mt-1 block w-full text-sm"
           />
         </label>

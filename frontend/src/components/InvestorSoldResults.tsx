@@ -21,6 +21,21 @@ type JourneyFilter =
   | 'opps'
   | 'hhb'
   | string;
+
+const PIPELINE_STAGE_ORDER = [
+  'NONE',
+  'PROSPECT',
+  'MARKETED',
+  'LEAD',
+  'QUALIFIED_LEAD',
+  'OPPORTUNITY',
+  'HHB_CLOSED',
+] as const;
+
+function pipelineRank(stage: string): number {
+  const idx = PIPELINE_STAGE_ORDER.indexOf(stage as (typeof PIPELINE_STAGE_ORDER)[number]);
+  return idx >= 0 ? idx : 0;
+}
 type SortKey = keyof InvestorSoldRow;
 type SortDir = 'asc' | 'desc';
 
@@ -146,7 +161,12 @@ const InvestorSoldResults = ({
     else if (journeyFilter === 'opps')
       rows = rows.filter((r) => r.opp_matched || Boolean(r.under_contract_date));
     else if (journeyFilter === 'hhb') rows = rows.filter((r) => Boolean(r.hhb_closed_date));
-    else if (journeyFilter !== 'all') {
+    else if (journeyFilter === 'NONE') {
+      rows = rows.filter((r) => !r.pipeline_stage || r.pipeline_stage === 'NONE');
+    } else if (PIPELINE_STAGE_ORDER.includes(journeyFilter as (typeof PIPELINE_STAGE_ORDER)[number])) {
+      const minRank = pipelineRank(journeyFilter);
+      rows = rows.filter((r) => pipelineRank(r.pipeline_stage) >= minRank);
+    } else if (journeyFilter !== 'all') {
       rows = rows.filter((r) => r.pipeline_stage === journeyFilter);
     }
 
@@ -391,11 +411,10 @@ const InvestorSoldResults = ({
         </div>
 
         <div className="rounded-xl border border-stone-200 bg-white p-4">
-          <h3 className="text-sm font-bold text-stone-800">Pipeline depth (highest stage)</h3>
+          <h3 className="text-sm font-bold text-stone-800">Pipeline depth (reached at least)</h3>
           <p className="text-xs text-stone-500 mt-1 leading-relaxed">
-            Prospect (8020 / Court Alerts / LI Profiles) → Marketed (CC/DM/SMS) → Lead
-            (Salesforce/Podio) → Qualified Lead → Opportunity → Closed. Each property once at
-            furthest stage.
+            Prospect → Marketed → Lead → Qualified Lead → Opportunity → Closed. Counts are
+            cumulative (Prospect ≥ Marketed ≥ …). No list / history = never reached Prospect.
           </p>
           <table className="mt-3 w-full text-sm">
             <thead>

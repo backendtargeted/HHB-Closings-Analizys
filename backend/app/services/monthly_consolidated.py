@@ -55,7 +55,12 @@ REISIFT_ADDR = {
     "street": ["Property address", "Property Address", "Address"],
     "city": ["Property city", "Property City", "City"],
     "state": ["Property state", "Property State", "State"],
-    "zip": ["Property zip", "Property zip5", "Property Zip", "Zip"],
+    # "Property zip5" preferred over "Property zip": in the real export both columns exist
+    # at once, and "Property zip" is ZIP+4 format (e.g. "11735-1842") on ~98% of rows while
+    # "Property zip5" is the clean 5-digit zip. Every other address source in this codebase
+    # (sold CSV, QL, Opportunities, Transaction Pipeline) uses plain 5-digit zips, so picking
+    # the ZIP+4 column here silently broke address-key matching for nearly every REISift row.
+    "zip": ["Property zip5", "Property zip", "Property Zip", "Zip"],
 }
 
 REISIFT_PHONE_CANDIDATES = [

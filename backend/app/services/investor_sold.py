@@ -3,7 +3,7 @@ Gate 7 — Investor & In-List Sold + canonical pipeline depth.
 
 Universe: CleanREISift sold_properties_full.csv filtered at ingest to HHB
 marketed-town buybox cities only (see buybox_towns.py). Property × sold month.
-Requires REISift + Salesforce QL. Opportunities optional.
+Requires REISift + Salesforce QL. Opportunities and Transaction Pipeline optional.
 Lost to investor = we had it (In My Records OR REISift/CRM presence) AND investor
 AND not HHB closed. Loss rate denominator = properties we had.
 Primary coverage KPI: never prospected investor = investor AND not Closed AND no
@@ -33,10 +33,13 @@ from .probate import (
     OPP_DATE_CANDIDATES,
     QL_ADDR,
     QL_PHONE_CANDIDATES,
+    TXN_ADDR,
+    TXN_DATE_CANDIDATES,
     MatchIndex,
     _best_hit,
     _build_match_index,
     _load_crm_file,
+    _load_opportunities_file,
     _phones_from_row,
     months_between,
 )
@@ -58,6 +61,7 @@ from .sold_properties import (
     _month_end,
     _parse_iso_dt,
     _pct,
+    _pipeline_rank,
     _podio_crm_present,
     _sf_engaged_before,
     earliest_prospect_list,
@@ -65,6 +69,27 @@ from .sold_properties import (
 )
 
 REPORT_TYPE = "investor_sold"
+
+# SF Transaction Pipeline — contract / offer dates count as Opportunity / under-contract
+# evidence (Closed Date uses TXN_DATE_CANDIDATES instead; see REPORT_METHODOLOGY.md §21).
+# All four can be present at once in the real export with different fill rates (e.g. "Date
+# Contract Signed" ~27% filled, "Date of Accepted Offer" ~90% filled in a real sample) — they
+# are coalesced (earliest non-null wins per row), not treated as first-match aliases of one
+# column. See _coalesce_earliest_date_column.
+# Caveat: "Date of Accepted Offer" / "Date of Original Offer" are populated even when the
+# real export's own `Path` column says a deal is "Dead" (offer made, fell through) — this
+# intentionally still counts as Opportunity/under-contract reach per the documented pipeline
+# (an offer was made; we did engage), not as HHB_CLOSED. `Path` is not currently read.
+TXN_CONTRACT_DATE_CANDIDATES = [
+    "Date Contract Signed",
+    "Date Contract Signed (MLS)",
+    "Date of Accepted Offer",
+    "Date of Original Offer",
+]
+
+# _apply_sf_txn: how far back a Transaction Pipeline match may reach when the property has no
+# REISift-derived first Prospect-list month to anchor to (see _best_hit's on_or_after bound).
+TXN_NO_LIST_LOOKBACK_MONTHS = 24
 
 ProgressCallback = Callable[[int, str], None]
 
@@ -706,7 +731,8 @@ def _enrich_row(
     if list_dt is not None or sold_row.in_my_records or prospect_list_source or lists_src:
         pipeline = "PROSPECT"
     if sold_row.marketed:
-        pipeline = _max_pipeline(pipeline, "MARKETED")
+        # Marketing evidence implies the property was at least a Prospect on the ladder.
+        pipeline = _max_pipeline(pipeline, "PROSPECT", "MARKETED")
 
     events = build_events(parsed)
     if sold_end is not None:
@@ -818,11 +844,95 @@ def _enrich_row(
         sold_row.months_list_to_prospect = sold_row.months_list_to_qualified_lead
 
 
+def _coalesce_priority_date_column(df: pd.DataFrame, candidates: List[str]) -> pd.Series:
+    """Per-row: first non-null date among candidate columns present, in priority order.
+
+    Unlike find_column_name's single-column pick (built for the same field renamed across
+    export vintages), a real export can carry more than one of these columns *at once* with
+    different fill rates (e.g. "Date Contract Signed" ~27% filled alongside "Date of Accepted
+    Offer" ~90% filled) — using only the first-listed column's name silently drops rows that
+    only have data in a later-listed one. Priority (not earliest-wins) so a genuine "Date
+    Contract Signed" is trusted over an earlier, weaker "Date of Accepted Offer" on the same row.
+    """
+    found = [c for c in candidates if c in df.columns]
+    if not found:
+        return pd.Series([pd.NaT] * len(df), index=df.index)
+    result = pd.to_datetime(df[found[0]], errors="coerce")
+    for c in found[1:]:
+        result = result.combine_first(pd.to_datetime(df[c], errors="coerce"))
+    return result
+
+
+def _apply_sf_txn(
+    sold_row: InvestorSoldRow,
+    *,
+    txn_closed_index: Optional[MatchIndex],
+    txn_contract_index: Optional[MatchIndex],
+    sold_ts: Optional[pd.Timestamp],
+) -> None:
+    """Overlay Salesforce Transaction Pipeline Closed / contract evidence.
+
+    Bounded like the QL/Opportunity lookups in _enrich_row: a match must fall on/after the
+    property's first Prospect-list month (or, absent any REISift/list evidence, within
+    TXN_NO_LIST_LOOKBACK_MONTHS) and on/before the sold month end. Without a lower bound,
+    _best_hit's "earliest qualifying row" pick can reach back to an unrelated, much older
+    Transaction Pipeline record at the same street address — real addresses resell over the
+    years — and wrongly credit today's external sale as one HHB closed or contracted.
+    """
+    if txn_closed_index is None and txn_contract_index is None:
+        return
+    sold_end = _month_end(sold_ts) if sold_ts is not None else None
+    before = (sold_end + pd.Timedelta(days=1)) if sold_end is not None else None
+    pipeline = sold_row.pipeline_stage or "NONE"
+
+    list_dt = _parse_iso_dt(sold_row.list_purchase_date) if sold_row.list_purchase_date else None
+    if list_dt is not None:
+        on_or_after = pd.Timestamp(year=list_dt.year, month=list_dt.month, day=1)
+    elif sold_end is not None:
+        on_or_after = sold_end - pd.DateOffset(months=TXN_NO_LIST_LOOKBACK_MONTHS)
+    else:
+        on_or_after = None
+
+    if txn_contract_index is not None and not sold_row.under_contract_date:
+        contract_hit = _best_hit(
+            txn_contract_index,
+            sold_row.address_key,
+            [],
+            on_or_after=on_or_after,
+            before=before,
+        )
+        if contract_hit is not None and contract_hit.date is not None:
+            sold_row.under_contract_date = _iso_day(contract_hit.date)
+            sold_row.opp_matched = True
+            if not sold_row.opp_created_date:
+                sold_row.opp_created_date = sold_row.under_contract_date
+            pipeline = _max_pipeline(pipeline, "OPPORTUNITY")
+
+    if txn_closed_index is not None and not sold_row.hhb_closed_date:
+        closed_hit = _best_hit(
+            txn_closed_index,
+            sold_row.address_key,
+            [],
+            on_or_after=on_or_after,
+            before=before,
+        )
+        if closed_hit is not None and closed_hit.date is not None:
+            sold_row.hhb_closed_date = _iso_day(closed_hit.date)
+            pipeline = _max_pipeline(pipeline, "HHB_CLOSED")
+
+    if pipeline != (sold_row.pipeline_stage or "NONE"):
+        sold_row.pipeline_stage = pipeline
+        sold_row.pipeline_stage_label = PIPELINE_LABELS.get(pipeline, pipeline)
+    sold_row.had_presence = had_presence(sold_row)
+    sold_row.never_prospected_investor = is_never_prospected_investor(sold_row)
+
+
 def analyze(
     sold_path: str,
     reisift_path: Optional[str] = None,
     ql_path: Optional[str] = None,
     opportunities_path: Optional[str] = None,
+    transactions_path: Optional[str] = None,
     on_progress: Optional[ProgressCallback] = None,
 ) -> InvestorSoldResult:
     def report(pct: int, message: str) -> None:
@@ -880,10 +990,27 @@ def analyze(
     if opportunities_path:
         report(26, "Loading opportunities…")
         opp_index = _build_match_index(
-            _load_crm_file(opportunities_path), OPP_ADDR, OPP_DATE_CANDIDATES
+            _load_opportunities_file(opportunities_path), OPP_ADDR, OPP_DATE_CANDIDATES
         )
     else:
         warnings.append("Opportunities file not uploaded — Opportunity stage counts will be zero.")
+
+    txn_closed_index: Optional[MatchIndex] = None
+    txn_contract_index: Optional[MatchIndex] = None
+    if transactions_path:
+        report(30, "Loading Salesforce Transaction Pipeline…")
+        txn_df = _load_crm_file(transactions_path)
+        txn_closed_index = _build_match_index(txn_df, TXN_ADDR, list(TXN_DATE_CANDIDATES))
+        # Coalesce (not first-match) — see TXN_CONTRACT_DATE_CANDIDATES / _coalesce_earliest_date_column.
+        txn_df = txn_df.copy()
+        txn_df["_gate7_contract_signed"] = _coalesce_priority_date_column(
+            txn_df, TXN_CONTRACT_DATE_CANDIDATES
+        )
+        txn_contract_index = _build_match_index(txn_df, TXN_ADDR, ["_gate7_contract_signed"])
+    else:
+        warnings.append(
+            "Transactions file not uploaded — Closed/Opp from SF Transaction Pipeline will be zero."
+        )
 
     report(35, "Building sold property rows (buybox cities only)…")
     txn_rows: List[InvestorSoldRow] = []
@@ -965,6 +1092,12 @@ def analyze(
             opp_index=opp_index,
             sold_ts=sold_ts_by_collapse.get(ck),
         )
+        _apply_sf_txn(
+            sold_row,
+            txn_closed_index=txn_closed_index,
+            txn_contract_index=txn_contract_index,
+            sold_ts=sold_ts_by_collapse.get(ck),
+        )
 
     report(90, "Building rollups…")
     n = len(rows)
@@ -1042,16 +1175,23 @@ def analyze(
     }
 
     pipe_counter: Counter[str] = Counter(r.pipeline_stage for r in rows)
-    pipeline_funnel = [
-        {
-            "stage": stage,
-            "label": PIPELINE_LABELS.get(stage, stage),
-            "count": pipe_counter.get(stage, 0),
-            "share_pct": _pct(pipe_counter.get(stage, 0), n),
-        }
-        for stage in PIPELINE_ORDER
-        if pipe_counter.get(stage, 0) > 0 or stage in PIPELINE_FUNNEL_ALWAYS
-    ]
+    # Pipeline depth: NONE = exclusive residual; other stages = cumulative "reached at least".
+    pipeline_funnel: List[Dict[str, Any]] = []
+    for stage in PIPELINE_ORDER:
+        if stage == "NONE":
+            count = pipe_counter.get("NONE", 0)
+        else:
+            rank = _pipeline_rank(stage)
+            count = sum(1 for r in rows if _pipeline_rank(r.pipeline_stage) >= rank)
+        if count > 0 or stage in PIPELINE_FUNNEL_ALWAYS:
+            pipeline_funnel.append(
+                {
+                    "stage": stage,
+                    "label": PIPELINE_LABELS.get(stage, stage),
+                    "count": count,
+                    "share_pct": _pct(count, n),
+                }
+            )
 
     by_seg: Dict[str, Dict[str, Any]] = {s: _empty_segment_rollup(s) for s in SEGMENT_IDS}
     lag_by_seg: Dict[str, List[int]] = {s: [] for s in SEGMENT_IDS}

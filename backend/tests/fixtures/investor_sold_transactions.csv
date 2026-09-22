@@ -1,7 +1,14 @@
-period_date,period_label,dataflik_id,transaction_id,parcel_number,buyer_full_name,property_address,property_city,property_zip,county,state,sale_amount,investor,in_my_records,investor_score,distressors,address_key
-2026-07-01,Jul 2026,1,t1,,Buyer Inv,100 Main St,Hempstead,11550,Nassau,NY,250000,TRUE,FALSE,80,,main
-2026-07-01,Jul 2026,1,t1b,,Buyer Inv,100 Main St,Hempstead,11550,Nassau,NY,250000,TRUE,FALSE,80,,main
-2026-07-01,Jul 2026,2,t2,,Buyer List,200 Oak Ave,Freeport,11520,Nassau,NY,180000,FALSE,TRUE,10,,oak
-2026-06-01,Jun 2026,3,t3,,Buyer Both,300 Pine Rd,Huntington,11743,Suffolk,NY,310000,TRUE,TRUE,90,,pine
-2026-06-01,Jun 2026,4,t4,,Buyer Neither,400 Elm St,Astoria,11102,Queens,NY,220000,FALSE,FALSE,5,,elm
-2026-05-01,May 2026,5,t5,,Buyer Inv2,500 Cedar Ln,Coram,11727,Suffolk,NY,195000,TRUE,FALSE,70,,cedar
+period_date,period_label,dataflik_id,transaction_id,parcel_number,buyer_full_name,property_address,property_city,property_zip,county,state,sale_amount,investor,in_my_records,investor_score,distressors,address_key
+
+2026-07-01,Jul 2026,1,t1,,Buyer Inv,100 Main St,Hempstead,11550,Nassau,NY,250000,TRUE,FALSE,80,,main
+
+2026-07-01,Jul 2026,1,t1b,,Buyer Inv,100 Main St,Hempstead,11550,Nassau,NY,250000,TRUE,FALSE,80,,main
+
+2026-07-01,Jul 2026,2,t2,,Buyer List,200 Oak Ave,Freeport,11520,Nassau,NY,180000,FALSE,TRUE,10,,oak
+
+2026-06-01,Jun 2026,3,t3,,Buyer Both,300 Pine Rd,Huntington,11743,Suffolk,NY,310000,TRUE,TRUE,90,,pine
+
+2026-06-01,Jun 2026,4,t4,,Buyer Neither,400 Elm St,Astoria,11102,Queens,NY,220000,FALSE,FALSE,5,,elm
+
+2026-05-01,May 2026,5,t5,,Buyer Inv2,500 Cedar Ln,Coram,11727,Suffolk,NY,195000,TRUE,FALSE,70,,cedar
+
