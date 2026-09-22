@@ -36,6 +36,19 @@ function pipelineRank(stage: string): number {
   const idx = PIPELINE_STAGE_ORDER.indexOf(stage as (typeof PIPELINE_STAGE_ORDER)[number]);
   return idx >= 0 ? idx : 0;
 }
+
+// Pipeline depth is cumulative ("reached this stage or further" — e.g. a property that
+// matched a Qualified Lead record directly, with no separate Lead-stage signal, still counts
+// here under Lead). The top KPI tiles above ("Leads", "Qualified Leads", "Opportunities") are
+// a different, non-cumulative count of properties that matched that stage's own signal
+// directly. Same underlying data, different question — reworded so the two don't read as
+// the same metric shown twice.
+const PIPELINE_DEPTH_LABELS: Record<string, string> = {
+  MARKETED: 'Marketed or further',
+  LEAD: 'Lead or further',
+  QUALIFIED_LEAD: 'Qualified Lead or further',
+  OPPORTUNITY: 'Opportunity or further',
+};
 type SortKey = keyof InvestorSoldRow;
 type SortDir = 'asc' | 'desc';
 
@@ -433,7 +446,7 @@ const InvestorSoldResults = ({
                   }`}
                   onClick={() => setJourneyFilter(row.stage)}
                 >
-                  <td className="py-1.5">{row.label}</td>
+                  <td className="py-1.5">{PIPELINE_DEPTH_LABELS[row.stage] ?? row.label}</td>
                   <td className="py-1.5">{row.count}</td>
                   <td className="py-1.5">{row.share_pct}%</td>
                 </tr>
