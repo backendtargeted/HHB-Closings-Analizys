@@ -124,12 +124,14 @@ These are **not** separate markets — they exist so dirty `property_city` value
 
 | KPI | Meaning **inside buybox only** | Do **not** read as |
 |-----|--------------------------------|--------------------|
-| **Never prospected (investor)** | Investor sale in a marketed town, not HHB-closed, no 8020 / Court Alerts / LI Profiles Prospect list | \"Provider missed all of NY\" |
+| **Never prospected (investor)** | Investor sale in a marketed town, not HHB-closed, no 8020 / Court Alerts / LI Profiles Prospect list on or before that property's sold month end; pre-report history still counts | \"Provider missed all of NY\" |
 | **Lost to investor** | We had presence (scrape In My Records **or** REISift/CRM) + investor + not closed | Failures outside marketed towns |
 | **Pipeline depth / No list history** | Furthest stage among **buybox** sales | Statewide emptiness |
 | **In Our List** segment | Scrape `in_my_records` among buybox sales | Same as \"has Prospect tags\" |
 
 When presenting to stakeholders: always say **\"among marketed-town sales\"** (or cite buybox town count + excluded scrape rows from the header).
+
+Headline Marketed → Closed cards are cumulative **“reached at least”** counts. Each card's percentage is divided by all buybox property × sold-month rows, so Closed is included in Opportunity and every earlier pipeline stage even when a separate lower-stage source file did not match.
 
 ---
 

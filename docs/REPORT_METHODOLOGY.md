@@ -365,7 +365,7 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 **Question:** Of scraped external NY sales (`sold_properties_full.csv`) **in HHB marketed-town buybox cities**, how many investor sales were **never prospected** (no 8020 / Court Alerts / LI Profiles), how many properties we had were **lost to another investor**, at what furthest pipeline stage, and how do investor / in-list / both / neither segments compare?
 
-**Primary KPI — Never prospected (investor):** `investor` AND not HHB Closed AND no Prospect list source in `{8020, court_alerts, lip}`. Rate denominator = investor property×month rows. This is the main Sold-gate coverage KPI (not a new product gate).
+**Primary KPI — Never prospected (investor):** `investor` AND not HHB Closed AND no Prospect list source in `{8020, court_alerts, lip}` on or before that property's sold month end. Prospect history before the report window still receives credit; a list event after the property's sale does not. Rate denominator = investor property×month rows. This is the main Sold-gate coverage KPI (not a new product gate).
 
 **Lost definition (secondary, unchanged):** We had it (scrape `in_my_records` **or** REISift/CRM presence: list tags, marketed, Podio/SF lead, QL, opp, UC, Closed) AND `investor` AND not HHB Closed. Loss rate denominator = properties we had. Scrape “In Our List” remains a segment cut, not a second loss KPI.
 
@@ -375,10 +375,10 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 **Grain:** Unique **property × sold month** (`dataflik_id` + month, else `address_key` + month). Multiple Dataflik `transaction_id`s for the same sale collapse to one row with `transaction_count`. Segment KPIs count property rows; `sold_rows_ingested` = buybox-kept transactions; `sold_rows_scanned` / `sold_rows_excluded_buybox` are transparency only.
 
-**Segments:** Investor (`investor`), In Our List (`in_my_records`), Both, Neither. Rollups by sold month and by segment (marketed %, lead %, qualified lead %, opps, UC, Closed, median list→sold).
+**Segments:** Investor (`investor`), In Our List (`in_my_records`), Both, Neither. Rollups by sold month and by segment (marketed %, lead %, qualified lead %, opps, UC, Closed, median list→sold). Headline Marketed → Closed cards and the Pipeline Funnel are cumulative “reached at least” counts; their percentages use all buybox property×month rows as the denominator.
 
 **Canonical pipeline clocks** (shared helpers in `backend/app/services/sold_properties.py`, after property×month collapse):
-- **Prospect:** 8020 (`List Purchased 8020`), Court Alerts (dated Court Alerts / List Purchased Court Alerts tags or Lists name), or LI Profiles (`Probates NY …` tags or LI Profiles / Probate Lists) / `in_my_records`.
+- **Prospect:** 8020 (`List Purchased 8020`), Court Alerts (dated Court Alerts / List Purchased Court Alerts tags or Lists name), or LI Profiles (`Probates NY …` tags or LI Profiles / Probate Lists) / `in_my_records`, credited only when the evidence exists on or before the sold month end.
 - **Marketed:** `(8020)` CC/SMS/DM tag events on/before sold month end.
 - **Lead:** SF engaged tag on/before sold month, or `PodioSellerLeads` presence (no Create Date clock).
 - **Qualified Lead:** QL Create Date on/after first Prospect list month and on/before sold month end.

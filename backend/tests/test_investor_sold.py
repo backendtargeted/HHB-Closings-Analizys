@@ -131,6 +131,10 @@ def test_pipeline_funnel_cumulative_prospect_ge_marketed(sold_path, reisift_path
     result = analyze(sold_path, reisift_path=reisift_path, ql_path=ql_path)
     funnel = {r["stage"]: r["count"] for r in result.pipeline_funnel}
     assert funnel.get("PROSPECT", 0) >= funnel.get("MARKETED", 0)
+    assert funnel.get("MARKETED", 0) >= funnel.get("LEAD", 0)
+    assert funnel.get("LEAD", 0) >= funnel.get("QUALIFIED_LEAD", 0)
+    assert funnel.get("QUALIFIED_LEAD", 0) >= funnel.get("OPPORTUNITY", 0)
+    assert funnel.get("OPPORTUNITY", 0) >= funnel.get("HHB_CLOSED", 0)
     marketed_rows = [r for r in result.rows if r.marketed]
     assert marketed_rows
     assert all(
@@ -142,6 +146,41 @@ def test_pipeline_funnel_cumulative_prospect_ge_marketed(sold_path, reisift_path
 
     assert all(_pipeline_rank(r.pipeline_stage) >= _pipeline_rank("MARKETED") for r in marketed_rows)
     assert all(_pipeline_rank(r.pipeline_stage) >= _pipeline_rank("PROSPECT") for r in marketed_rows)
+
+
+def test_never_prospected_uses_history_only_through_each_sold_month(tmp_path, ql_path):
+    sold = tmp_path / "sold.csv"
+    sold.write_text(
+        "period_date,period_label,dataflik_id,transaction_id,buyer_full_name,"
+        "property_address,property_city,property_zip,county,state,sale_amount,"
+        "investor,in_my_records\n"
+        "2026-07-01,Jul 2026,910,t910,Buyer One,10 Old List Rd,Hempstead,11550,"
+        "Nassau,NY,300000,TRUE,FALSE\n"
+        "2026-07-01,Jul 2026,911,t911,Buyer Two,20 Current List Rd,Hempstead,11550,"
+        "Nassau,NY,300000,TRUE,FALSE\n"
+        "2026-07-01,Jul 2026,912,t912,Buyer Three,30 Future List Rd,Hempstead,11550,"
+        "Nassau,NY,300000,TRUE,FALSE\n",
+        encoding="utf-8",
+    )
+    reisift = tmp_path / "reisift.csv"
+    reisift.write_text(
+        "Property address,Property city,Property state,Property zip,Lists,Tags\n"
+        '10 Old List Rd,Hempstead,NY,11550,8020 Absentee,"List Purchased 8020 1/2026"\n'
+        '20 Current List Rd,Hempstead,NY,11550,LI Profiles,"Probates NY Nassau 6-2026"\n'
+        '30 Future List Rd,Hempstead,NY,11550,8020 Absentee,"List Purchased 8020 8/2026"\n',
+        encoding="utf-8",
+    )
+
+    result = analyze(str(sold), reisift_path=str(reisift), ql_path=ql_path)
+    by_street = {r.street: r for r in result.rows}
+
+    # History before the report window and before the sale both receive Prospect credit.
+    assert by_street["10 Old List Rd"].never_prospected_investor is False
+    assert by_street["20 Current List Rd"].never_prospected_investor is False
+    # A future dated tag must not be rescued by the row's current undated Lists membership.
+    assert by_street["30 Future List Rd"].prospect_list_source == ""
+    assert by_street["30 Future List Rd"].never_prospected_investor is True
+    assert result.never_prospected_investor_count == 1
 
 
 def test_sf_txn_pipeline_sets_closed_and_opp(sold_path, reisift_path, ql_path, sf_txn_path):

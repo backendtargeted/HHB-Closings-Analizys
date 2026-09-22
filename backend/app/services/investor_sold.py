@@ -55,7 +55,6 @@ from .sold_properties import (
     _contact_touch_stats,
     _first_podio_crm_date,
     _iso_day,
-    _lists_has_prospect_source,
     _max_pipeline,
     _mean_median,
     _month_end,
@@ -716,19 +715,21 @@ def _enrich_row(
     sold_row.first_touch_channel = first_ch or ""
     sold_row.first_touch_date = first_date or ""
 
-    list_dt, prospect_list_source = earliest_prospect_list(parsed, tags_val, lists_val)
+    list_dt, prospect_list_source = earliest_prospect_list(
+        parsed,
+        tags_val,
+        lists_val,
+        on_or_before=sold_end_dt,
+    )
     list_purchase_ymd = list_dt.date().isoformat() if list_dt else ""
     sold_row.list_purchase_date = list_purchase_ymd
     first_list_month = (
         pd.Timestamp(year=list_dt.year, month=list_dt.month, day=1) if list_dt else None
     )
-    lists_src = _lists_has_prospect_source(lists_val)
-    if not prospect_list_source and lists_src:
-        prospect_list_source = lists_src
     sold_row.prospect_list_source = prospect_list_source or ""
 
     pipeline = "NONE"
-    if list_dt is not None or sold_row.in_my_records or prospect_list_source or lists_src:
+    if list_dt is not None or sold_row.in_my_records or prospect_list_source:
         pipeline = "PROSPECT"
     if sold_row.marketed:
         # Marketing evidence implies the property was at least a Prospect on the ladder.

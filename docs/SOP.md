@@ -65,9 +65,9 @@ Legacy **Regular attribution** (contact-history CSV → closings lifecycle) rema
 
 **Inputs:** Sold CSV + REISift + QL (required). Opportunities optional. **Salesforce Transaction Pipeline** optional (Closed Date → Closed; Date Contract Signed / accepted offer → Opportunity).
 
-**Pipeline depth table:** cumulative “reached at least” (Prospect ≥ Marketed ≥ …). **Lost by furthest stage** stays exclusive. Marketing touches imply Prospect on the ladder.
+**Headline pipeline cards + depth table:** cumulative “reached at least” (Prospect ≥ Marketed ≥ …), with every percentage divided by all buybox property × sold-month rows. **Lost by furthest stage** stays exclusive. Marketing touches imply Prospect on the ladder.
 
-**Primary KPI — Never prospected (investor)** = investor sale **and** not HHB-closed **and** no Prospect list from 8020 / Court Alerts / LI Profiles. Denominator = investor sales **inside buybox**. Use this when judging list/provider coverage — always qualify as “among marketed-town sales.”
+**Primary KPI — Never prospected (investor)** = investor sale **and** not HHB-closed **and** no Prospect list from 8020 / Court Alerts / LI Profiles **on or before that property's sold month end**. Prospect history before the report's first sold month still receives credit; list events after the property's sale do not. Denominator = investor sales **inside buybox**. Use this when judging list/provider coverage — always qualify as “among marketed-town sales.”
 
 **Lost** (unchanged) = we had it **and** investor bought it **and** we did not HHB-close it (also buybox-scoped).
 

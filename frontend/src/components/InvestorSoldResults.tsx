@@ -37,12 +37,9 @@ function pipelineRank(stage: string): number {
   return idx >= 0 ? idx : 0;
 }
 
-// Pipeline depth is cumulative ("reached this stage or further" — e.g. a property that
-// matched a Qualified Lead record directly, with no separate Lead-stage signal, still counts
-// here under Lead). The top KPI tiles above ("Leads", "Qualified Leads", "Opportunities") are
-// a different, non-cumulative count of properties that matched that stage's own signal
-// directly. Same underlying data, different question — reworded so the two don't read as
-// the same metric shown twice.
+// Pipeline depth and the headline stage cards are cumulative ("reached this stage or
+// further"). A property matched directly at a higher stage still counts at every earlier
+// stage on the canonical ladder.
 const PIPELINE_DEPTH_LABELS: Record<string, string> = {
   MARKETED: 'Marketed or further',
   LEAD: 'Lead or further',
@@ -114,26 +111,6 @@ const InvestorSoldResults = ({
   const m = result.metrics;
   const propertyRows = m.inputs.property_rows ?? m.rows.length;
   const txnRows = m.inputs.sold_rows_ingested;
-  const marketing = m.marketing ?? {
-    marketed_count: 0,
-    marketed_pct: 0,
-    never_marketed_count: 0,
-    total_touch_counts: {},
-    avg_touches_per_marketed: null,
-  };
-  const match = m.match ?? {
-    lead_matched: 0,
-    lead_rate_pct: 0,
-    qualified_lead_matched: 0,
-    qualified_lead_rate_pct: 0,
-    prospect_matched: 0,
-    prospect_rate_pct: 0,
-    opp_matched: 0,
-    opp_rate_pct: 0,
-    under_contract_count: 0,
-    hhb_closed_count: 0,
-    reisift_matched_count: 0,
-  };
   const lost = m.lost ?? {
     never_prospected_investor_count: 0,
     never_prospected_investor_pct: 0,
@@ -145,8 +122,8 @@ const InvestorSoldResults = ({
     lost_by_stage: [],
     had_presence_exits_by_buyer: {},
   };
-  const leadSources = m.lead_sources ?? { sf_tag: 0, podio: 0 };
   const pipelineFunnel = m.pipeline_funnel ?? [];
+  const funnelByStage = new Map(pipelineFunnel.map((row) => [row.stage, row]));
   const bySegment = m.by_segment ?? [];
 
   const [shareMsg, setShareMsg] = useState('');
@@ -224,6 +201,9 @@ const InvestorSoldResults = ({
     { id: 'neither', label: 'Neither', count: m.segments.neither_count },
   ];
 
+  const pipelineCard = (stage: string) =>
+    funnelByStage.get(stage) ?? { stage, label: stage, count: 0, share_pct: 0 };
+
   const kpiCards: Array<{
     label: string;
     value: string;
@@ -253,32 +233,38 @@ const InvestorSoldResults = ({
     },
     {
       label: 'Marketed',
-      value: `${marketing.marketed_count.toLocaleString()} (${marketing.marketed_pct}%)`,
+      value: `${pipelineCard('MARKETED').count.toLocaleString()} (${pipelineCard('MARKETED').share_pct}%)`,
+      subtitle: `Reached at least · denominator: all ${propertyRows.toLocaleString()} buybox properties`,
+      onClick: () => setJourneyFilter('MARKETED'),
+      active: journeyFilter === 'MARKETED',
     },
     {
       label: 'Leads',
-      value: `${(match.lead_matched ?? 0).toLocaleString()} (${match.lead_rate_pct ?? 0}%)`,
-      subtitle: `Podio ${leadSources.podio} · SF ${leadSources.sf_tag}`,
-      onClick: () => setJourneyFilter('leads'),
-      active: journeyFilter === 'leads',
+      value: `${pipelineCard('LEAD').count.toLocaleString()} (${pipelineCard('LEAD').share_pct}%)`,
+      subtitle: `Reached at least · denominator: all ${propertyRows.toLocaleString()} buybox properties`,
+      onClick: () => setJourneyFilter('LEAD'),
+      active: journeyFilter === 'LEAD',
     },
     {
       label: 'Qualified Leads',
-      value: `${(match.qualified_lead_matched ?? 0).toLocaleString()} (${match.qualified_lead_rate_pct ?? 0}%)`,
-      onClick: () => setJourneyFilter('qualified_leads'),
-      active: journeyFilter === 'qualified_leads',
+      value: `${pipelineCard('QUALIFIED_LEAD').count.toLocaleString()} (${pipelineCard('QUALIFIED_LEAD').share_pct}%)`,
+      subtitle: `Reached at least · denominator: all ${propertyRows.toLocaleString()} buybox properties`,
+      onClick: () => setJourneyFilter('QUALIFIED_LEAD'),
+      active: journeyFilter === 'QUALIFIED_LEAD',
     },
     {
       label: 'Opportunities',
-      value: `${match.opp_matched.toLocaleString()} (${match.opp_rate_pct}%)`,
-      onClick: () => setJourneyFilter('opps'),
-      active: journeyFilter === 'opps',
+      value: `${pipelineCard('OPPORTUNITY').count.toLocaleString()} (${pipelineCard('OPPORTUNITY').share_pct}%)`,
+      subtitle: `Reached at least · denominator: all ${propertyRows.toLocaleString()} buybox properties`,
+      onClick: () => setJourneyFilter('OPPORTUNITY'),
+      active: journeyFilter === 'OPPORTUNITY',
     },
     {
       label: 'Closed',
-      value: match.hhb_closed_count.toLocaleString(),
-      onClick: () => setJourneyFilter('hhb'),
-      active: journeyFilter === 'hhb',
+      value: `${pipelineCard('HHB_CLOSED').count.toLocaleString()} (${pipelineCard('HHB_CLOSED').share_pct}%)`,
+      subtitle: `Reached at least · denominator: all ${propertyRows.toLocaleString()} buybox properties`,
+      onClick: () => setJourneyFilter('HHB_CLOSED'),
+      active: journeyFilter === 'HHB_CLOSED',
     },
   ];
 
@@ -341,6 +327,11 @@ const InvestorSoldResults = ({
           ))}
         </ul>
       )}
+
+      <p className="text-xs text-stone-600">
+        Pipeline cards are cumulative “reached at least” counts. Every percentage uses all{' '}
+        {propertyRows.toLocaleString()} buybox properties as its denominator.
+      </p>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {kpiCards.map((card) => (
@@ -542,10 +533,6 @@ const InvestorSoldResults = ({
                 <option value="never_prospected">Never prospected (investor)</option>
                 <option value="lost">Lost to investor</option>
                 <option value="never_marketed">Never marketed</option>
-                <option value="leads">Leads</option>
-                <option value="qualified_leads">Qualified Leads</option>
-                <option value="opps">Opportunities</option>
-                <option value="hhb">Closed</option>
                 {pipelineFunnel.map((row) => (
                   <option key={row.stage} value={row.stage}>
                     {row.label}

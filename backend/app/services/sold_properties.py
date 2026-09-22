@@ -330,13 +330,17 @@ def earliest_prospect_list(
     parsed: List[Dict[str, Any]],
     tags_str: object = "",
     lists_str: object = "",
+    *,
+    on_or_before: Optional[datetime] = None,
 ) -> Tuple[Optional[datetime], str]:
     """
     Earliest Prospect list month among 8020, Court Alerts, LI Profiles.
 
-    Prefers parse_tags list_purchase events (canonical). Falls back to Lists names
-    when no dated tag exists. Returns (date_or_none, source_id) where source_id is
-    8020 | lip | court_alerts | "".
+    Prefers parse_tags list_purchase events (canonical). When a cutoff is supplied,
+    only events existing by that date receive credit. Falls back to Lists names only
+    when no dated list event exists; a future-only dated event is not evidence that
+    the property was a Prospect by the cutoff. Returns (date_or_none, source_id)
+    where source_id is 8020 | lip | court_alerts | "".
     """
     candidates: List[Tuple[datetime, str]] = []
     for p in parsed:
@@ -356,13 +360,21 @@ def earliest_prospect_list(
         mapped = "8020" if src == "eight" else src
         if not any(c[0] == dt and c[1] == mapped for c in candidates):
             candidates.append((dt, mapped))
-    if not candidates:
+    if candidates:
+        eligible = (
+            [candidate for candidate in candidates if candidate[0] <= on_or_before]
+            if on_or_before is not None
+            else candidates
+        )
+        if eligible:
+            best_dt, best_src = min(eligible, key=lambda x: x[0])
+            return best_dt, best_src
+        return None, ""
+    else:
         src = _lists_has_prospect_source(lists_str)
         if src == "eight":
             src = "8020"
         return None, (src or "")
-    best_dt, best_src = min(candidates, key=lambda x: x[0])
-    return best_dt, best_src
 
 
 def _contact_touch_stats(
