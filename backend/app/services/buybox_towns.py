@@ -1,12 +1,8 @@
-"""HHB marketed-town buybox for Gate 7 Investor Sold.
+"""Gate 7 Nassau/Suffolk geography, with authoritative ZIP exclusions.
 
-Gate 7 universe = these cities, OR the zip allowlist in `buybox_zips.py` (see
-`in_buybox` below) - either match is enough. Sold rows matching neither are
-dropped at ingest (before row build / enrich / KPIs).
-
-Operator contract (why, what sold CSV can filter, how to read provider KPIs):
-`docs/BUYBOX.md`. Regenerate the town appendix with
-`python backend/scripts/gen_buybox_doc.py` after editing this list.
+Executable exclusion lists and provenance live in buybox_policy.json. Historical
+positive town labels below are retained only for old report metadata consumers;
+they have no role in deciding membership.
 """
 
 from __future__ import annotations
@@ -14,7 +10,9 @@ from __future__ import annotations
 import re
 from typing import FrozenSet, Optional
 
-from .buybox_zips import in_buybox_zip
+from dataclasses import dataclass
+
+from .buybox_zips import BUYBOX_POLICY, EXCLUDED_ZIPS, normalize_zip, zip_is_missing
 
 # Display spellings (including known scrape typos / aliases). Matching uses normalize_town().
 _BUYBOX_TOWN_LABELS: tuple[str, ...] = (
@@ -252,12 +250,49 @@ BUYBOX_TOWNS: FrozenSet[str] = frozenset(normalize_town(t) for t in _BUYBOX_TOWN
 BUYBOX_TOWN_COUNT: int = len(BUYBOX_TOWNS)
 
 
-def in_buybox(city: Optional[str], zip_code: Optional[str] = None) -> bool:
-    """True when city matches the town allowlist OR zip_code matches the zip
-    allowlist (backend/app/services/buybox_zips.py) - either is enough.
-    zip_code defaults to None so existing single-arg callers are unaffected.
+EXCLUDED_CITIES: frozenset[str] = frozenset(BUYBOX_POLICY["excluded_cities"])
+EXCLUDED_CITY_COUNT = len(EXCLUDED_CITIES)
+
+
+@dataclass(frozen=True)
+class BuyboxDecision:
+    included: bool
+    reason: str
+    normalized_zip: Optional[str] = None
+
+
+def evaluate_buybox(
+    city: Optional[str], zip_code: object = None,
+    county: Optional[str] = None, state: Optional[str] = None,
+) -> BuyboxDecision:
+    """Apply state/county scope, then ZIP exclusions, or city when ZIP is absent.
+
+    Scores and the historical positive town list do not participate. A present
+    invalid ZIP is excluded rather than silently becoming a city fallback.
     """
-    if in_buybox_zip(zip_code):
-        return True
+    z = normalize_zip(zip_code)
+    if normalize_town(state) not in {"ny", "new york"}:
+        return BuyboxDecision(False, "excluded_state", z)
+    county_key = normalize_town(county)
+    county_key = re.sub(r"\s+county$", "", county_key)
+    if county_key not in {"nassau", "suffolk"}:
+        return BuyboxDecision(False, "excluded_county", z)
+    if not zip_is_missing(zip_code):
+        if z is None:
+            return BuyboxDecision(False, "invalid_zip")
+        if z in EXCLUDED_ZIPS:
+            return BuyboxDecision(False, "excluded_zip", z)
+        return BuyboxDecision(True, "included_zip", z)
     key = normalize_town(city)
-    return bool(key) and key in BUYBOX_TOWNS
+    if not key:
+        return BuyboxDecision(False, "missing_city")
+    if key in EXCLUDED_CITIES:
+        return BuyboxDecision(False, "excluded_city")
+    return BuyboxDecision(True, "included_city_fallback")
+
+
+def in_buybox(
+    city: Optional[str], zip_code: object = None,
+    county: Optional[str] = None, state: Optional[str] = None,
+) -> bool:
+    return evaluate_buybox(city, zip_code, county, state).included

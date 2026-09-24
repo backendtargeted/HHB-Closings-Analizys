@@ -91,16 +91,24 @@ const MethodologySection = () => {
             Lag buckets split by Court Alerts / 8020 / Same month. Reasons from Transactions only.
           </p>
           <p>
-            <strong className="text-stone-800">Gate 7 Investor &amp; In-List Sold:</strong> Universe is
-            CleanREISift{' '}
-            <code className="bg-stone-100 px-1 rounded">sold_properties_full.csv</code> with{' '}
-            <code className="bg-stone-100 px-1 rounded">investor</code> and{' '}
-            <code className="bg-stone-100 px-1 rounded">in_my_records</code> flags. Primary KPI:{' '}
-            <em>lost to investor</em> = we had it (In My Records OR REISift/CRM presence) AND investor
-            AND not Closed (rate vs properties we had), with
-            furthest-stage breakdown. Canonical pipeline: Prospect (8020 / Court Alerts / LI
+            <strong className="text-stone-800">Gate 7 Investor &amp; In-List Sold:</strong> Raw sold
+            records are limited to Nassau/Suffolk, NY before enrichment. Excluded ZIPs are
+            authoritative; city exclusions apply only when ZIP is missing. Invalid ZIPs and
+            missing county/state are excluded. Scores do not affect geography. Optional property
+            details screen supported buybox attributes from an exported snapshot; only eligible
+            properties enter KPIs, with exclusions and unresolved records retained for review.
+            Without details, the report is geographic-only. Ownership tenure, LTV, and
+            non-seller/religious-owner exclusions are not evaluated. Seller categories are
+            name-based estimates from a seller matched to the earliest observed sale, not
+            verified legal ownership types; unmatched sellers remain Unclassified. Primary KPI:{' '}
+            <em>never prospected</em> identifies investor properties without qualifying pre-sale
+            Prospect lists and not HHB-closed. Lost to investor means we had pre-sale presence,
+            an investor bought it, and we did not close it. Canonical pipeline: Prospect (8020 / Court Alerts / LI
             Profiles) → Marketed (CC/DM/SMS) → Lead (Salesforce/Podio) → Qualified Lead →
-            Opportunity (includes under contract) → Closed. Grain = unique property × sold month.
+            Opportunity (includes under contract) → Closed. Each property appears once, anchored
+            to its earliest observed sold month. All distinct transaction IDs are counted;
+            later-month flags and buyers do not change that snapshot. Buyers within the earliest
+            month are shown together without assuming a precise sale order.
           </p>
           <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">
             Full methodology: repo{' '}

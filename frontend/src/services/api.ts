@@ -950,115 +950,77 @@ export async function pollInvestorSoldJob(
   throw new Error('Analysis timed out after 30 minutes');
 }
 
-async function analyzeInvestorSoldDirect(
-  soldFile: File,
-  reisiftFile?: File,
-  qlFile?: File,
-  oppsFile?: File,
-  txnFile?: File,
-  onProgress?: (pct: number, message: string) => void
+type InvestorSoldProgress = (pct: number, message: string) => void;
+type InvestorSoldUpload = { field: string; kind: ResumableUploadKind; file: File };
+
+async function startInvestorSoldUpload(
+  files: InvestorSoldUpload[],
+  onProgress?: InvestorSoldProgress
 ): Promise<InvestorSoldCompletedResponse> {
-  const form = new FormData();
-  form.append('sold_file', soldFile);
-  if (reisiftFile) form.append('reisift_file', reisiftFile);
-  if (qlFile) form.append('qualified_leads_file', qlFile);
-  if (oppsFile) form.append('opportunities_file', oppsFile);
-  if (txnFile) form.append('transactions_file', txnFile);
-  onProgress?.(5, 'Uploading…');
-  const response = await api.post<{ job_id: string; status: string; message: string }>(
-    '/investor-sold/analyze',
-    form,
-    { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 10 * 60 * 1000 }
-  );
-  onProgress?.(90, 'Starting analysis…');
+  const totalBytes = files.reduce((total, item) => total + item.file.size, 0);
+  const uploadInChunks = async () => {
+    const body: Record<string, string> = {};
+    let completedBytes = 0;
+    for (const item of files) {
+      body[item.field.replace(/_file$/, '_path')] = await uploadFileResumable(
+        item.kind, item.file, (pct, msg) => onProgress?.(
+          Math.round(90 * (completedBytes + item.file.size * pct / 100) / Math.max(totalBytes, 1)), msg
+        )
+      );
+      completedBytes += item.file.size;
+    }
+    return api.post<{ job_id: string }>('/investor-sold/analyze', body);
+  };
+  let response;
+  // Large exports avoid a single long multipart request; files stay binary in the browser.
+  if (totalBytes > 32 * 1024 * 1024) {
+    response = await uploadInChunks();
+  } else {
+    const form = new FormData();
+    files.forEach(({ field, file }) => form.append(field, file));
+    try {
+      onProgress?.(0, 'Uploading files…');
+      response = await api.post<{ job_id: string }>('/investor-sold/analyze', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 10 * 60 * 1000,
+        onUploadProgress: ({ loaded, total }) => onProgress?.(
+          Math.min(90, Math.round(90 * loaded / Math.max(total || totalBytes, 1))), 'Uploading files…'
+        ),
+      });
+    } catch (err) {
+      if (!shouldFallbackToResumableUpload(err)) throw err;
+      response = await uploadInChunks();
+    }
+  }
+  onProgress?.(90, 'Files uploaded; starting analysis…');
   const result = await pollInvestorSoldJob(response.data.job_id, onProgress);
   onProgress?.(100, 'Done');
   return result;
 }
 
-async function analyzeInvestorSoldResumable(
-  soldFile: File,
-  reisiftFile?: File,
-  qlFile?: File,
-  oppsFile?: File,
-  txnFile?: File,
-  onProgress?: (pct: number, message: string) => void
-): Promise<InvestorSoldCompletedResponse> {
-  onProgress?.(0, `Uploading ${soldFile.name} (chunked fallback)…`);
-  const soldPath = await uploadFileResumable('tabular', soldFile, (pct, msg) => {
-    onProgress?.(Math.round(pct * 0.35), msg);
-  });
-  let reisiftPath: string | undefined;
-  if (reisiftFile) {
-    onProgress?.(35, `Uploading ${reisiftFile.name}…`);
-    reisiftPath = await uploadFileResumable('reisift', reisiftFile, (pct, msg) => {
-      onProgress?.(35 + Math.round(pct * 0.25), msg);
-    });
-  }
-  let qlPath: string | undefined;
-  if (qlFile) {
-    onProgress?.(60, `Uploading ${qlFile.name}…`);
-    qlPath = await uploadFileResumable('qualified_leads', qlFile, (pct, msg) => {
-      onProgress?.(60 + Math.round(pct * 0.1), msg);
-    });
-  }
-  let oppsPath: string | undefined;
-  if (oppsFile) {
-    onProgress?.(70, `Uploading ${oppsFile.name}…`);
-    oppsPath = await uploadFileResumable('tabular', oppsFile, (pct, msg) => {
-      onProgress?.(70 + Math.round(pct * 0.1), msg);
-    });
-  }
-  let txnPath: string | undefined;
-  if (txnFile) {
-    onProgress?.(80, `Uploading ${txnFile.name}…`);
-    txnPath = await uploadFileResumable('tabular', txnFile, (pct, msg) => {
-      onProgress?.(80 + Math.round(pct * 0.1), msg);
-    });
-  }
-  onProgress?.(90, 'Starting analysis…');
-  const started = await analyzeInvestorSoldFromPaths(
-    soldPath,
-    reisiftPath,
-    qlPath,
-    oppsPath,
-    txnPath
-  );
-  const result = await pollInvestorSoldJob(started.job_id, onProgress);
-  onProgress?.(100, 'Done');
-  return result;
-}
+export const analyzeInvestorSoldBundle = (
+  bundleFile: File,
+  onProgress?: InvestorSoldProgress
+): Promise<InvestorSoldCompletedResponse> => startInvestorSoldUpload(
+  [{ field: 'bundle_file', kind: 'investor_sold_bundle', file: bundleFile }], onProgress
+);
 
-export const analyzeInvestorSold = async (
+export const analyzeInvestorSold = (
   soldFile: File,
   reisiftFile?: File,
   qlFile?: File,
   oppsFile?: File,
   txnFile?: File,
-  onProgress?: (pct: number, message: string) => void
+  onProgress?: InvestorSoldProgress,
+  propertyDetailsFile?: File
 ): Promise<InvestorSoldCompletedResponse> => {
-  try {
-    return await analyzeInvestorSoldDirect(
-      soldFile,
-      reisiftFile,
-      qlFile,
-      oppsFile,
-      txnFile,
-      onProgress
-    );
-  } catch (err) {
-    if (!shouldFallbackToResumableUpload(err)) {
-      throw err;
-    }
-    return analyzeInvestorSoldResumable(
-      soldFile,
-      reisiftFile,
-      qlFile,
-      oppsFile,
-      txnFile,
-      onProgress
-    );
-  }
+  const files: InvestorSoldUpload[] = [{ field: 'sold_file', kind: 'tabular', file: soldFile }];
+  if (reisiftFile) files.push({ field: 'reisift_file', kind: 'reisift', file: reisiftFile });
+  if (qlFile) files.push({ field: 'qualified_leads_file', kind: 'qualified_leads', file: qlFile });
+  if (oppsFile) files.push({ field: 'opportunities_file', kind: 'tabular', file: oppsFile });
+  if (txnFile) files.push({ field: 'transactions_file', kind: 'tabular', file: txnFile });
+  if (propertyDetailsFile) files.push({ field: 'property_details_file', kind: 'property_details', file: propertyDetailsFile });
+  return startInvestorSoldUpload(files, onProgress);
 };
 
 export const analyzeInvestorSoldFromPaths = async (
@@ -1066,16 +1028,24 @@ export const analyzeInvestorSoldFromPaths = async (
   reisiftPath?: string,
   qlPath?: string,
   oppsPath?: string,
-  txnPath?: string
+  txnPath?: string,
+  propertyDetailsPath?: string
 ): Promise<{ job_id: string; status: string; message: string }> => {
   const body: Record<string, unknown> = { sold_path: soldPath };
   if (reisiftPath) body.reisift_path = reisiftPath;
   if (qlPath) body.qualified_leads_path = qlPath;
   if (oppsPath) body.opportunities_path = oppsPath;
   if (txnPath) body.transactions_path = txnPath;
+  if (propertyDetailsPath) body.property_details_path = propertyDetailsPath;
   const response = await api.post<{ job_id: string; status: string; message: string }>(
-    '/investor-sold/analyze',
-    body
+    '/investor-sold/analyze', body
+  );
+  return response.data;
+};
+
+export const analyzeInvestorSoldBundleFromPath = async (bundlePath: string) => {
+  const response = await api.post<{ job_id: string; status: string; message: string }>(
+    '/investor-sold/analyze', { bundle_path: bundlePath }
   );
   return response.data;
 };

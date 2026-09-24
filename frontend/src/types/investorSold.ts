@@ -9,6 +9,13 @@ export interface InvestorSoldRow {
   period_date: string;
   period_label: string;
   sold_month: string;
+  last_sold_month?: string;
+  seller_name?: string;
+  seller_category?: string;
+  seller_match_status?: string;
+  property_type?: string;
+  property_details_status?: string;
+  property_details_reason?: string;
   buyer_full_name: string;
   sale_amount: string;
   investor: boolean;
@@ -21,6 +28,7 @@ export interface InvestorSoldRow {
   distressors: string;
   dataflik_id: string;
   transaction_id: string;
+  parcel_number?: string;
   transaction_count: number;
   list_purchase_date: string;
   reisift_matched: boolean;
@@ -107,7 +115,32 @@ export interface InvestorSoldLostBlock {
   had_presence_exits_by_buyer: Record<string, number>;
 }
 
+export interface InvestorSoldScreeningRow {
+  address: string;
+  dataflik_id: string;
+  status: string;
+  reason: string;
+  seller_name: string;
+  seller_category: string;
+  seller_match_status: string;
+  property_type: string;
+}
+
+export interface InvestorSoldPropertyScreening {
+  enabled: boolean;
+  target_count: number;
+  eligible: number;
+  excluded: number;
+  unresolved: number;
+  reasons: Record<string, number>;
+  seller_categories: Record<string, number>;
+  unsupported_rules: string[];
+  warnings?: string[];
+}
+
 export interface InvestorSoldMetrics {
+  property_screening?: InvestorSoldPropertyScreening;
+  property_screening_rows?: InvestorSoldScreeningRow[];
   report_type: string;
   date_window_start: string;
   date_window_end: string;
@@ -116,6 +149,10 @@ export interface InvestorSoldMetrics {
     sold_rows_excluded_buybox?: number;
     sold_rows_ingested: number;
     buybox_town_count?: number;
+    property_grain?: 'property_earliest_sale' | 'property_month';
+    buybox_excluded_zip_count?: number;
+    buybox_excluded_city_count?: number;
+    buybox_exclusions?: Record<string, number>;
     property_rows: number;
     unique_addresses: number;
     enrichment_enabled: boolean;

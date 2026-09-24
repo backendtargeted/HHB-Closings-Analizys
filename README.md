@@ -4,7 +4,7 @@ A modern web application for analyzing contact history for closed deals, built w
 
 **SOP:** [docs/SOP.md](docs/SOP.md) — gates, canonical pipeline, monthly checklist (start here).
 
-**Gate 7 buybox:** [docs/BUYBOX.md](docs/BUYBOX.md) — marketed-town universe for provider/coverage evaluation (locked).
+**Gate 7 buybox:** [docs/BUYBOX.md](docs/BUYBOX.md) — NY Nassau/Suffolk universe, excluded ZIPs first and city fallback only when ZIP is missing.
 
 **Ecosystem:** [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md) — Closings ↔ CleanREISift ↔ hhb-data-sidecar.
 

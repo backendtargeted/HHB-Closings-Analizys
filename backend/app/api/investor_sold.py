@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import math
 import multiprocessing
+import os
 import shutil
 import threading
 import uuid
@@ -18,6 +19,7 @@ from typing import Any, Dict, Optional
 from flask import Blueprint, jsonify, request, send_file
 
 from ..services.investor_sold import analyze, build_export_workbook, result_from_metrics_dict
+from ..services.investor_sold_bundle import extract_investor_sold_bundle
 from ..services.report_store import (
     REPORTS_DIR,
     delete_report_file,
@@ -52,8 +54,13 @@ def _progress_path(job_dir: Path) -> Path:
 
 def _write_job_progress(job_dir: Path, payload: Dict[str, Any]) -> None:
     job_dir.mkdir(parents=True, exist_ok=True)
-    with open(_progress_path(job_dir), "w", encoding="utf-8") as fh:
-        json.dump(_sanitize_for_json(payload), fh)
+    temporary = job_dir / f"progress.{uuid.uuid4().hex}.tmp"
+    try:
+        with open(temporary, "w", encoding="utf-8") as fh:
+            json.dump(_sanitize_for_json(payload), fh)
+        os.replace(temporary, _progress_path(job_dir))
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _read_job_progress(job_dir: Path) -> Dict[str, Any] | None:
@@ -72,6 +79,8 @@ def _analyze_in_subprocess(
     opportunities_path: Optional[str],
     transactions_path: Optional[str],
     job_dir_str: str,
+    property_details_path: Optional[str] = None,
+    bundle_path: Optional[str] = None,
 ) -> None:
     job_dir = Path(job_dir_str)
 
@@ -96,6 +105,15 @@ def _analyze_in_subprocess(
                 "message": "Starting investor-sold analysis…",
             },
         )
+        if bundle_path:
+            on_progress(5, "Validating and extracting Gate 7 ZIP bundle…")
+            inputs = extract_investor_sold_bundle(bundle_path, job_dir / "bundle_inputs")
+            sold_path = inputs["sold_path"]
+            reisift_path = inputs["reisift_path"]
+            ql_path = inputs["ql_path"]
+            opportunities_path = inputs.get("opportunities_path")
+            transactions_path = inputs.get("transactions_path")
+            property_details_path = inputs["property_details_path"]
         result = analyze(
             sold_path,
             reisift_path=reisift_path,
@@ -103,6 +121,7 @@ def _analyze_in_subprocess(
             opportunities_path=opportunities_path,
             transactions_path=transactions_path,
             on_progress=on_progress,
+            property_details_path=property_details_path,
         )
         metrics = result.to_api_dict()
         created_at = datetime.now(timezone.utc).isoformat()
@@ -254,6 +273,8 @@ def _run_investor_sold_job(
     ql_path: Optional[str],
     opportunities_path: Optional[str],
     transactions_path: Optional[str],
+    property_details_path: Optional[str] = None,
+    bundle_path: Optional[str] = None,
 ) -> None:
     job_dir = IS_ROOT / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -279,6 +300,8 @@ def _run_investor_sold_job(
             opportunities_path,
             transactions_path,
             str(job_dir),
+            property_details_path,
+            bundle_path,
         ),
         daemon=True,
     )
@@ -295,6 +318,8 @@ def _start_investor_sold_job(
     opportunities_path: Optional[str],
     transactions_path: Optional[str] = None,
     job_id: str | None = None,
+    property_details_path: Optional[str] = None,
+    bundle_path: Optional[str] = None,
 ) -> tuple[dict[str, Any], int]:
     job_id = job_id or str(uuid.uuid4())
     job_dir = IS_ROOT / job_id
@@ -317,6 +342,8 @@ def _start_investor_sold_job(
             ql_path,
             opportunities_path,
             transactions_path,
+            property_details_path,
+            bundle_path,
         ),
         daemon=True,
     )
@@ -327,11 +354,15 @@ def _start_investor_sold_job(
     )
 
 
-def _save_upload(upload, job_dir: Path) -> Optional[str]:
+def _save_upload(upload, job_dir: Path, role: str = "") -> Optional[str]:
     if not upload or not upload.filename:
         return None
     name = Path(upload.filename.replace("\\", "/")).name
-    dest = job_dir / name
+    if name in {"", ".", ".."} or ":" in name:
+        raise ValueError("Invalid upload filename")
+    target_dir = job_dir / role if role else job_dir
+    target_dir.mkdir(parents=True, exist_ok=True)
+    dest = target_dir / name
     upload.save(str(dest))
     return str(dest)
 
@@ -340,11 +371,26 @@ def _save_upload(upload, job_dir: Path) -> Optional[str]:
 def investor_sold_analyze():
     if request.is_json:
         data = request.get_json() or {}
+        if not isinstance(data, dict) or any(value is not None and not isinstance(value, str) for key, value in data.items() if key.endswith("_path")):
+            return jsonify({"detail": "Input paths must be strings"}), 400
+        bundle_raw = (data.get("bundle_path") or "").strip()
+        if bundle_raw:
+            if any(value for key, value in data.items() if key.endswith("_path") and key != "bundle_path"):
+                return jsonify({"detail": "Provide bundle_path alone, or individual input paths"}), 400
+            try:
+                bundle_path = str(resolve_trusted_final_path(bundle_raw))
+                if Path(bundle_path).suffix.lower() != ".zip":
+                    raise ValueError("bundle_path must reference a .zip upload")
+            except ValueError as exc:
+                return jsonify({"detail": str(exc)}), 400
+            payload, status = _start_investor_sold_job("", None, None, None, bundle_path=bundle_path)
+            return jsonify(_sanitize_for_json(payload)), status
         sold_raw = (data.get("sold_path") or data.get("sold_transactions_path") or "").strip()
         reisift_raw = (data.get("reisift_path") or "").strip() or None
         ql_raw = (data.get("qualified_leads_path") or data.get("ql_path") or "").strip() or None
         opps_raw = (data.get("opportunities_path") or "").strip() or None
         txn_raw = (data.get("transactions_path") or "").strip() or None
+        details_raw = (data.get("property_details_path") or "").strip() or None
         if not sold_raw:
             return jsonify({"detail": "sold_path is required"}), 400
         if not reisift_raw:
@@ -361,6 +407,9 @@ def investor_sold_analyze():
             transactions_path = (
                 str(resolve_trusted_final_path(txn_raw)) if txn_raw else None
             )
+            property_details_path = str(resolve_trusted_final_path(details_raw)) if details_raw else None
+            if property_details_path and Path(property_details_path).suffix.lower() != ".jsonl":
+                raise ValueError("property_details_path must reference a .jsonl upload")
         except ValueError as exc:
             return jsonify({"detail": str(exc)}), 400
         payload, status = _start_investor_sold_job(
@@ -369,9 +418,23 @@ def investor_sold_analyze():
             ql_path,
             opportunities_path,
             transactions_path,
+            property_details_path=property_details_path,
         )
         return jsonify(_sanitize_for_json(payload)), status
 
+    bundle = request.files.get("bundle_file")
+    if bundle and bundle.filename:
+        if any(upload.filename for key, upload in request.files.items() if key != "bundle_file"):
+            return jsonify({"detail": "Provide bundle_file alone, or individual input files"}), 400
+        if Path(bundle.filename).suffix.lower() != ".zip":
+            return jsonify({"detail": "bundle_file must be a .zip file"}), 400
+        job_id = str(uuid.uuid4())
+        try:
+            bundle_path = _save_upload(bundle, IS_ROOT / job_id, "bundle")
+        except ValueError as exc:
+            return jsonify({"detail": str(exc)}), 400
+        payload, status = _start_investor_sold_job("", None, None, None, job_id=job_id, bundle_path=bundle_path)
+        return jsonify(_sanitize_for_json(payload)), status
     sold = request.files.get("sold_file") or request.files.get("sold_transactions_file")
     if not sold or not sold.filename:
         return jsonify({"detail": "sold_file is required"}), 400
@@ -385,11 +448,18 @@ def investor_sold_analyze():
     job_id = str(uuid.uuid4())
     job_dir = IS_ROOT / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
-    sold_path = _save_upload(sold, job_dir)
-    reisift_path = _save_upload(reisift, job_dir)
-    ql_path = _save_upload(ql, job_dir)
-    opportunities_path = _save_upload(request.files.get("opportunities_file"), job_dir)
-    transactions_path = _save_upload(request.files.get("transactions_file"), job_dir)
+    details = request.files.get("property_details_file")
+    if details and details.filename and Path(details.filename).suffix.lower() != ".jsonl":
+        return jsonify({"detail": "property_details_file must be a .jsonl file"}), 400
+    try:
+        sold_path = _save_upload(sold, job_dir, "sold")
+        reisift_path = _save_upload(reisift, job_dir, "reisift")
+        ql_path = _save_upload(ql, job_dir, "ql")
+        opportunities_path = _save_upload(request.files.get("opportunities_file"), job_dir, "opportunities")
+        transactions_path = _save_upload(request.files.get("transactions_file"), job_dir, "transactions")
+        property_details_path = _save_upload(details, job_dir, "property_details")
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 400
     payload, status = _start_investor_sold_job(
         sold_path or "",
         reisift_path,
@@ -397,6 +467,7 @@ def investor_sold_analyze():
         opportunities_path,
         transactions_path,
         job_id=job_id,
+        property_details_path=property_details_path,
     )
     return jsonify(_sanitize_for_json(payload)), status
 

@@ -51,7 +51,7 @@ These same tags feed closings-attribution lifecycle **ACQUIRED** (`lifecycle.py`
 | **4** | Web leads | REISift filtered to web / CourtAlerts cohort + QL | Web-lead credit vs prior list history | `web_leads.py` |
 | **5** | Probate lifecycle | REISift (Probates NY tags) + QL (+ Opps / Txns) | LIP vs 8020 first list → QL lag / reasons | `probate.py` |
 | **6** | Court Alerts lifecycle | Court Alerts CSV + REISift + QL (+ Opps / Txns) | CA vs 8020 first list → QL lag / reasons | `court_alerts.py` |
-| **7** | Investor & In-List Sold | CleanREISift `sold_properties_full.csv` (buybox cities) + REISift + QL (+ Opps) | Never prospected (investor) + Lost + pipeline depth | `investor_sold.py` |
+| **7** | Investor & In-List Sold | CleanREISift `sold_properties_full.csv` (NY Nassau/Suffolk, ZIP/city exclusions) + REISift + QL (+ Opps) | Never prospected (investor) + Lost + pipeline depth | `investor_sold.py` |
 
 API path prefixes stay `/api/court-alerts`, `/api/investor-sold`, etc. (display gate numbers only).
 
@@ -61,13 +61,13 @@ Legacy **Regular attribution** (contact-history CSV → closings lifecycle) rema
 
 ## Gate 7 — Never prospected (investor) + Lost
 
-**Universe (buybox):** marketed-town allowlist only. Full contract: [BUYBOX.md](BUYBOX.md). Sold scrape rows outside those cities are **dropped at ingest**; KPIs never see them. Filter field available on the sold report today: `property_city` (property type / buybox score are **not** on the CSV — do not pretend they are filtered).
+**Universe (buybox):** NY Nassau/Suffolk only, with 72 excluded ZIPs and 84 excluded city keys consolidated from all three suppression sources in `buybox_policy.json`. Full contract: [BUYBOX.md](BUYBOX.md). A present ZIP decides membership; city fallback applies only when ZIP is missing. Malformed nonblank ZIP, missing state/county, and missing fallback city are excluded. Filtering occurs **at ingest before enrichment and KPIs**. Scores do not affect geography. With property details, validated APN/county matches are screened for supported physical-property criteria before enrichment; excluded and unresolved properties remain in a separate audit. Without details this is geography-only. LTV, ownership duration and non-seller/religious-owner exclusion remain unevaluated.
 
-**Inputs:** Sold CSV + REISift + QL (required). Opportunities optional. **Salesforce Transaction Pipeline** optional (Closed Date → Closed; Date Contract Signed / accepted offer → Opportunity).
+**Inputs:** Recommended ZIP bundle with the canonical names documented in [BUYBOX.md](BUYBOX.md#upload-bundle), including `sold_property_details.jsonl`. Individual uploads remain available: Sold CSV + REISift + QL (required), property details optional. Opportunities optional. **Salesforce Transaction Pipeline** optional (Closed Date → Closed; Date Contract Signed / accepted offer → Opportunity).
 
-**Headline pipeline cards + depth table:** cumulative “reached at least” (Prospect ≥ Marketed ≥ …), with every percentage divided by all buybox property × sold-month rows. **Lost by furthest stage** stays exclusive. Marketing touches imply Prospect on the ladder.
+**Headline pipeline cards + depth table:** cumulative “reached at least” (Prospect ≥ Marketed ≥ …), with every percentage divided by eligible unique properties. **Lost by furthest stage** stays exclusive. Marketing touches imply Prospect on the ladder.
 
-**Primary KPI — Never prospected (investor)** = investor sale **and** not HHB-closed **and** no Prospect list from 8020 / Court Alerts / LI Profiles **on or before that property's sold month end**. Prospect history before the report's first sold month still receives credit; list events after the property's sale do not. Denominator = investor sales **inside buybox**. Use this when judging list/provider coverage — always qualify as “among marketed-town sales.”
+**Primary KPI — Never prospected (investor)** = investor sale **and** not HHB-closed **and** no Prospect list from 8020 / Court Alerts / LI Profiles **on or before that property's anchored sold month end**. Prospect history before the report's first sold month still receives credit; later list events do not. Denominator = investor properties **inside buybox**. Qualify findings as “among eligible Nassau/Suffolk properties.”
 
 **Lost** (unchanged) = we had it **and** investor bought it **and** we did not HHB-close it (also buybox-scoped).
 
@@ -75,7 +75,7 @@ Legacy **Regular attribution** (contact-history CSV → closings lifecycle) rema
 
 **Loss %** = lost ÷ properties we had (not “In Our List” as a peer KPI).
 
-**Grain:** unique property × sold month (`dataflik_id` + month).
+**Grain:** one property across the report, anchored to its earliest observed sold month. Count all distinct transaction IDs, but do not import later-month flags or buyers into that earlier snapshot. Display distinct buyers within the earliest month together; no precise within-month sale order is assumed.
 
 **Data caveat:** CleanREISift In My Records scrape must return non-zero totals for every sold month before trusting Lost KPIs. Confirmed still `0` for Mar–Jul 2026 as of 2026-09-21 (root cause: the scraper's "In My Records" tab query itself returns `total=0` from the API for those months — not an auth/scraper bug, see BUYBOX.md). This does **not** blind Gate 7 to prospect-list purchases in that window — whether we bought a property as a Prospect (8020 / Court Alerts / LI Profiles) comes from REISift `Tags`, a separate source from `in_my_records`. Produce CSV via `D:\HHB\CleanREISift` (`scrape_sold_properties.py` / enrich). See [ECOSYSTEM.md](ECOSYSTEM.md).
 
@@ -89,7 +89,7 @@ Legacy **Regular attribution** (contact-history CSV → closings lifecycle) rema
 4. **Export** Salesforce Total Qualified Leads (and Opps / Transaction Pipeline if needed for Gate 5–7).
 5. Run **Gate 2** (and/or **Gate 3**) for list + channel performance.
 6. Run **Gate 5** / **Gate 6** when answering probate or Court Alerts first-list questions.
-7. **CleanREISift** — refresh `sold_properties_full.csv` (verify In My Records totals) → **Gate 7** (buybox towns only — [BUYBOX.md](BUYBOX.md)).
+7. **CleanREISift** — refresh `sold_properties_full.csv` (verify In My Records totals) → **Gate 7** (NY Nassau/Suffolk with ZIP-first exclusions — [BUYBOX.md](BUYBOX.md)).
 8. **Archive** XLSX / share links; saved reports live under `{REPORTS_DIR}/…`.
 
 Docker UI default: `http://localhost:3300`.

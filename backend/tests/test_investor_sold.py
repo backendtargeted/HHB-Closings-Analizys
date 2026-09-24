@@ -14,6 +14,7 @@ from app.services.investor_sold import (
     is_never_prospected_investor,
     result_from_metrics_dict,
     segment_for,
+    collapse_property_month_rows,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -24,7 +25,7 @@ def sale_case(tmp_path):
     """One July investor sale; REISift starts with an unrelated property."""
     sold = pd.DataFrame([{
         "property_address": "999 Nowhere Rd", "property_city": "Hempstead",
-        "state": "NY", "property_zip": "11550", "period_date": "2026-07-01",
+        "state": "NY", "county": "Nassau", "property_zip": "11550", "period_date": "2026-07-01",
         "investor": "TRUE", "in_my_records": "FALSE",
     }])
     reisift = pd.DataFrame([{
@@ -34,7 +35,7 @@ def sale_case(tmp_path):
     }])
     ql = pd.DataFrame(columns=["Street", "City", "State/Province", "Zip/Postal Code", "Create Date"])
 
-    def run(opps=None):
+    def run(opps=None, details=None):
         paths = {}
         for name, frame in (("sold", sold), ("reisift", reisift), ("ql", ql)):
             path = tmp_path / f"{name}.csv"
@@ -44,9 +45,71 @@ def sale_case(tmp_path):
         if opps is not None:
             opps_path = str(tmp_path / "opps.csv")
             opps.to_csv(opps_path, index=False)
-        return analyze(paths["sold"], paths["reisift"], paths["ql"], opps_path)
+        return analyze(paths["sold"], paths["reisift"], paths["ql"], opps_path,
+                       property_details_path=details)
 
     return sold, reisift, ql, run
+
+
+def test_details_screen_before_enrichment_and_persist_audit(sale_case, tmp_path, monkeypatch):
+    import json
+    from io import BytesIO
+    from app.services import investor_sold as service
+
+    sold, _, _, run = sale_case
+    sold.loc[0, ["dataflik_id", "parcel_number", "buyer_full_name", "sale_amount"]] = [
+        "pass", "100-1", "Buyer LLC", "500000",
+    ]
+    for identity, parcel in (("excluded", "200"), ("wrong", "300"), ("missing", "400")):
+        row = sold.iloc[0].copy()
+        row["dataflik_id"], row["parcel_number"] = identity, parcel
+        sold.loc[len(sold)] = row
+    later = sold.iloc[0].copy()
+    later["period_date"], later["buyer_full_name"] = "2026-08-01", "Later Buyer LLC"
+    sold.loc[len(sold)] = later
+    payload = []
+    for identity, apn, kind in (("pass", "1001", "single_family_residence"),
+                                ("excluded", "200", "condo"),
+                                ("wrong", "not-300", "single_family_residence")):
+        payload.append({"dataflik_id": identity,
+                        "property": {"apn": apn, "county": "Nassau", "property_type": kind},
+                        "history": {"transactions": [{"sale_date": "2026-07-15",
+                            "buyer_name": "Buyer LLC", "sale_price": 500000,
+                            "seller_name": "Example Family Trust"}]}})
+    details = tmp_path / "details.jsonl"
+    details.write_text("\n".join(json.dumps(p) for p in payload), encoding="utf-8")
+    enriched = []
+    original = service._enrich_row
+
+    def capture(row, **kwargs):
+        enriched.append(row.dataflik_id)
+        return original(row, **kwargs)
+
+    monkeypatch.setattr(service, "_enrich_row", capture)
+    result = run(details=str(details))
+    assert enriched == ["pass"]
+    assert result.sold_rows_ingested == 5
+    assert result.property_rows == 1
+    assert result.rows[0].sold_month == "2026-07"
+    assert result.rows[0].seller_category == "Trust"
+    assert result.rows[0].seller_name == "Example Family Trust"
+    assert result.property_screening["target_count"] == 4
+    assert result.property_screening["excluded"] == 1
+    assert result.property_screening["unresolved"] == 2
+    assert len(result.property_screening_rows) == 4
+    assert sum(m["count"] for m in result.by_sold_month) == 1
+    restored = result_from_metrics_dict(result.to_api_dict())
+    assert restored.to_api_dict() == result.to_api_dict()
+    workbook = pd.ExcelFile(BytesIO(build_export_workbook(restored)))
+    assert len(pd.read_excel(workbook, "Property Screening")) == 4
+    assert pd.read_excel(workbook, "Journey").iloc[0]["seller_category"] == "Trust"
+
+
+def test_no_details_is_explicit_geographic_only(sale_case):
+    *_, run = sale_case
+    result = run()
+    assert result.property_screening["enabled"] is False
+    assert any("geography-only" in w for w in result.warnings)
 
 
 @pytest.mark.parametrize("crm_kind", ["ql", "opportunity"])
@@ -129,6 +192,83 @@ def test_valid_period_label_can_rescue_invalid_period_date(sale_case):
     assert run().rows[0].sold_month == "2026-07"
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+def test_property_once_at_earliest_sale_without_later_evidence(sale_case, reverse):
+    sold, reisift, ql, run = sale_case
+    sold["dataflik_id"] = "property-1"
+    sold["transaction_id"] = "late"
+    sold["buyer_full_name"] = "Later Buyer"
+    sold["in_my_records"] = "TRUE"
+    sold.loc[1] = sold.iloc[0].copy()
+    sold.loc[1, ["period_date", "transaction_id", "investor", "in_my_records", "buyer_full_name"]] = [
+        "2026-02-01", "early", "FALSE", "FALSE", "Earlier Buyer",
+    ]
+    if reverse:
+        sold.iloc[:] = sold.iloc[::-1].to_numpy()
+    reisift.loc[0, ["Property address", "Created", "Tags"]] = [
+        "999 Nowhere Rd", "2026-03-01", "List Purchased 8020 3/2026",
+    ]
+    ql.loc[0] = ["999 Nowhere Rd", "Hempstead", "NY", "11550", "2026-04-15"]
+    result = run()
+    assert result.sold_rows_ingested == 2
+    assert result.property_rows == 1
+    row = result.rows[0]
+    assert row.sold_month == "2026-02"
+    assert row.last_sold_month == "2026-07"
+    assert row.transaction_count == 2
+    assert row.buyer_full_name == "Earlier Buyer"
+    assert row.investor is False
+    assert row.in_my_records is False
+    assert row.had_presence is False
+    assert row.qualified_lead_matched is False
+    assert row.pipeline_stage == "NONE"
+    assert result.investor_count == result.lost_to_investor_count == 0
+    assert [r["sold_month"] for r in result.by_sold_month] == ["2026-02"]
+    assert sum(r["count"] for r in result.by_sold_month) == result.property_rows
+    restored = result_from_metrics_dict(result.to_api_dict())
+    assert restored.rows[0].last_sold_month == "2026-07"
+    assert restored.property_grain == "property_earliest_sale"
+
+
+def test_transaction_duplicates_and_same_month_buyers_are_order_independent():
+    first = InvestorSoldRow(dataflik_id="1", sold_month="2026-02", transaction_id="a", buyer_full_name="Buyer A", sale_amount="100", investor=True)
+    second = InvestorSoldRow(dataflik_id="1", sold_month="2026-02", transaction_id="b", buyer_full_name="Buyer B", sale_amount="200")
+    later = InvestorSoldRow(dataflik_id="1", sold_month="2026-07", transaction_id="c", buyer_full_name="Later Buyer", in_my_records=True)
+    rows = [first, second, later, first]
+    forward = collapse_property_month_rows(rows)
+    backward = collapse_property_month_rows(list(reversed(rows)))
+    assert forward[0].to_dict() == backward[0].to_dict()
+    assert forward[0].transaction_count == 3
+    assert forward[0].buyer_full_name == "Buyer A; Buyer B"
+    assert forward[0].sale_amount == ""  # Multiple amounts, no arbitrary price.
+    assert forward[0].in_my_records is False
+    assert first.transaction_count == 1  # Inputs were not mutated.
+
+
+def test_unambiguous_missing_property_id_can_join_but_conflicting_ids_cannot():
+    missing = InvestorSoldRow(address_key="1 main|hempstead|ny|11550", sold_month="2026-02", transaction_id="early")
+    known = InvestorSoldRow(dataflik_id="1", address_key=missing.address_key, sold_month="2026-07", transaction_id="late")
+    rows = collapse_property_month_rows([known, missing])
+    assert len(rows) == 1
+    assert rows[0].dataflik_id == "1"
+    assert rows[0].sold_month == "2026-02"
+    conflict = InvestorSoldRow(dataflik_id="2", address_key=missing.address_key, sold_month="2026-06")
+    assert len(collapse_property_month_rows([known, missing, conflict])) == 3
+
+
+def test_geography_exclusion_precedes_dedup_and_metrics(sale_case):
+    sold, _, _, run = sale_case
+    sold["dataflik_id"] = "1"
+    sold.loc[1] = sold.iloc[0].copy()
+    sold.loc[1, ["period_date", "property_zip"]] = ["2026-02-01", "11743"]
+    result = run()
+    assert result.sold_rows_scanned == 2
+    assert result.sold_rows_excluded_buybox == 1
+    assert result.buybox_exclusions == {"excluded_zip": 1}
+    assert result.property_rows == result.sold_rows_ingested == 1
+    assert result.rows[0].sold_month == "2026-07"
+
+
 @pytest.fixture
 def sold_path():
     return str(FIXTURES / "investor_sold_transactions.csv")
@@ -169,7 +309,8 @@ def test_segment_counts_and_pipeline(sold_path, reisift_path, ql_path):
     assert result.sold_rows_ingested == 6
     assert result.sold_rows_scanned == 6
     assert result.sold_rows_excluded_buybox == 0
-    assert result.buybox_town_count >= 200
+    assert result.buybox_excluded_zip_count == 72
+    assert result.property_grain == "property_earliest_sale"
     assert result.property_rows == 5
     assert len(result.rows) == 5
     assert result.unique_addresses == 5

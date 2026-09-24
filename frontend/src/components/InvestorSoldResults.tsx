@@ -1,634 +1,185 @@
-import { useMemo, useState } from 'react';
+import { useRef, useState } from 'react';
+import InvestorSoldScreening from './InvestorSoldScreening';
+import InvestorSoldFunnel from './InvestorSoldFunnel';
+import InvestorSoldPropertyTable from './InvestorSoldPropertyTable';
 import { copyReportShareUrl } from '../utils/reportShareUrl';
-import type {
-  InvestorSoldCompletedResponse,
-  InvestorSoldRow,
-} from '../types/investorSold';
+import type { InvestorSoldCompletedResponse } from '../types/investorSold';
 
-interface InvestorSoldResultsProps {
+interface Props {
   result: InvestorSoldCompletedResponse;
   onNewRun: () => void;
   onExport: () => void;
   exporting: boolean;
 }
 
-type SegmentFilter = 'all' | 'investor' | 'in_our_list' | 'both' | 'neither';
-type JourneyFilter =
-  | 'all'
-  | 'never_marketed'
-  | 'never_prospected'
-  | 'prospects'
-  | 'opps'
-  | 'hhb'
-  | string;
-
-const PIPELINE_STAGE_ORDER = [
-  'NONE',
-  'PROSPECT',
-  'MARKETED',
-  'LEAD',
-  'QUALIFIED_LEAD',
-  'OPPORTUNITY',
-  'HHB_CLOSED',
-] as const;
-
-function pipelineRank(stage: string): number {
-  const idx = PIPELINE_STAGE_ORDER.indexOf(stage as (typeof PIPELINE_STAGE_ORDER)[number]);
-  return idx >= 0 ? idx : 0;
-}
-
-// Pipeline depth and the headline stage cards are cumulative ("reached this stage or
-// further"). A property matched directly at a higher stage still counts at every earlier
-// stage on the canonical ladder.
-const PIPELINE_DEPTH_LABELS: Record<string, string> = {
-  MARKETED: 'Marketed or further',
-  LEAD: 'Lead or further',
-  QUALIFIED_LEAD: 'Qualified Lead or further',
-  OPPORTUNITY: 'Opportunity or further',
+const ownershipColors: Record<string, string> = {
+  Trust: '#7c3aed', Company: '#0f766e', Individual: '#2563eb', Unclassified: '#d6d3d1',
 };
-type SortKey = keyof InvestorSoldRow;
-type SortDir = 'asc' | 'desc';
-
-const DETAIL_COLS: Array<{ key: SortKey; label: string }> = [
-  { key: 'address', label: 'Address' },
-  { key: 'sold_month', label: 'Sold month' },
-  { key: 'buyer_full_name', label: 'Buyer' },
-  { key: 'sale_amount', label: 'Sale amount' },
-  { key: 'transaction_count', label: 'Txns' },
-  { key: 'segment', label: 'Segment' },
-  { key: 'pipeline_stage_label', label: 'Pipeline' },
-  { key: 'marketed', label: 'Marketed' },
-  { key: 'lead_source', label: 'Lead source' },
-  { key: 'qualified_lead_date', label: 'QL date' },
-  { key: 'opp_matched', label: 'Opp' },
-  { key: 'months_list_to_sold', label: 'Mo list→sold' },
-  { key: 'investor_score', label: 'Investor score' },
-];
-
-const SEGMENT_LABELS: Record<string, string> = {
-  investor: 'Investor',
-  in_our_list: 'In Our List',
-  both: 'Both',
-  neither: 'Neither',
+const count = (value: number | undefined) => (value ?? 0).toLocaleString();
+const humanize = (value: string) => value.replace(/_/g, ' ');
+const segmentNames: Record<string, string> = {
+  investor: 'Investor buyer · not scrape-listed',
+  in_our_list: 'Other buyer · scrape-listed',
+  both: 'Investor buyer · scrape-listed',
+  neither: 'Other buyer · not scrape-listed',
 };
 
-const PREVIEW_LIMIT = 500;
-
-function cellValue(row: InvestorSoldRow, key: SortKey): string {
-  const v = row[key];
-  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
-  if (v === null || v === undefined || v === '') return '—';
-  if (key === 'lead_source' || key === 'prospect_source') {
-    const map: Record<string, string> = { ql: 'QL', sf_tag: 'SF', podio: 'Podio' };
-    return map[String(v)] || String(v);
-  }
-  return String(v);
-}
-
-function sortValue(row: InvestorSoldRow, key: SortKey): string | number | boolean {
-  const v = row[key];
-  if (
-    key === 'sale_amount' ||
-    key === 'transaction_count' ||
-    key === 'investor_score' ||
-    key === 'months_list_to_sold' ||
-    key === 'months_list_to_prospect' ||
-    key === 'months_list_to_qualified_lead'
-  ) {
-    const n = Number(String(v ?? '').replace(/[^0-9.-]/g, ''));
-    return Number.isFinite(n) ? n : 0;
-  }
-  if (typeof v === 'boolean') return v ? 1 : 0;
-  return String(v ?? '').toLowerCase();
-}
-
-const InvestorSoldResults = ({
-  result,
-  onNewRun,
-  onExport,
-  exporting,
-}: InvestorSoldResultsProps) => {
+export default function InvestorSoldResults({ result, onNewRun, onExport, exporting }: Props) {
   const m = result.metrics;
-  const propertyRows = m.inputs.property_rows ?? m.rows.length;
-  const txnRows = m.inputs.sold_rows_ingested;
-  const lost = m.lost ?? {
-    never_prospected_investor_count: 0,
-    never_prospected_investor_pct: 0,
-    lost_to_investor_count: 0,
-    lost_to_investor_pct: 0,
-    had_presence_count: 0,
-    had_presence_investor_count: 0,
-    had_presence_non_investor_count: 0,
-    lost_by_stage: [],
-    had_presence_exits_by_buyer: {},
-  };
-  const pipelineFunnel = m.pipeline_funnel ?? [];
-  const funnelByStage = new Map(pipelineFunnel.map((row) => [row.stage, row]));
-  const bySegment = m.by_segment ?? [];
+  const screening = m.property_screening;
+  const hasScreening = screening?.enabled === true;
+  const earliest = m.inputs.property_grain === 'property_earliest_sale';
+  const unit = earliest ? 'properties' : 'property-months';
+  const total = m.inputs.property_rows ?? m.rows.length;
+  const lost = m.lost;
+  const [section, setSection] = useState<'report' | 'review'>('report');
+  const [focus, setFocus] = useState('all');
+  const [tableSelectionVersion, setTableSelectionVersion] = useState(0);
+  const [shareMessage, setShareMessage] = useState('');
+  const tableRef = useRef<HTMLDivElement>(null);
+  const warnings = result.warnings?.length ? result.warnings : m.warnings;
+  const categories = Object.keys(ownershipColors).map((name) => ({
+    name, value: screening?.seller_categories?.[name] ?? 0, color: ownershipColors[name],
+  }));
+  const sellerTotal = categories.reduce((n, item) => n + item.value, 0);
+  let ringOffset = 0;
+  const ringSegments = categories.map((item) => {
+    const length = sellerTotal ? item.value / sellerTotal * 100 : 0;
+    const segment = { ...item, length, offset: ringOffset };
+    ringOffset += length;
+    return segment;
+  });
 
-  const [shareMsg, setShareMsg] = useState('');
-  const [segmentFilter, setSegmentFilter] = useState<SegmentFilter>('all');
-  const [journeyFilter, setJourneyFilter] = useState<JourneyFilter>('all');
-  const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('sold_month');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  function inspect(next: string) {
+    setFocus(next);
+    setTableSelectionVersion(value => value + 1);
+    setSection('report');
+    requestAnimationFrame(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
 
-  const filteredRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    let rows = m.rows;
-    if (segmentFilter === 'investor') rows = rows.filter((r) => r.investor);
-    else if (segmentFilter === 'in_our_list') rows = rows.filter((r) => r.in_my_records);
-    else if (segmentFilter !== 'all') rows = rows.filter((r) => r.segment === segmentFilter);
-
-    if (journeyFilter === 'never_marketed') rows = rows.filter((r) => !r.marketed);
-    else if (journeyFilter === 'never_prospected')
-      rows = rows.filter((r) => r.never_prospected_investor);
-    else if (journeyFilter === 'lost')
-      rows = rows.filter((r) => r.had_presence && r.investor && !r.hhb_closed_date);
-    else if (journeyFilter === 'leads') rows = rows.filter((r) => r.lead_matched);
-    else if (journeyFilter === 'qualified_leads')
-      rows = rows.filter((r) => r.qualified_lead_matched);
-    else if (journeyFilter === 'opps')
-      rows = rows.filter((r) => r.opp_matched || Boolean(r.under_contract_date));
-    else if (journeyFilter === 'hhb') rows = rows.filter((r) => Boolean(r.hhb_closed_date));
-    else if (journeyFilter === 'NONE') {
-      rows = rows.filter((r) => !r.pipeline_stage || r.pipeline_stage === 'NONE');
-    } else if (PIPELINE_STAGE_ORDER.includes(journeyFilter as (typeof PIPELINE_STAGE_ORDER)[number])) {
-      const minRank = pipelineRank(journeyFilter);
-      rows = rows.filter((r) => pipelineRank(r.pipeline_stage) >= minRank);
-    } else if (journeyFilter !== 'all') {
-      rows = rows.filter((r) => r.pipeline_stage === journeyFilter);
-    }
-
-    if (q) {
-      rows = rows.filter((r) => {
-        const blob =
-          `${r.address} ${r.buyer_full_name} ${r.segment} ${r.lead_source} ${r.pipeline_stage_label} ${r.dataflik_id}`.toLowerCase();
-        return blob.includes(q);
-      });
-    }
-
-    const sorted = [...rows].sort((a, b) => {
-      const av = sortValue(a, sortKey);
-      const bv = sortValue(b, sortKey);
-      if (av < bv) return sortDir === 'asc' ? -1 : 1;
-      if (av > bv) return sortDir === 'asc' ? 1 : -1;
-      return 0;
-    });
-    return sorted;
-  }, [m.rows, segmentFilter, journeyFilter, search, sortKey, sortDir]);
-
-  const handleShare = async () => {
+  async function share() {
     const mode = await copyReportShareUrl(result.job_id, 'investor_sold');
-    setShareMsg(mode === 'copied' ? 'Link copied' : 'Copy the link from the prompt');
-    setTimeout(() => setShareMsg(''), 2500);
-  };
+    setShareMessage(mode === 'copied' ? 'Link copied' : 'Copy the link from the prompt');
+    setTimeout(() => setShareMessage(''), 2500);
+  }
 
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortKey(key);
-      setSortDir(key === 'sold_month' || key === 'sale_amount' ? 'desc' : 'asc');
-    }
-  };
-
-  const chips: Array<{ id: SegmentFilter; label: string; count: number }> = [
-    { id: 'all', label: 'All', count: propertyRows },
-    { id: 'investor', label: 'Investor', count: m.segments.investor_count },
-    { id: 'in_our_list', label: 'In Our List', count: m.segments.in_our_list_count },
-    { id: 'both', label: 'Both', count: m.segments.both_count },
-    { id: 'neither', label: 'Neither', count: m.segments.neither_count },
-  ];
-
-  const pipelineCard = (stage: string) =>
-    funnelByStage.get(stage) ?? { stage, label: stage, count: 0, share_pct: 0 };
-
-  const kpiCards: Array<{
-    label: string;
-    value: string;
-    subtitle?: string;
-    onClick?: () => void;
-    active?: boolean;
-  }> = [
-    {
-      label: 'Never prospected (investor)',
-      value: lost.never_prospected_investor_count.toLocaleString(),
-      subtitle: `${lost.never_prospected_investor_pct}% of ${m.segments.investor_count.toLocaleString()} investor · no 8020/CA/LIP · click`,
-      onClick: () => {
-        setSegmentFilter('all');
-        setJourneyFilter('never_prospected');
-      },
-      active: journeyFilter === 'never_prospected',
-    },
-    {
-      label: 'Lost to investor',
-      value: lost.lost_to_investor_count.toLocaleString(),
-      subtitle: `${lost.lost_to_investor_pct}% of ${lost.had_presence_count.toLocaleString()} we had · click to filter`,
-      onClick: () => {
-        setSegmentFilter('all');
-        setJourneyFilter('lost');
-      },
-      active: journeyFilter === 'lost',
-    },
-    {
-      label: 'Marketed',
-      value: `${pipelineCard('MARKETED').count.toLocaleString()} (${pipelineCard('MARKETED').share_pct}%)`,
-      subtitle: `Reached at least · denominator: all ${propertyRows.toLocaleString()} buybox properties`,
-      onClick: () => setJourneyFilter('MARKETED'),
-      active: journeyFilter === 'MARKETED',
-    },
-    {
-      label: 'Leads',
-      value: `${pipelineCard('LEAD').count.toLocaleString()} (${pipelineCard('LEAD').share_pct}%)`,
-      subtitle: `Reached at least · denominator: all ${propertyRows.toLocaleString()} buybox properties`,
-      onClick: () => setJourneyFilter('LEAD'),
-      active: journeyFilter === 'LEAD',
-    },
-    {
-      label: 'Qualified Leads',
-      value: `${pipelineCard('QUALIFIED_LEAD').count.toLocaleString()} (${pipelineCard('QUALIFIED_LEAD').share_pct}%)`,
-      subtitle: `Reached at least · denominator: all ${propertyRows.toLocaleString()} buybox properties`,
-      onClick: () => setJourneyFilter('QUALIFIED_LEAD'),
-      active: journeyFilter === 'QUALIFIED_LEAD',
-    },
-    {
-      label: 'Opportunities',
-      value: `${pipelineCard('OPPORTUNITY').count.toLocaleString()} (${pipelineCard('OPPORTUNITY').share_pct}%)`,
-      subtitle: `Reached at least · denominator: all ${propertyRows.toLocaleString()} buybox properties`,
-      onClick: () => setJourneyFilter('OPPORTUNITY'),
-      active: journeyFilter === 'OPPORTUNITY',
-    },
-    {
-      label: 'Closed',
-      value: `${pipelineCard('HHB_CLOSED').count.toLocaleString()} (${pipelineCard('HHB_CLOSED').share_pct}%)`,
-      subtitle: `Reached at least · denominator: all ${propertyRows.toLocaleString()} buybox properties`,
-      onClick: () => setJourneyFilter('HHB_CLOSED'),
-      active: journeyFilter === 'HHB_CLOSED',
-    },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-violet-800">Gate 7</p>
-          <h2 className="text-2xl font-bold text-violet-950 tracking-tight">
-            Investor &amp; In-List Sold
-          </h2>
-          <p className="text-sm text-stone-600 mt-1">
-            Universe = marketed towns only
-            {m.inputs.buybox_town_count != null
-              ? ` (${m.inputs.buybox_town_count.toLocaleString()} towns`
-              : ''}
-            {m.inputs.sold_rows_excluded_buybox != null && m.inputs.sold_rows_scanned != null
-              ? `; ${(m.inputs.sold_rows_excluded_buybox).toLocaleString()} of ${m.inputs.sold_rows_scanned.toLocaleString()} scrape rows excluded)`
-              : m.inputs.buybox_town_count != null
-                ? ')'
-                : ''}{' '}
-            · Primary: never prospected investor (no 8020 / Court Alerts / LI Profiles) · Lost =
-            we had it and investor bought · Sold months {m.date_window_start || '—'} →{' '}
-            {m.date_window_end || '—'} · {propertyRows.toLocaleString()} properties (from{' '}
-            {txnRows.toLocaleString()} transactions) ·{' '}
-            {m.inputs.unique_addresses.toLocaleString()} unique addresses
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={handleShare}
-            className="px-3 py-2 text-sm font-medium rounded-lg border border-violet-200 text-violet-900 hover:bg-violet-50"
-          >
-            Share link
-          </button>
-          <button
-            type="button"
-            onClick={onExport}
-            disabled={exporting}
-            className="px-3 py-2 text-sm font-medium rounded-lg bg-violet-800 text-white hover:bg-violet-900 disabled:opacity-50"
-          >
-            {exporting ? 'Exporting…' : 'Download XLSX'}
-          </button>
-          <button
-            type="button"
-            onClick={onNewRun}
-            className="px-3 py-2 text-sm font-medium rounded-lg border border-stone-300 text-stone-700 hover:bg-stone-50"
-          >
-            New run
-          </button>
-        </div>
-      </div>
-      {shareMsg && <p className="text-xs text-violet-800">{shareMsg}</p>}
-
-      {(result.warnings?.length || m.warnings?.length) > 0 && (
-        <ul className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 space-y-1">
-          {(result.warnings?.length ? result.warnings : m.warnings).map((w) => (
-            <li key={w}>{w}</li>
-          ))}
-        </ul>
-      )}
-
-      <p className="text-xs text-stone-600">
-        Pipeline cards are cumulative “reached at least” counts. Every percentage uses all{' '}
-        {propertyRows.toLocaleString()} buybox properties as its denominator.
-      </p>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {kpiCards.map((card) => (
-          <div
-            key={card.label}
-            className={`rounded-xl border px-4 py-3 shadow-sm ${
-              card.active
-                ? 'border-violet-400 bg-violet-50'
-                : 'border-violet-100 bg-white'
-            } ${card.onClick ? 'cursor-pointer hover:border-violet-300' : ''}`}
-            onClick={card.onClick}
-            onKeyDown={
-              card.onClick
-                ? (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') card.onClick?.();
-                  }
-                : undefined
-            }
-            role={card.onClick ? 'button' : undefined}
-            tabIndex={card.onClick ? 0 : undefined}
-          >
-            <p className="text-[11px] uppercase tracking-wide text-stone-500 font-semibold">
-              {card.label}
-            </p>
-            <p className="text-lg font-bold text-violet-950 mt-1">{card.value}</p>
-            {card.subtitle ? (
-              <p className="text-[10px] text-stone-500 mt-1 leading-snug">{card.subtitle}</p>
-            ) : null}
-          </div>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {chips.map((chip) => (
-          <button
-            key={chip.id}
-            type="button"
-            onClick={() => setSegmentFilter(chip.id)}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
-              segmentFilter === chip.id
-                ? 'bg-violet-800 text-white border-violet-800'
-                : 'bg-white text-violet-900 border-violet-200 hover:bg-violet-50'
-            }`}
-          >
-            {chip.label} ({chip.count.toLocaleString()})
-          </button>
-        ))}
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="rounded-xl border border-stone-200 bg-white p-4 overflow-x-auto">
-          <h3 className="text-sm font-bold text-stone-800">Lost by furthest stage</h3>
-          <p className="text-xs text-stone-500 mt-1">
-            We had it (list or CRM) + investor + not closed, counted once at highest stage reached.
-          </p>
-          <table className="mt-3 w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase text-stone-500">
-                <th className="py-1">Stage</th>
-                <th className="py-1">Count</th>
-                <th className="py-1">Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(lost.lost_by_stage ?? []).map((row) => (
-                <tr key={row.stage} className="border-t border-stone-100">
-                  <td className="py-1.5">{row.label}</td>
-                  <td className="py-1.5">{row.count}</td>
-                  <td className="py-1.5">{row.share_pct}%</td>
-                </tr>
-              ))}
-              {(lost.lost_by_stage ?? []).length === 0 && (
-                <tr>
-                  <td colSpan={3} className="py-2 text-stone-500 text-xs">
-                    No lost-to-investor rows in this run.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="rounded-xl border border-stone-200 bg-white p-4">
-          <h3 className="text-sm font-bold text-stone-800">Pipeline depth (reached at least)</h3>
-          <p className="text-xs text-stone-500 mt-1 leading-relaxed">
-            Prospect → Marketed → Lead → Qualified Lead → Opportunity → Closed. Counts are
-            cumulative (Prospect ≥ Marketed ≥ …). No list / history = never reached Prospect.
-          </p>
-          <table className="mt-3 w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase text-stone-500">
-                <th className="py-1">Stage</th>
-                <th className="py-1">Count</th>
-                <th className="py-1">Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pipelineFunnel.map((row) => (
-                <tr
-                  key={row.stage}
-                  className={`border-t border-stone-100 cursor-pointer hover:bg-violet-50/60 ${
-                    journeyFilter === row.stage ? 'bg-violet-50' : ''
-                  }`}
-                  onClick={() => setJourneyFilter(row.stage)}
-                >
-                  <td className="py-1.5">{PIPELINE_DEPTH_LABELS[row.stage] ?? row.label}</td>
-                  <td className="py-1.5">{row.count}</td>
-                  <td className="py-1.5">{row.share_pct}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-stone-200 bg-white p-4 overflow-x-auto">
-        <h3 className="text-sm font-bold text-stone-800">By segment</h3>
-        <p className="text-xs text-stone-500 mt-1">
-          Marketed / Lead / Qualified Lead rates within each investor / in-list cut.
+  return <div className="space-y-6 pb-8">
+    <header className="flex flex-wrap justify-between items-start gap-5">
+      <div className="max-w-2xl">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-violet-700">Gate 7 · Sold-property coverage</p>
+        <h2 className="mt-2 text-3xl font-bold tracking-tight text-stone-900">How far did we get before the sale?</h2>
+        <p className="mt-2 text-sm text-stone-600">
+          {earliest ? 'Nassau & Suffolk, NY' : 'Historical report universe'} · Source months {m.date_window_start || '—'} to {m.date_window_end || '—'}
         </p>
-        <table className="mt-3 w-full text-sm min-w-[640px]">
-          <thead>
-            <tr className="text-left text-xs uppercase text-stone-500">
-              <th className="py-1">Segment</th>
-              <th className="py-1">N</th>
-              <th className="py-1">Marketed %</th>
-              <th className="py-1">Lead %</th>
-              <th className="py-1">QL %</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bySegment.map((row) => (
-              <tr
-                key={row.segment}
-                className={`border-t border-stone-100 cursor-pointer hover:bg-violet-50/60 ${
-                  segmentFilter === row.segment ? 'bg-violet-50' : ''
-                }`}
-                onClick={() => setSegmentFilter(row.segment as SegmentFilter)}
-              >
-                <td className="py-1.5">{SEGMENT_LABELS[row.segment] || row.segment}</td>
-                <td className="py-1.5">{row.count}</td>
-                <td className="py-1.5">{row.marketed_pct ?? 0}%</td>
-                <td className="py-1.5">{row.lead_pct ?? 0}%</td>
-                <td className="py-1.5">{row.qualified_lead_pct ?? 0}%</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <p className="mt-1 text-xs text-stone-500">{earliest ? 'Each property counts once, anchored to its earliest observed sale month.' : 'This saved report counts property-month observations.'}</p>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        <button onClick={onExport} disabled={exporting} className="rounded-lg bg-violet-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-900 disabled:opacity-50">{exporting ? 'Exporting…' : 'Download full report'}</button>
+        <button onClick={share} className="rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-700">Share link</button>
+        <button onClick={onNewRun} className="rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-700">New report</button>
+      </div>
+    </header>
+    {shareMessage && <p role="status" className="text-sm text-violet-700">{shareMessage}</p>}
+
+    <nav aria-label="Report sections" className="flex gap-1 border-b border-stone-200">
+      <button onClick={() => setSection('report')} aria-pressed={section === 'report'} className={`px-4 py-3 text-sm font-semibold border-b-2 ${section === 'report' ? 'border-violet-700 text-violet-900' : 'border-transparent text-stone-500 hover:text-stone-800'}`}>Report & properties</button>
+      <button onClick={() => setSection('review')} aria-pressed={section === 'review'} className={`px-4 py-3 text-sm font-semibold border-b-2 ${section === 'review' ? 'border-violet-700 text-violet-900' : 'border-transparent text-stone-500 hover:text-stone-800'}`}>
+        Data review {hasScreening && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900">{count(screening?.unresolved)} unresolved</span>}
+      </button>
+    </nav>
+
+    {section === 'report' ? <>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-600">
+        <span>{hasScreening ? 'KPIs include only properties passing supported snapshot rules. LTV, ownership duration and owner exclusions remain unchecked.' : 'Geography-only report: property details and historical seller categories were not evaluated.'}</span>
+        <button onClick={() => setSection('review')} className="font-semibold text-violet-800 underline underline-offset-2">See scope & exclusions</button>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <button onClick={() => inspect('all')} className="rounded-xl border border-stone-200 bg-white p-5 text-left hover:border-violet-300 focus-visible:ring-2 focus-visible:ring-violet-500">
+          <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">{hasScreening ? 'Screened universe' : 'Geographic universe'}</p>
+          <p className="mt-3 text-4xl font-bold tracking-tight text-stone-900">{count(total)}</p>
+          <p className="mt-2 text-xs text-stone-500">{unit} in this report · view all →</p>
+        </button>
+        <button onClick={() => inspect('never_prospected')} aria-pressed={focus === 'never_prospected'} className={`rounded-xl border bg-white p-5 text-left hover:border-violet-300 focus-visible:ring-2 focus-visible:ring-violet-500 ${focus === 'never_prospected' ? 'border-violet-500 ring-1 ring-violet-200' : 'border-stone-200'}`}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Investor sales without a prospect list</p>
+          <p className="mt-3 text-4xl font-bold tracking-tight text-violet-900">{count(lost?.never_prospected_investor_count)}</p>
+          <p className="mt-2 text-xs text-stone-600">{lost?.never_prospected_investor_pct ?? 0}% of {count(m.segments.investor_count)} investor sales</p>
+          <p className="mt-2 text-xs text-stone-500">No 8020, Court Alerts or LI Profiles prospect list; HHB closings excluded. Inspect coverage →</p>
+        </button>
+        <button onClick={() => inspect('lost')} aria-pressed={focus === 'lost'} className={`rounded-xl border bg-white p-5 text-left hover:border-violet-300 focus-visible:ring-2 focus-visible:ring-violet-500 ${focus === 'lost' ? 'border-violet-500 ring-1 ring-violet-200' : 'border-stone-200'}`}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Lost to an investor</p>
+          <p className="mt-3 text-4xl font-bold tracking-tight text-stone-900">{count(lost?.lost_to_investor_count)}</p>
+          <p className="mt-2 text-xs text-stone-600">{lost?.lost_to_investor_pct ?? 0}% of {count(lost?.had_presence_count)} properties we had</p>
+          <p className="mt-2 text-xs text-stone-500">We had list or CRM presence before sale, but HHB did not close. Inspect losses →</p>
+        </button>
+      </div>
+      <p className="text-xs text-stone-500">These coverage and loss groups can overlap; they should not be added together.</p>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.8fr)_minmax(280px,1fr)]">
+        <InvestorSoldFunnel rows={m.pipeline_funnel ?? []} total={total} selectedStage={focus} onSelect={inspect} />
+        <section className="rounded-xl border border-stone-200 bg-white p-5">
+          <h3 className="font-bold text-stone-900">Who owned the properties?</h3>
+          <p className="mt-1 text-xs text-stone-500">Seller before the anchored sale · eligible {unit}</p>
+          {hasScreening && sellerTotal > 0 ? <>
+            <div className="relative mx-auto my-5 h-44 w-44">
+              <svg viewBox="0 0 120 120" role="img" aria-label={categories.map(item => `${item.name}: ${item.value}`).join(', ')} className="h-full w-full -rotate-90">
+                {ringSegments.filter(item => item.value > 0).map(item => <circle key={item.name} cx="60" cy="60" r="48" pathLength="100" fill="none" stroke={item.color} strokeWidth="13" strokeDasharray={`${item.length} ${100 - item.length}`} strokeDashoffset={-item.offset} />)}
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span className="text-2xl font-bold text-stone-900">{count(sellerTotal - (screening?.seller_categories?.Unclassified ?? 0))}</span><span className="text-xs text-stone-500">classified sellers</span></div>
+            </div>
+            <div className="space-y-1">
+              {categories.map(item => <button key={item.name} onClick={() => inspect(`seller:${item.name}`)} aria-pressed={focus === `seller:${item.name}`} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-violet-500">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: item.color }} />
+                <span>{item.name}</span><span className="ml-auto font-semibold tabular-nums">{count(item.value)}</span><span className="w-12 text-right text-xs text-stone-500">{(100 * item.value / sellerTotal).toFixed(1)}%</span>
+              </button>)}
+            </div>
+            <p className="mt-4 border-t border-stone-100 pt-3 text-xs leading-relaxed text-stone-500">Name-based estimates from uniquely matched historical sales. Company groups all other entities, including estates. Unclassified means evidence was insufficient.</p>
+          </> : <p className="mt-6 text-sm leading-relaxed text-stone-500">Upload property details to identify matched historical sellers. Current-owner names are not used as a substitute.</p>}
+        </section>
       </div>
 
-      {m.by_sold_month.length > 0 && (
-        <div className="rounded-xl border border-stone-200 bg-white p-4 overflow-x-auto">
-          <h3 className="text-sm font-bold text-stone-800">By sold month</h3>
-          <table className="mt-3 w-full text-sm min-w-[720px]">
-            <thead>
-              <tr className="text-left text-xs uppercase text-stone-500">
-                <th className="py-1">Sold month</th>
-                <th className="py-1">Count</th>
-                <th className="py-1">Investor</th>
-                <th className="py-1">In list</th>
-                <th className="py-1">Lost</th>
-                <th className="py-1">Marketed</th>
-                <th className="py-1">Leads</th>
-                <th className="py-1">QL</th>
-              </tr>
-            </thead>
-            <tbody>
-              {m.by_sold_month.map((row) => (
-                <tr key={row.sold_month} className="border-t border-stone-100">
-                  <td className="py-1.5 font-mono text-xs">{row.sold_month}</td>
-                  <td className="py-1.5">{row.count}</td>
-                  <td className="py-1.5">{row.investor}</td>
-                  <td className="py-1.5">{row.in_our_list}</td>
-                  <td className="py-1.5">{row.lost_to_investor ?? 0}</td>
-                  <td className="py-1.5">{row.marketed ?? 0}</td>
-                  <td className="py-1.5">{row.leads ?? 0}</td>
-                  <td className="py-1.5">{row.qualified_leads ?? 0}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <div ref={tableRef} className="scroll-mt-4">
+        <InvestorSoldPropertyTable key={tableSelectionVersion} rows={m.rows} hasScreening={hasScreening} earliestSale={earliest} focus={focus} onFocusChange={setFocus} />
+      </div>
 
-      <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-        <div className="px-4 py-3 border-b border-stone-100 flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-sm font-bold text-stone-800">
-            Journey ({filteredRows.length.toLocaleString()} properties)
-          </h3>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="text-xs text-stone-600">
-              Stage{' '}
-              <select
-                value={journeyFilter}
-                onChange={(e) => setJourneyFilter(e.target.value)}
-                className="ml-1 border border-stone-300 rounded-md px-2 py-1 text-sm"
-              >
-                <option value="all">All</option>
-                <option value="never_prospected">Never prospected (investor)</option>
-                <option value="lost">Lost to investor</option>
-                <option value="never_marketed">Never marketed</option>
-                {pipelineFunnel.map((row) => (
-                  <option key={row.stage} value={row.stage}>
-                    {row.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Filter address or buyer…"
-              className="w-56 max-w-full rounded-lg border border-stone-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-            />
+      <details className="rounded-xl border border-stone-200 bg-white p-5">
+        <summary className="cursor-pointer text-sm font-semibold text-stone-800">Supporting breakdowns · months, loss stages & source-list groups</summary>
+        <p className="mt-3 text-xs text-stone-500">These breakdowns describe the full report; property-table filters do not change them.</p>
+        <div className="mt-5 overflow-x-auto">
+          <h3 className="mb-2 text-sm font-bold">{earliest ? 'By first sold month' : 'By sold month'}</h3>
+          <table className="w-full min-w-[620px] text-left text-sm"><thead className="text-xs text-stone-500"><tr>{['Month', unit, 'Investor buyers', 'Lost to investor', 'Marketed', 'Lead matched', 'QL matched'].map(label => <th key={label} className="py-2 pr-3">{label}</th>)}</tr></thead>
+            <tbody>{m.by_sold_month.map(row => <tr key={row.sold_month} className="border-t border-stone-100">{[row.sold_month, count(row.count), count(row.investor), count(row.lost_to_investor), count(row.marketed), count(row.leads), count(row.qualified_leads)].map((value, i) => <td key={i} className="py-2 pr-3">{value}</td>)}</tr>)}</tbody>
+          </table>
+          <p className="mt-2 text-xs text-stone-500">Lead/QL matched columns count direct evidence. The funnel also includes properties inferred to have reached earlier stages.</p>
+        </div>
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <div><h3 className="mb-2 text-sm font-bold">Where we lost investor sales</h3><p className="mb-2 text-xs text-stone-500">Each loss appears once at its furthest recorded stage.</p>
+            <table className="w-full text-left text-sm"><thead className="text-xs text-stone-500"><tr><th className="py-2">Furthest stage</th><th>Properties</th><th>Share of losses</th></tr></thead><tbody>{(lost?.lost_by_stage ?? []).map(row => <tr key={row.stage} className="border-t border-stone-100"><td className="py-2">{row.label}</td><td>{count(row.count)}</td><td>{row.share_pct}%</td></tr>)}</tbody></table>
+          </div>
+          <div className="overflow-x-auto"><h3 className="mb-2 text-sm font-bold">Buyer & scrape-list groups</h3><p className="mb-2 text-xs text-stone-500">Separate groups. Scrape-list presence is the source flag, not all CRM presence.</p>
+            <table className="w-full min-w-[380px] text-left text-sm"><thead className="text-xs text-stone-500"><tr><th className="py-2">Group</th><th>Properties</th><th>Marketed</th></tr></thead><tbody>{m.by_segment.map(row => <tr key={row.segment} className="border-t border-stone-100"><td className="py-2 pr-2">{segmentNames[row.segment] ?? row.segment}</td><td>{count(row.count)}</td><td>{row.marketed_pct ?? 0}%</td></tr>)}</tbody></table>
           </div>
         </div>
-        {journeyFilter === 'never_prospected' && (
-          <p className="mx-4 mt-3 text-xs text-amber-900 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-            Investor sale with no Prospect from 8020 / Court Alerts / LI Profiles — coverage /
-            data-quality check. Full list is on the Never Prospected Inv XLSX sheet.
-          </p>
-        )}
-        {journeyFilter === 'never_marketed' && (
-          <p className="mx-4 mt-3 text-xs text-amber-900 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-            No <code className="bg-white/80 px-1 rounded">(8020) CC/SMS/DM</code> tags on/before the
-            sold month — often DNC or suppression. Full list is on the Never Marketed XLSX sheet.
-          </p>
-        )}
-        <div className="overflow-x-auto max-h-[28rem]">
-          <table className="min-w-full text-sm">
-            <thead className="bg-stone-50 sticky top-0">
-              <tr>
-                {DETAIL_COLS.map((c) => {
-                  const active = sortKey === c.key;
-                  return (
-                    <th
-                      key={c.key}
-                      className="px-3 py-2 text-left text-xs font-semibold text-stone-500 whitespace-nowrap"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleSort(c.key)}
-                        className={`inline-flex items-center gap-1 hover:text-violet-900 ${
-                          active ? 'text-violet-900' : ''
-                        }`}
-                      >
-                        {c.label}
-                        <span className="text-[10px] tabular-nums">
-                          {active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
-                        </span>
-                      </button>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.slice(0, PREVIEW_LIMIT).map((row, idx) => (
-                <tr
-                  key={`${row.dataflik_id || row.address_key}-${row.sold_month}-${idx}`}
-                  className="border-t border-stone-100"
-                >
-                  {DETAIL_COLS.map((c) => (
-                    <td key={c.key} className="px-3 py-2 whitespace-nowrap">
-                      {c.key === 'transaction_count' && row.transaction_count > 1 ? (
-                        <span
-                          className="inline-flex min-w-[1.5rem] justify-center rounded-md bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-950"
-                          title="Multiple Dataflik transaction_ids for this property×month"
-                        >
-                          {row.transaction_count}
-                        </span>
-                      ) : (
-                        cellValue(row, c.key)
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {filteredRows.length > PREVIEW_LIMIT ? (
-            <p className="px-4 py-2 text-xs text-stone-500 border-t border-stone-100">
-              Showing first {PREVIEW_LIMIT.toLocaleString()} of{' '}
-              {filteredRows.length.toLocaleString()} filtered properties — download XLSX for full
-              detail.
-            </p>
-          ) : null}
-          {filteredRows.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-stone-500">No rows match the current filters.</p>
-          ) : null}
+      </details>
+    </> : <div className="space-y-5">
+      <section className="rounded-xl border border-stone-200 bg-white p-5">
+        <h3 className="text-lg font-bold text-stone-900">How the report universe is built</h3>
+        <p className="mt-1 text-sm text-stone-500">Geography first, then one row per property, then supported property rules. CRM matches never readmit excluded properties.</p>
+        <ol className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ['1 · Raw sold rows', m.inputs.sold_rows_scanned, 'Source transaction rows'],
+            ['2 · Inside geography', m.inputs.sold_rows_ingested, 'Transaction rows after ZIP/city exclusions'],
+            ['3 · Property deduplication', hasScreening ? screening?.target_count : total, earliest ? 'Unique properties at earliest observed sale' : 'Property-month observations'],
+            ['4 · Report universe', total, hasScreening ? 'Properties passing supported details rules' : 'Geographic-only; details not supplied'],
+          ].map(([label, value, note]) => <li key={String(label)} className="rounded-lg border border-stone-200 bg-stone-50 p-4"><p className="text-xs font-semibold text-stone-600">{label}</p><p className="mt-2 text-2xl font-bold">{value == null ? '—' : Number(value).toLocaleString()}</p><p className="mt-1 text-xs text-stone-500">{note}</p></li>)}
+        </ol>
+        <div className="mt-5 text-sm leading-relaxed text-stone-600">
+          {earliest ? <p>Nassau/Suffolk, NY only. {count(m.inputs.buybox_excluded_zip_count)} excluded ZIPs take priority. The {count(m.inputs.buybox_excluded_city_count)} excluded city names apply only when ZIP is missing.</p> : <p>This historical report used its original saved geographic policy; rerun to apply the current buybox.</p>}
+          <p className="mt-2">{count(m.inputs.sold_rows_excluded_buybox)} source rows excluded by geography: {Object.entries(m.inputs.buybox_exclusions ?? {}).map(([reason, n]) => `${humanize(reason)} ${count(n)}`).join(' · ') || 'reason detail unavailable in this saved report'}.</p>
         </div>
-      </div>
-
-      <p className="text-xs text-stone-500 leading-relaxed max-w-3xl">{m.methodology_note}</p>
-    </div>
-  );
-};
-
-export default InvestorSoldResults;
+      </section>
+      <InvestorSoldScreening screening={screening} rows={m.property_screening_rows ?? []} />
+      {warnings.length > 0 && <section className="rounded-xl border border-amber-200 bg-amber-50 p-5"><h3 className="font-semibold text-amber-950">Source notes</h3><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">{warnings.map(w => <li key={w}>{w}</li>)}</ul></section>}
+      <details className="rounded-xl border border-stone-200 bg-white p-5"><summary className="cursor-pointer text-sm font-semibold">Calculation methodology</summary><p className="mt-3 max-w-4xl text-sm leading-relaxed text-stone-600">{m.methodology_note}</p></details>
+    </div>}
+  </div>;
+}

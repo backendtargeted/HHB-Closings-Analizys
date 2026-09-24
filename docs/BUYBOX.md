@@ -1,375 +1,180 @@
-# Gate 7 buybox (marketed towns) — locked contract
+# Gate 7 buybox — active report contract
 
-This document is the **operator contract** for Gate 7 Investor & In-List Sold geography.
-The report is used to judge **list / data-provider coverage inside markets HHB actually markets**.
-Treat KPIs as **buybox-scoped**, not statewide NY performance.
+Gate 7 evaluates provider coverage among eligible properties in **Nassau and Suffolk counties, New York**. Geography is filtered from the raw sold report before property rows, REISift/CRM enrichment, or KPIs are built.
 
-**Code source of truth for membership:** `backend/app/services/buybox_towns.py` (town list) and `backend/app/services/buybox_zips.py` (zip list, added 2026-09-23) — either match is enough  
-**Filter point:** sold CSV ingest in `backend/app/services/investor_sold.py` (before row build / enrich / KPIs).
+## Source of truth
 
----
+[buybox_policy.json](../backend/app/services/buybox_policy.json) is the single executable policy: **72 excluded ZIPs and 84 excluded city keys**, with source provenance. It consolidates the union of DM-Sept, Tina, and the 8020 ZIP list in [BUYBOX_8020REI.md §13](BUYBOX_8020REI.md#13-suppressed-towns--source-list). Any source's suppression is sufficient. Source-specific “only” annotations are respected; other sources can still supply the remaining ZIPs.
 
-## Why this exists
+No scores determine membership. Neither the 8020 compound score/count column nor the sold CSV's investor classification score supplies an exclusion. The raw source document preserves evidence, while the JSON supplies runtime decisions.
 
-Gate 7 answers: *Among sales in towns we market, did we (or our lists) cover the property before an investor closed?*
+## Decision order
 
-If the universe included Buffalo / Albany / upstate / random NY cities we do not market, "never prospected" and pipeline-empty rates would look catastrophic for the wrong reason — those sales were **never in scope**. The buybox keeps the report honest when evaluating a provider.
+1. Require state NY/New York and county Nassau/Suffolk. Missing or other state/county is excluded.
+2. When ZIP is present, normalize it and check the excluded ZIP list. An excluded ZIP is outside the universe regardless of city. A valid ZIP absent from the exclusions passes geography.
+3. A malformed nonblank ZIP is excluded; it does not activate city fallback.
+4. Only when ZIP is absent, normalize the city and check the excluded-city list. Missing city or an excluded city is excluded; another nonblank city passes.
 
----
+ZIP normalization accepts five digits, ZIP+4, nine-digit ZIP+4, numeric CSV artifacts such as `11550.0`, and four digits with a lost leading zero. It does not extract digits from arbitrary text. City normalization trims whitespace and trailing punctuation, collapses internal spaces, and ignores case.
 
-## What HHB buybox means here
+Shared ZIPs are excluded in full: for example, 11743 is excluded even when a row says Huntington. Conversely, an excluded city name with a valid nonexcluded ZIP passes because city is only a fallback. This precedence is intentional.
 
-**Locked definition (2026-09-21, geography mechanism updated 2026-09-23):** "Buybox" is exactly two things — (1) marketed geography below (two flat allowlists, a zip list and a town list, maintained in code — a sold row is in-buybox if it matches *either*) and (2) **REISift's own Buybox report** (its native scoring UI — the screenshot with Market properties, Buybox score, Action-plan 30/60/90 days, Recommended max list, Total reach, Client deals by county). Nothing else is "buybox" logic. In particular: `investor_score` on the sold CSV is **not** part of the buybox — see the note below the table. Also not part of it: 8020REI's own product Buybox tool's compound "Buybox score" column (property type / owner type / LTV / value / etc. weighted score) — see "Zip matching" below for why that score isn't used at all, not even to build the zip list.
+Implementation: [evaluate_buybox](../backend/app/services/buybox_towns.py), [ZIP normalization](../backend/app/services/buybox_zips.py), and sold ingest in [investor_sold.py](../backend/app/services/investor_sold.py). Exclusion reasons and counts make the universe auditable.
 
-Related product context (not all enforceable from the sold scrape):
+## Scope and limits
 
-| Buybox idea | In Gate 7 today? | Why |
-|-------------|------------------|-----|
-| Marketed **zip codes** | **Yes — hard filter** | Sold CSV has `property_zip`; flat list derived from `docs/BUYBOX_8020REI.md` §4, see below |
-| Marketed **towns / cities** | **Yes — hard filter** | Sold CSV has `property_city` |
-| NY state sales | Implicit in scrape | Scrape is NY-oriented; we do not add a second state gate |
-| Nassau / Suffolk county only | **No** | Allowlist also includes Queens / Brooklyn / nearby cities we market (e.g. Astoria, Jamaica, Flushing, Brooklyn) — outside 8020REI's zip data entirely, so these only ever match via the town list |
-| Property type SFH / 2–9 units | **No** | Sold CSV has **no** property-type column |
-| REISift's own Buybox report (score, action-plan 30/60/90 days, recommended max list, total reach, client deals by county) | **No** | Lives entirely in REISift's own Buybox feature, a separate report. Not on `sold_properties_full.csv`, not exportable into Gate 7 without a new export |
-| 8020REI's own Buybox "score" column (docs/BUYBOX_8020REI.md §4) | **No — not used at all** | Compound score across 9 weighted dimensions, not a geography fact; see "Zip matching" below |
+With `sold_property_details.jsonl`, Gate 7 streams details only for geographically admitted properties, after collapsing repeat transactions. The returned property's APN and county must match the original sold evidence: the JSONL's copied sold IDs alone do not prove a correct property lookup. Unverified identities and missing details remain unresolved, outside the screened KPI universe, with an audit row.
 
-**Rule:** Filter with **every sold-report field that maps cleanly to buybox**. Today that is **`property_zip`** and **`property_city`**, both normalized, both flat allowlists, either match is enough. Do not invent county-only or property-type filters that the sold file cannot support — that would silently drop marketed towns or pretend precision we do not have.
+Supported property screening uses the documented SFH/2–9-unit, property age, estimated value, living area and lot-size criteria. Only properties passing these supported rules enter pipeline enrichment. Unknown values pass only where the source buybox explicitly permits unknowns. This is a screen using the retrieved property snapshot, not certification of every characteristic as of the sale. Ownership duration, LTV, and non-seller/religious-owner exclusion remain unevaluated and are disclosed in the report. Individual-file uploads without details retain the geographic-only workflow, clearly labeled.
 
-**Not buybox — do not conflate:** `investor_score` is on the sold CSV (98.8% filled, range 2–100) and is carried on every Gate 7 row/export, but it is unrelated to buybox. Traced to source (`D:\HHB\CleanREISift\scrape_sold_properties.py`): it is a raw pass-through of Dataflik's own per-**sale** field (`item.get("investor_score")`), used alongside address-tab matching to help classify whether a completed transaction was an investor purchase — a post-sale classification confidence about a third party's sale, not a property/owner fit score of ours. It happens to share a 0–100 scale with REISift's Buybox score, which is a coincidence, not a relationship. No buybox logic should reference it.
+Seller categories are **Trust / Company / Individual**, with **Unclassified** for insufficient evidence. These are name-based inferences from historical sellers, only after validating the property and uniquely matching a transaction to the earliest sold month, original buyer and sale amount. Current-owner names never substitute for the seller. The earliest month is the precision of the sold source; the report does not invent transaction order within that month.
 
----
+The UI and Excel export expose screening counts and a property screening audit, including excluded and unresolved properties. Seller category totals describe the eligible KPI universe.
 
-## How filtering works
+The report view presents coverage/loss KPIs, a cumulative pipeline funnel, seller ownership composition, and the property table. Selecting a chart focuses that table; table filters do not recalculate the full-report summaries. A property's row shows its furthest stage, while the funnel includes it in every earlier stage it reached. Data review contains geographic counts, screening exceptions, and methodology. Monthly and source-list breakdowns remain available under supporting breakdowns.
 
-1. CleanREISift may still scrape statewide `sold_properties_full.csv`.
-2. Gate 7 `analyze()` reads each sold row and keeps it **only if** `in_buybox(property_city, property_zip)`.
-3. Non-matching rows are **dropped at ingest** — they never become `InvestorSoldRow`s, never enrich, never enter Never prospected / Lost / pipeline.
-4. Transparency only (not a KPI): `sold_rows_scanned`, `sold_rows_excluded_buybox`, `sold_rows_ingested`, `buybox_town_count` on the report header / Summary sheet / methodology note.
+The raw scrape can remain statewide. Closings defines the analysis universe; matching REISift records never readmits a geographically excluded sold row.
 
-### Zip matching
+## Upload bundle
 
-Added 2026-09-23. Code: `backend/app/services/buybox_zips.py`. `BUYBOX_ZIPS` is a flat, hardcoded tuple of zip codes, the same idea as the town list below — no classification logic, no exclusion lists, no overrides. `in_buybox(city, zip_code)` returns `True` if *either* the zip is on `BUYBOX_ZIPS` *or* the city is on `BUYBOX_TOWNS` — a plain OR of two flat lists.
+Upload a ZIP containing these exact names at its root or inside one shared folder:
 
-`BUYBOX_ZIPS` was built once, by hand, from `docs/BUYBOX_8020REI.md` §4 (a raw scrape of 8020REI's own product buybox tool for Nassau & Suffolk, zip → city list): a zip was added to the list if at least one of its listed cities was already on the town allowlist. That's it — no attempt to derive an *excluded*-zip signal, and 8020REI's own "Buybox score" column (a compound score across 9 weighted dimensions — property type, owner type, LTV, value, etc., §3 of the source doc) was not used for anything; it isn't a geography fact. This means the zip list is intentionally permissive: a zip qualifies if it contains a marketed town, even if the same 8020REI row also lists an unrelated non-marketed town sharing that zip. That imprecision is accepted in exchange for keeping the mechanism simple and auditable as two flat lists.
+| File | Required |
+|---|---|
+| `sold_properties_full.csv` | Yes |
+| `reisift_export.csv` | Yes |
+| `qualified_leads.xlsx` or `qualified_leads.csv` | Yes, exactly one |
+| `sold_property_details.jsonl` | Yes |
+| `opportunities.xlsx` or `opportunities.csv` | Optional, at most one |
+| `transactions.xlsx` or `transactions.csv` | Optional, at most one |
 
-### City matching
+Rename copies of Salesforce exports to these canonical bundle names. The backend validates and streams extraction in a background worker, then applies geography → earliest-property collapse → validated details → REISift/CRM → KPIs. Extra substantive files, ambiguous duplicates, nested folders, and unsafe ZIP entries fail with an explanation. The default uncompressed limit is 4 GiB, configurable with `INVESTOR_SOLD_BUNDLE_MAX_UNCOMPRESSED_BYTES`. Large uploads use the existing resumable upload mechanism. Original individual-file uploads remain available.
 
-- `normalize_town`: strip → strip trailing `,;.` → collapse whitespace → `casefold`.
-- Membership = normalized city ∈ `BUYBOX_TOWNS` (210 distinct normalized keys from 212 label spellings).
-- Typo / alias spellings from the scrape are **kept as allowlist entries** so real marketed sales are not excluded for spelling (see below).
+## Property grain and timing
 
-### Duplicate label norms (same city, two spellings in source list)
+Each property appears once across the report, anchored to its earliest observed sold month. All distinct transaction IDs remain counted. Later-month investor/In My Records flags and buyers do not change the earlier snapshot. Distinct buyers observed within the earliest month are displayed together; the source does not establish their exact within-month order.
 
-- `east northport` ← `East Northport`, `East Northport,`
-- `huntington` ← `Huntington`, `Huntington,`
+Enrichment is evaluated relative to that anchored sold month. Headline pipeline cards are cumulative “reached at least” counts, divided by eligible unique properties. “Never prospected” evaluates investor properties without qualifying pre-sale Prospect-list history; “Lost” evaluates investor properties we had before the sale that were not HHB-closed.
 
-### Intentional scrape aliases / typos kept on the allowlist
+## Historical provenance — not active policy
 
-These are **not** separate markets — they exist so dirty `property_city` values still match:
+Earlier versions used a town allowlist, then a permissive town-OR-ZIP allowlist. The ZIP list was derived from any marketed name appearing in a source ZIP row, admitting suppressed ZIPs again. Town deletions alone could not prevent readmission by ZIP.
 
-- `Blue Poin` (alias of Blue Point)
-- `FRANKLIN SQUAR` (alias of Franklin Square)
-- `GardenCity` (alias of Garden City)
-- `Hicksvill` (alias of Hicksville)
-- `Hauppaüge` (alias of Hauppauge)
-- `Patchog` (alias of Patchogue)
-- `Seiden` (alias of Selden)
-- `StIslip` (alias of Islip family (scrape spelling))
-- `E Farmingdale` (alias of East Farmingdale)
-- `E Northport` (alias of East Northport)
-- `N babylon` (alias of North Babylon)
-- `W babylon` (alias of West Babylon)
-- `Mt Sinai` (alias of Mount Sinai)
-- `St James` (alias of Saint James)
-- `Bayshore` (alias of Bay Shore)
-- `Setauket- East Setauket` (alias of Setauket / East Setauket)
+Those historical positive town labels remain in code only for compatibility with old metadata consumers. They do not decide membership. Old marketed-town counts, statewide proportions, and property-by-month totals are not current report denominators.
 
----
+The source's 8020 table includes incomplete city captures and mixed city/ZIP associations. It is retained as evidence, not interpreted as a new postal map or score-based rule.
 
-## How to read Gate 7 KPIs (provider evaluation)
+## Known source limitations
 
-| KPI | Meaning **inside buybox only** | Do **not** read as |
-|-----|--------------------------------|--------------------|
-| **Never prospected (investor)** | Investor sale in a marketed town, not HHB-closed, no 8020 / Court Alerts / LI Profiles Prospect list on or before that property's sold month end; pre-report history still counts | "Provider missed all of NY" |
-| **Lost to investor** | We had presence (scrape In My Records **or** REISift/CRM) + investor + not closed | Failures outside marketed towns |
-| **Pipeline depth / No list history** | Furthest stage among **buybox** sales | Statewide emptiness |
-| **In Our List** segment | Scrape `in_my_records` among buybox sales | Same as "has Prospect tags" |
+The historical production audit found the scraper's In My Records API returning zero for Mar–Jul 2026. That observation is a source-data caveat, not a reason to change geography. REISift list-purchase tags independently provide Prospect evidence. Recheck the source before treating missing scrape presence as complete coverage.
 
-When presenting to stakeholders: always say **"among marketed-town sales"** (or cite buybox town count + excluded scrape rows from the header).
+Salesforce Transaction Pipeline exports may lack a separate city field, requiring street-plus-ZIP matching. Its candidate window is bounded by first Prospect month when available, otherwise the configured lookback, and by sold month end; see [REPORT_METHODOLOGY.md §21](REPORT_METHODOLOGY.md#21-gate-7-investor--in-list-sold).
 
-Headline Marketed → Closed cards are cumulative **“reached at least”** counts. Each card's percentage is divided by all buybox property × sold-month rows, so Closed is included in Opportunity and every earlier pipeline stage even when a separate lower-stage source file did not match.
+## Maintaining the policy
 
----
+Edit the single JSON policy and its provenance, update regression tests, refresh the appendix with `python backend/scripts/gen_buybox_doc.py`, and rerun Gate 7. The generator updates only the marked appendix and preserves this operator contract.
 
-## Confirmed against production data (2026-09-21)
+<!-- BUYBOX_POLICY_APPENDIX_START -->
 
-**Stale after 2026-09-23:** the figures below predate the zip allowlist and town-allowlist reconciliation described in the next section. The zip list recovers some previously-excluded rows (unlisted city spellings like "Massapequa Pk", or any city sharing a zip with a marketed town) and the town-list cleanup removes a few others — the 24.1% in-buybox figure will shift and needs re-measurement against a current scrape before being quoted again.
+## Exclusion-policy appendix
 
-Measured against the live `D:\HHB\CleanREISift\data\sold_properties_full.csv` (72,918 scanned rows, period Feb–Jul 2026):
+Generated from `buybox_policy.json`: 72 ZIPs and 84 city keys.
 
-- **17,561 of 72,918 rows (24.1%) are inside the buybox**; the other 75.9% are dropped at ingest — overwhelmingly non-marketed NY metros (top excluded cities: New York, Rochester, Buffalo, Staten Island, Bronx, Syracuse, Schenectady, Albany, Binghamton, Niagara Falls). This confirms the filter is doing its job: excluded volume is upstate/NYC-outer-borough, not marketed Long Island / Queens towns.
-- **48 of the 214 buybox town labels had zero rows** in this particular 6-month window (e.g. Bayshore, Elwood, Mt Sinai, North Merrick, Patchog). That can be normal for a low-volume town in a short window — it is **not** on its own evidence of a scrape gap — but it's worth a periodic glance if a town goes quiet for several months running.
-- **`in_my_records` is `TRUE` for 0 of 5,606 in-buybox rows across Mar/Apr/May/Jun/Jul 2026** — only Feb 2026 (414 rows) has any. This is the exact "Data caveat" already called out below and in SOP.md / REPORT_METHODOLOGY.md §21 — it is **still live**, not historical, as of this file. Root cause traced in `D:\HHB\CleanREISift\logs\sold_properties_full.log`: for each of those 5 months the scraper's **In My Records** tab query itself reports `total=0` straight from the API (`In My Records... reported total=0`), while the **Investor** tab query against the exact same month succeeds normally (2,800–3,100 matches every month) — so this isn't an auth/scraper failure, it's that specific REISift/Dataflik view returning nothing for anything before Feb 2026. Lost / had-presence KPIs for Mar–Jul 2026 are currently getting zero contribution from the scrape's own In My Records flag; whatever "we had it" signal exists for those months comes entirely from REISift/CRM presence (Tags, marketing, leads, QL, opps, contract, closed), not from this flag. Needs investigation on the REISift/Dataflik side (why does "In My Records" back-testing stop returning data before Feb 2026?), then a re-scrape, before treating those months' Lost numbers as complete.
-- **This gap does not mean Gate 7 has no way to know whether we already had a sold property as a prospect.** Whether HHB *purchased* a property as a prospect (8020 / Court Alerts / LI Profiles list purchase) is tracked from a completely separate, independent source — the REISift export's own `Tags` (`List Purchased 8020 …`, `Probates NY …`, Court Alerts list tags) — not from the scrape's `in_my_records` flag at all. That source has its own row per property and its own list-purchase month, so it still says "we bought this one" for Mar–Jul 2026 sold properties even while `in_my_records` is blank for those months. This is exactly what powers `list_purchase_date` / `prospect_list_source` and the **Never prospected (investor)** primary KPI. It was severely under-matching before the REISift zip-column fix in `monthly_consolidated.py` (0.12% REISift match rate on the current file); after the fix it matches 21.6% of buybox rows.
+### Excluded ZIPs
 
-## Buybox reconciliation against 8020REI (2026-09-23)
+`06390`, `10591`, `10598`, `11020`, `11021`, `11023`, `11024`, `11030`, `11050`, `11375`, `11421`, `11507`, `11509`, `11516`, `11545`, `11547`, `11548`, `11557`, `11559`, `11560`, `11569`, `11576`, `11577`, `11579`, `11581`, `11596`, `11598`, `11702`, `11732`, `11743`, `11771`, `11777`, `11780`, `11782`, `11786`, `11791`, `11797`, `11901`, `11930`, `11931`, `11932`, `11933`, `11935`, `11937`, `11939`, `11940`, `11941`, `11942`, `11944`, `11946`, `11947`, `11948`, `11952`, `11954`, `11956`, `11957`, `11958`, `11959`, `11962`, `11963`, `11964`, `11965`, `11968`, `11970`, `11971`, `11972`, `11975`, `11976`, `11977`, `11978`, `12601`, `12603`
 
-The user captured `docs/BUYBOX_8020REI.md` (a raw scrape of 8020REI's own product buybox tool for Nassau & Suffolk) as an independent ground truth to audit the town allowlist against, and to add a second flat zip allowlist (see "Zip matching" above). Findings and actions:
+### Excluded city keys
 
-**Removed from `_BUYBOX_TOWN_LABELS`** (8 labels — confirmed suppressed/non-marketed, or a shared-zip risk):
-- `East Marion`, `East Moriches`, `E Moriches`, `Eastport`, `Lloyd Harbor`, `Southold` — each corroborated by at least one of §13's three independent sources (DM-Sept, Tina, the "8020 zip list").
-- `Westhampton Beach` — a spelling variant of suppressed "West Hampton Beach" (zip 11978).
-- `Brookville` — not itself suppressed, but its zip-11545 neighbors "Old Brookville"/"Upper Brookville" are; removed out of caution given the shared-zip naming-collision risk.
+- albany
+- amagansett
+- aquebogue
+- atlantic beach
+- baiting hollow
+- bridgehampton
+- buffalo
+- cedarhurst
+- cherry grove
+- cutchogue
+- e moriches
+- east atlantic beach
+- east hampton
+- east hills
+- east marion
+- east moriches
+- east norwich
+- east quogue
+- eastport
+- fishers island
+- forest hills
+- gilgo beach
+- glen head
+- glenwood landing
+- great neck
+- greenport
+- halesite
+- hampton bays
+- henderson
+- hewlett
+- hewlett harbor
+- james
+- jamesport
+- kings point
+- laurel
+- laurel hollow
+- lawrence
+- lloyd harbor
+- locust valley
+- mattituck
+- montauk
+- muttontown
+- new suffolk
+- north haven
+- north hills
+- north woodmere
+- oak beach
+- oak island
+- old brookville
+- orient
+- peconic
+- plandome
+- point lookout
+- poughkeepsie
+- quogue
+- roslyn
+- roslyn estates
+- roslyn harbor
+- roslyn heights
+- sag harbor
+- sagaponack
+- sands point
+- sea cliff
+- searingtown
+- shelter island
+- shelter island heights
+- shoreham
+- south jamesport
+- southampton
+- southold
+- speonk
+- tarrytown
+- upper brookville
+- wainscott
+- water mill
+- west hampton
+- west hampton beach
+- westhampton
+- westhampton beach
+- williston park
+- woodbury
+- woodhaven
+- woodmere
+- yorktown heights
 
-**Added to `_BUYBOX_TOWN_LABELS`** (4 labels — nonzero 8020REI buybox score, not suppressed, previously missing): `Captree Island` (zip 11702), `Port Washington North` (11050), `Davis Park` (11772), `Oyster Bay Cove` (11791).
-
-**Reviewed, no action taken:**
-- `Latham` — an Albany-area town with zero connection to Nassau/Suffolk/Queens/Brooklyn, and absent from 8020REI's Nassau+Suffolk zip table entirely. Looks stale/erroneous, but left in place pending further investigation — flagged here as an open question.
-- `James` — a weakly-sourced §13 entry (only one of three sources, no zip-list confirmation) whose own zip (11780) has a nonzero 8020REI score, contradicting the suppression claim. Not present in code today (only `Saint James`/`St James` are) so no removal was needed — noted here as a reviewed-and-dismissed false lead so it isn't re-flagged later.
-
-**New capability**: a flat zip allowlist (`backend/app/services/buybox_zips.py`) — see "Zip matching" above for the mechanism.
-
-## Salesforce Transaction Pipeline overlay (optional Gate 7 input)
-
-Full clock/candidate rules: [REPORT_METHODOLOGY.md §21](REPORT_METHODOLOGY.md#21-gate-7-investor--in-list-sold). Two production-data limitations worth knowing when reading Gate 7 with this file attached:
-
-- **No city column.** The real Transaction Pipeline export has `Address (Street)`, `Address (State/Province)`, `Address (ZIP/Postal Code)` but **no** `Address (City)` / `City` column at all (city only appears baked into a free-text `Transactions: Transaction Name` field, which is not parsed). Matching therefore falls back to **street + zip only** — measured at ~1% key-collision rate (5 of 526 rows) on a real sample. Low risk, not zero; an address matched this way could in principle belong to a same-named street in a different town sharing a zip.
-- **Match window is bounded**, not open-ended: on/after the property's first Prospect-list month when known, else on/after `sold month − 24 months`, and always on/before the sold month end (`TXN_NO_LIST_LOOKBACK_MONTHS` in `investor_sold.py`). This stops an unrelated, much older Transaction Pipeline record at the same street address from being credited to a current external sale — real addresses resell over the years.
-
----
-
-## Updating the buybox
-
-1. Edit `_BUYBOX_TOWN_LABELS` in `backend/app/services/buybox_towns.py` (add scrape spellings you see in the wild).
-2. To update zip-level geography, edit `backend/app/services/buybox_zips.py` directly (no scrape/regen script exists yet — it's hand-maintained from `docs/BUYBOX_8020REI.md`).
-3. Add/adjust unit tests in `backend/tests/test_buybox_towns.py`.
-4. Re-run `python backend/scripts/gen_buybox_doc.py` to refresh this appendix, or update it manually — **note:** this script's template is currently stale relative to this file's hand-added sections (Locked definition, Confirmed against production data, Salesforce Transaction Pipeline overlay, this reconciliation section); running it today would delete them, so update the appendix by hand until that's reconciled.
-5. Update SOP / methodology one-liners only if the *meaning* of the universe changes.
-6. Re-run Gate 7; confirm header excluded-count moves as expected.
-
-Do **not** change the CleanREISift scraper to shrink geography unless product explicitly wants a smaller scrape — Closings owns the analysis universe.
-
----
-
-## Appendix — allowlist cities (210 normalized)
-
-Canonical display spellings (one per normalized key). Full alias spellings live in code.
-
-- Albertson
-- Alden Manor
-- Amity Harbor
-- Amityville
-- Astoria
-- Babylon
-- Baldwin
-- Bay Shore
-- Bayport
-- Bayshore
-- Bayside
-- Bayville
-- Beechhurst
-- Belle Harbor
-- Bellerose
-- Bellerose Terrace
-- Bellerose Village
-- Bellmore
-- Bellport
-- Bethpage
-- Blue Poin
-- Blue Point
-- Bohemia
-- Breezy Point
-- Brentwood
-- Brightwaters
-- Broad Channel
-- Brookhaven
-- Brooklyn
-- Calverton
-- Cambria Heights
-- Captree Island
-- Carle Place
-- Center Moriches
-- Centereach
-- Centerport
-- Central Islip
-- Cold Spring Harbor
-- Commack
-- Copiague
-- Coram
-- Corona
-- Davis Park
-- Deer Park
-- Dix Hills
-- E Farmingdale
-- E Northport
-- East Elmhurst
-- East Islip
-- East Massapequa
-- East Meadow
-- East Northport
-- East Patchogue
-- East Rockaway
-- East Setauket
-- East Williston
-- Elmhurst
-- Elmont
-- Elwood
-- Far Rockaway
-- Farmingdale
-- Farmingville
-- Flanders
-- Floral Park
-- Flushing
-- Fort Salonga
-- FRANKLIN SQUAR
-- Franklin Square
-- Freeport
-- Garden City
-- Garden City Park
-- Garden City South
-- GardenCity
-- Glen Cove
-- Glen Oaks
-- Great River
-- Greenlawn
-- Greenvale
-- Hauppauge
-- Hauppaüge
-- Hempstead
-- Hicksvill
-- Hicksville
-- Holbrook
-- Hollis
-- Holtsville
-- Howard Beach
-- Huntington
-- Huntington Bay
-- Huntington Station
-- Inwood
-- Island Park
-- Islandia
-- Islip
-- Islip Terrace
-- Jamaica
-- Jericho
-- Kew Gardens
-- Kings Park
-- Lake Grove
-- Lake Ronkonkoma
-- Latham
-- Levittown
-- Lido Beach
-- Lindenhurst
-- Little Neck
-- Long Beach
-- Lynbrook
-- Malba
-- Malverne
-- Manhasset
-- Manhasset Hills
-- Manorville
-- Maspeth
-- Massapequa
-- Massapequa Park
-- Mastic
-- Mastic Beach
-- Matinecock
-- Medford
-- Melville
-- Merrick
-- Middle Island
-- Middle Village
-- Miller Place
-- Mineola
-- Moriches
-- Mount Sinai
-- Mt Sinai
-- N babylon
-- Nesconset
-- New Hyde Park
-- North Amityville
-- North Babylon
-- North Baldwin
-- North Bellmore
-- North Lynbrook
-- North Massapequa
-- North Merrick
-- North New Hyde Park
-- North Patchogue
-- North Sea
-- North Valley Stream
-- Northport
-- Oakdale
-- Oakland Gardens
-- Ocean Bay Park
-- Ocean Beach
-- Oceanside
-- Old Bethpage
-- Old Westbury
-- Oyster Bay
-- Oyster Bay Cove
-- Ozone Park
-- Patchog
-- Patchogue
-- Plainview
-- Port Jefferson
-- Port Jefferson Station
-- Port Washington
-- Port Washington North
-- Queens Village
-- Richmond Hill
-- Ridge
-- Ridgewood
-- Riverhead
-- Rockville Centre
-- Rocky Point
-- Ronkonkoma
-- Roosevelt
-- Rosedale
-- Saint Albans
-- Saint James
-- Sayville
-- Seaford
-- Seiden
-- Selden
-- Setauket
-- Setauket- East Setauket
-- Shirley
-- Smithtown
-- Sound Beach
-- South Farmingdale
-- South Floral Park
-- South Hempstead
-- South Huntington
-- South Ozone Park
-- South Richmond Hill
-- South Setauket
-- Springfield Gardens
-- St James
-- Stewart Manor
-- StIslip
-- Stony Brook
-- Sunnyside
-- Syosset
-- Uniondale
-- Valley Stream
-- W babylon
-- Wading River
-- Wantagh
-- West Babylon
-- West Hempstead
-- West Islip
-- West Sayville
-- Westbury
-- Wheatley Heights
-- Woodside
-- Wyandanch
-- Yaphank
-
----
+<!-- BUYBOX_POLICY_APPENDIX_END -->
 
 ## Related
 
-- [SOP.md](SOP.md) — Gate 7 operator summary
-- [REPORT_METHODOLOGY.md](REPORT_METHODOLOGY.md) §21 — Gate 7 methodology
-- [ECOSYSTEM.md](ECOSYSTEM.md) — CleanREISift sold CSV → Closings
+- [SOP.md](SOP.md) — operator workflow
+- [REPORT_METHODOLOGY.md](REPORT_METHODOLOGY.md) — report methods
+- [BUYBOX_8020REI.md](BUYBOX_8020REI.md) — captured source evidence

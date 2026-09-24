@@ -2,7 +2,8 @@
 Gate 7 — Investor & In-List Sold + canonical pipeline depth.
 
 Universe: CleanREISift sold_properties_full.csv filtered at ingest to HHB
-marketed-town buybox cities only (see buybox_towns.py). Property × sold month.
+Nassau/Suffolk ZIP/city exclusions (see buybox_towns.py). One row per property,
+anchored to its earliest observed sold month in the uploaded report.
 Requires REISift + Salesforce QL. Opportunities and Transaction Pipeline optional.
 Lost to investor = we had it (In My Records OR REISift/CRM presence) AND investor
 AND not HHB closed. Loss rate denominator = properties we had.
@@ -15,7 +16,7 @@ Lead (SF/Podio) → Qualified Lead → Opportunity → Closed.
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -23,7 +24,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import pandas as pd
 
 from .analysis import _dedupe_parsed_tag_events, parse_tags
-from .buybox_towns import BUYBOX_TOWN_COUNT, in_buybox
+from .buybox_towns import EXCLUDED_CITIES, evaluate_buybox
+from .buybox_zips import EXCLUDED_ZIPS
+from .investor_sold_details import screen_property_details
 from .closing_resolution import resolve_milestones_from_parsed
 from .lifecycle import ENGAGED_LABELS, build_events, compute_stage_funnel_open, get_highest_stage
 from .marketing_mapper import find_column_name, make_address_key, normalize_status, smart_read_csv
@@ -213,6 +216,7 @@ class InvestorSoldRow:
     period_date: str = ""
     period_label: str = ""
     sold_month: str = ""
+    last_sold_month: str = ""
     buyer_full_name: str = ""
     sale_amount: str = ""
     investor: bool = False
@@ -225,6 +229,13 @@ class InvestorSoldRow:
     distressors: str = ""
     dataflik_id: str = ""
     transaction_id: str = ""
+    parcel_number: str = ""
+    seller_name: str = ""
+    seller_category: str = "Unclassified"
+    seller_match_status: str = "not_evaluated"
+    property_type: str = ""
+    property_details_status: str = "not_evaluated"
+    property_details_reason: str = ""
     transaction_count: int = 1
     list_purchase_date: str = ""
     reisift_matched: bool = False
@@ -265,6 +276,7 @@ class InvestorSoldRow:
             "period_date": self.period_date,
             "period_label": self.period_label,
             "sold_month": self.sold_month,
+            "last_sold_month": self.last_sold_month,
             "buyer_full_name": self.buyer_full_name,
             "sale_amount": self.sale_amount,
             "investor": self.investor,
@@ -277,6 +289,13 @@ class InvestorSoldRow:
             "distressors": self.distressors,
             "dataflik_id": self.dataflik_id,
             "transaction_id": self.transaction_id,
+            "parcel_number": self.parcel_number,
+            "seller_name": self.seller_name,
+            "seller_category": self.seller_category,
+            "seller_match_status": self.seller_match_status,
+            "property_type": self.property_type,
+            "property_details_status": self.property_details_status,
+            "property_details_reason": self.property_details_reason,
             "transaction_count": self.transaction_count,
             "list_purchase_date": self.list_purchase_date,
             "reisift_matched": self.reisift_matched,
@@ -309,9 +328,15 @@ class InvestorSoldRow:
 
 @dataclass
 class InvestorSoldResult:
+    property_screening: Dict[str, Any] = field(default_factory=dict)
+    property_screening_rows: List[Dict[str, Any]] = field(default_factory=list)
     sold_rows_scanned: int = 0
     sold_rows_excluded_buybox: int = 0
     buybox_town_count: int = 0
+    buybox_excluded_zip_count: int = 0
+    buybox_excluded_city_count: int = 0
+    buybox_exclusions: Dict[str, int] = field(default_factory=dict)
+    property_grain: str = "property_earliest_sale"
     sold_rows_ingested: int = 0
     property_rows: int = 0
     unique_addresses: int = 0
@@ -370,6 +395,8 @@ class InvestorSoldResult:
     def to_api_dict(self) -> Dict[str, Any]:
         return {
             "report_type": REPORT_TYPE,
+            "property_screening": self.property_screening,
+            "property_screening_rows": self.property_screening_rows,
             "date_window_start": self.date_window_start,
             "date_window_end": self.date_window_end,
             "inputs": {
@@ -377,6 +404,10 @@ class InvestorSoldResult:
                 "sold_rows_excluded_buybox": self.sold_rows_excluded_buybox,
                 "sold_rows_ingested": self.sold_rows_ingested,
                 "buybox_town_count": self.buybox_town_count,
+                "buybox_excluded_zip_count": self.buybox_excluded_zip_count,
+                "buybox_excluded_city_count": self.buybox_excluded_city_count,
+                "buybox_exclusions": self.buybox_exclusions,
+                "property_grain": self.property_grain,
                 "property_rows": self.property_rows,
                 "unique_addresses": self.unique_addresses,
                 "enrichment_enabled": self.enrichment_enabled,
@@ -451,34 +482,65 @@ class InvestorSoldResult:
 
 
 def _collapse_key(row: InvestorSoldRow) -> str:
-    month = row.sold_month or "(unknown)"
     if row.dataflik_id:
-        return f"df:{row.dataflik_id}|{month}"
+        return f"df:{row.dataflik_id}"
     if row.address_key:
-        return f"ak:{row.address_key}|{month}"
-    return f"addr:{row.address.lower()}|{month}|{row.sale_amount}|{row.buyer_full_name}"
+        return f"ak:{row.address_key}"
+    return f"addr:{row.address.lower()}"
+
+
+def _property_groups(txn_rows: List[InvestorSoldRow]) -> Dict[str, List[InvestorSoldRow]]:
+    """Use one identity rule for deduplication and details/sale-event evidence."""
+    ids_by_address: Dict[str, set[str]] = {}
+    for row in txn_rows:
+        if row.address_key and row.dataflik_id:
+            ids_by_address.setdefault(row.address_key, set()).add(row.dataflik_id)
+    groups: Dict[str, List[InvestorSoldRow]] = {}
+    for row in txn_rows:
+        key = _collapse_key(row)
+        known_ids = ids_by_address.get(row.address_key, set())
+        if not row.dataflik_id and len(known_ids) == 1:
+            key = f"df:{next(iter(known_ids))}"
+        groups.setdefault(key, []).append(row)
+    return groups
 
 
 def collapse_property_month_rows(txn_rows: List[InvestorSoldRow]) -> List[InvestorSoldRow]:
-    groups: Dict[str, InvestorSoldRow] = {}
-    order: List[str] = []
-    for row in txn_rows:
-        key = _collapse_key(row)
-        if key not in groups:
-            row.transaction_count = 1
-            groups[key] = row
-            order.append(key)
-            continue
-        base = groups[key]
-        base.transaction_count += 1
-        base.investor = base.investor or row.investor
-        base.in_my_records = base.in_my_records or row.in_my_records
+    """Collapse across the report; only earliest-month observations supply flags.
+
+    The input supplies months, not a reliable within-month transaction order.
+    Later sales contribute transaction counts, never pipeline evidence.
+    """
+    groups = _property_groups(txn_rows)
+    result: List[InvestorSoldRow] = []
+    for key, observations in sorted(groups.items()):
+        observations = sorted(observations, key=lambda r: (
+            r.sold_month, r.period_date, r.transaction_id, r.buyer_full_name,
+            r.sale_amount, r.address_key,
+        ))
+        base = replace(observations[0])
+        earliest = [r for r in observations if r.sold_month == base.sold_month]
+        if key.startswith("df:"):
+            base.dataflik_id = key[3:]
+        base.last_sold_month = observations[-1].sold_month
+        # Repeated exports of the same transaction must not inflate this count.
+        base.transaction_count = len({
+            ("id", r.transaction_id) if r.transaction_id else
+            ("observation", r.sold_month, r.buyer_full_name, r.sale_amount)
+            for r in observations
+        })
+        base.investor = any(r.investor for r in earliest)
+        base.in_my_records = any(r.in_my_records for r in earliest)
         base.segment = segment_for(base.investor, base.in_my_records)
-        if not base.investor_score and row.investor_score:
-            base.investor_score = row.investor_score
-        if not base.distressors and row.distressors:
-            base.distressors = row.distressors
-    return [groups[k] for k in order]
+        base.buyer_full_name = "; ".join(sorted({r.buyer_full_name for r in earliest if r.buyer_full_name}))
+        amounts = {r.sale_amount for r in earliest if r.sale_amount}
+        base.sale_amount = next(iter(amounts)) if len(amounts) == 1 else ""
+        base.transaction_id = "; ".join(sorted({r.transaction_id for r in earliest if r.transaction_id}))
+        if not base.investor_score:
+            base.investor_score = next((r.investor_score for r in earliest if r.investor_score), "")
+        base.distressors = "; ".join(sorted({r.distressors for r in earliest if r.distressors}))
+        result.append(base)
+    return result
 
 
 def _row_kwargs(item: Dict[str, Any]) -> Dict[str, Any]:
@@ -554,9 +616,15 @@ def result_from_metrics_dict(metrics: Dict[str, Any]) -> InvestorSoldResult:
     lag = metrics.get("lag") or {}
     property_rows = int(inputs.get("property_rows") or len(rows) or 0)
     return InvestorSoldResult(
+        property_screening=dict(metrics.get("property_screening") or {}),
+        property_screening_rows=list(metrics.get("property_screening_rows") or []),
         sold_rows_scanned=int(inputs.get("sold_rows_scanned") or 0),
         sold_rows_excluded_buybox=int(inputs.get("sold_rows_excluded_buybox") or 0),
-        buybox_town_count=int(inputs.get("buybox_town_count") or BUYBOX_TOWN_COUNT),
+        buybox_town_count=int(inputs.get("buybox_town_count") or 0),
+        buybox_excluded_zip_count=int(inputs.get("buybox_excluded_zip_count") or 0),
+        buybox_excluded_city_count=int(inputs.get("buybox_excluded_city_count") or 0),
+        buybox_exclusions=dict(inputs.get("buybox_exclusions") or {}),
+        property_grain=str(inputs.get("property_grain") or "property_month"),
         sold_rows_ingested=int(inputs.get("sold_rows_ingested") or 0),
         property_rows=property_rows,
         unique_addresses=int(inputs.get("unique_addresses") or 0),
@@ -965,6 +1033,7 @@ def analyze(
     opportunities_path: Optional[str] = None,
     transactions_path: Optional[str] = None,
     on_progress: Optional[ProgressCallback] = None,
+    property_details_path: Optional[str] = None,
 ) -> InvestorSoldResult:
     def report(pct: int, message: str) -> None:
         if on_progress:
@@ -1002,68 +1071,32 @@ def analyze(
     distress_col = find_column_name(sold_df, DISTRESSOR_CANDIDATES)
     dataflik_col = find_column_name(sold_df, DATAFLIK_CANDIDATES)
     txn_col = find_column_name(sold_df, TRANSACTION_CANDIDATES)
+    parcel_col = find_column_name(sold_df, ["parcel_number", "Parcel Number", "apn", "APN"])
 
-    report(12, "Loading REISift export…")
-    reisift_df = load_reisift_file(reisift_path)
-    reisift_index = _build_reisift_index(reisift_df)
-    if not reisift_index:
-        raise ValueError("REISift export produced no address keys")
-
-    report(20, "Loading Salesforce qualified leads…")
-    ql_index = _build_match_index(
-        _load_crm_file(ql_path),
-        QL_ADDR,
-        list(CREATE_DATE_CANDIDATES),
-        QL_PHONE_CANDIDATES,
-    )
-
-    opp_index: Optional[MatchIndex] = None
-    if opportunities_path:
-        report(26, "Loading opportunities…")
-        opp_index = _build_match_index(
-            _load_opportunities_file(opportunities_path), OPP_ADDR, OPP_DATE_CANDIDATES
-        )
-    else:
-        warnings.append("Opportunities file not uploaded — Opportunity stage counts will be zero.")
-
-    txn_closed_index: Optional[MatchIndex] = None
-    txn_contract_index: Optional[MatchIndex] = None
-    if transactions_path:
-        report(30, "Loading Salesforce Transaction Pipeline…")
-        txn_df = _load_crm_file(transactions_path)
-        txn_closed_index = _build_match_index(txn_df, TXN_ADDR, list(TXN_DATE_CANDIDATES))
-        # Coalesce (not first-match) — see TXN_CONTRACT_DATE_CANDIDATES / _coalesce_earliest_date_column.
-        txn_df = txn_df.copy()
-        txn_df["_gate7_contract_signed"] = _coalesce_priority_date_column(
-            txn_df, TXN_CONTRACT_DATE_CANDIDATES
-        )
-        txn_contract_index = _build_match_index(txn_df, TXN_ADDR, ["_gate7_contract_signed"])
-    else:
-        warnings.append(
-            "Transactions file not uploaded — Closed/Opp from SF Transaction Pipeline will be zero."
-        )
-
-    report(35, "Building sold property rows (buybox cities only)…")
+    report(10, "Filtering sold rows to Nassau/Suffolk buybox…")
     txn_rows: List[InvestorSoldRow] = []
     unique_keys: set[str] = set()
     sold_months: List[pd.Timestamp] = []
-    sold_ts_by_collapse: Dict[str, Optional[pd.Timestamp]] = {}
     total = len(sold_df)
     sold_rows_scanned = total
     sold_rows_excluded_buybox = 0
+    buybox_exclusions: Counter[str] = Counter()
 
     for i, (_, row) in enumerate(sold_df.iterrows()):
         if total and i % 2000 == 0:
-            report(35 + int(25 * i / max(total, 1)), f"Scanning sold rows… ({i}/{total})")
+            report(10 + int(20 * i / max(total, 1)), f"Scanning sold rows… ({i}/{total})")
 
         street = _col_val(row, addr_cols.get("street"))
         city = _col_val(row, addr_cols.get("city"))
         zip_code = _col_val(row, addr_cols.get("zip"))
-        if not in_buybox(city, zip_code):
-            sold_rows_excluded_buybox += 1
-            continue
         state = _col_val(row, addr_cols.get("state"))
-        key = make_address_key(street, city, state, zip_code)
+        county = _col_val(row, county_col)
+        decision = evaluate_buybox(city, zip_code, county=county, state=state)
+        if not decision.included:
+            sold_rows_excluded_buybox += 1
+            buybox_exclusions[decision.reason] += 1
+            continue
+        key = make_address_key(street, city, state, decision.normalized_zip or zip_code)
         if key:
             unique_keys.add(key)
 
@@ -1105,34 +1138,111 @@ def analyze(
             distressors=_col_val(row, distress_col),
             dataflik_id=_col_val(row, dataflik_col),
             transaction_id=_col_val(row, txn_col),
+            parcel_number=_col_val(row, parcel_col),
         )
-        ck = _collapse_key(sold_row)
-        if ck not in sold_ts_by_collapse or sold_ts_by_collapse[ck] is None:
-            sold_ts_by_collapse[ck] = sold_ts
         txn_rows.append(sold_row)
 
     txn_n = len(txn_rows)
-    report(62, "Collapsing multi-txn property rows…")
+    report(32, "Collapsing multi-txn property rows…")
     rows = collapse_property_month_rows(txn_rows)
+
+    screening: Dict[str, Any] = {"enabled": False, "target_count": len(rows)}
+    screening_rows: List[Dict[str, Any]] = []
+    if property_details_path:
+        report(36, "Streaming property details for geographic buybox properties…")
+        groups = _property_groups(txn_rows)
+        targets = []
+        for r in rows:
+            observations = groups[_collapse_key(r)]
+            targets.append({
+                "key": _collapse_key(r), "dataflik_id": r.dataflik_id,
+                "county": r.county, "state": r.state, "sold_month": r.sold_month,
+                "parcels": sorted({o.parcel_number for o in observations if o.parcel_number}),
+                "sale_events": [
+                    {"buyer_full_name": o.buyer_full_name, "sale_amount": o.sale_amount}
+                    for o in observations if o.sold_month == r.sold_month
+                ],
+            })
+        decisions, screening = screen_property_details(property_details_path, targets)
+        screening["enabled"] = True
+        warnings.extend(screening.get("warnings", []))
+        for r in rows:
+            d = decisions[_collapse_key(r)]
+            r.property_details_status = d["status"]
+            r.property_details_reason = d["reason"]
+            for name in ("seller_name", "seller_category", "seller_match_status", "property_type"):
+                setattr(r, name, d[name])
+            screening_rows.append({
+                "address": r.address, "dataflik_id": r.dataflik_id,
+                "sold_month": r.sold_month, **d,
+            })
+        rows = [r for r in rows if r.property_details_status == "eligible"]
+        screening["seller_categories"] = dict(Counter(r.seller_category for r in rows))
+        unique_keys = {r.address_key for r in rows if r.address_key}
+    else:
+        warnings.append(
+            "Property details not uploaded: geography-only universe; physical-property "
+            "buybox rules and historical seller categories were not evaluated."
+        )
+
+    report(45, "Loading REISift export…")
+    reisift_df = load_reisift_file(reisift_path)
+    reisift_index = _build_reisift_index(reisift_df)
+    if not reisift_index:
+        raise ValueError("REISift export produced no address keys")
+
+    report(52, "Loading Salesforce qualified leads…")
+    ql_index = _build_match_index(
+        _load_crm_file(ql_path),
+        QL_ADDR,
+        list(CREATE_DATE_CANDIDATES),
+        QL_PHONE_CANDIDATES,
+    )
+
+    opp_index: Optional[MatchIndex] = None
+    if opportunities_path:
+        report(58, "Loading opportunities…")
+        opp_index = _build_match_index(
+            _load_opportunities_file(opportunities_path), OPP_ADDR, OPP_DATE_CANDIDATES
+        )
+    else:
+        warnings.append("Opportunities file not uploaded — Opportunity stage counts will be zero.")
+
+    txn_closed_index: Optional[MatchIndex] = None
+    txn_contract_index: Optional[MatchIndex] = None
+    if transactions_path:
+        report(62, "Loading Salesforce Transaction Pipeline…")
+        txn_df = _load_crm_file(transactions_path)
+        txn_closed_index = _build_match_index(txn_df, TXN_ADDR, list(TXN_DATE_CANDIDATES))
+        # Coalesce (not first-match) — see TXN_CONTRACT_DATE_CANDIDATES / _coalesce_earliest_date_column.
+        txn_df = txn_df.copy()
+        txn_df["_gate7_contract_signed"] = _coalesce_priority_date_column(
+            txn_df, TXN_CONTRACT_DATE_CANDIDATES
+        )
+        txn_contract_index = _build_match_index(txn_df, TXN_ADDR, ["_gate7_contract_signed"])
+    else:
+        warnings.append(
+            "Transactions file not uploaded — Closed/Opp from SF Transaction Pipeline will be zero."
+        )
 
     report(68, "Enriching with REISift / QL pipeline…")
     for i, sold_row in enumerate(rows):
         if i % 500 == 0:
             report(68 + int(20 * i / max(len(rows), 1)), f"Enriching… ({i}/{len(rows)})")
-        ck = _collapse_key(sold_row)
+        sold_ts = parse_sold_month(sold_row.sold_month)
         hit = reisift_index.get(sold_row.address_key) if sold_row.address_key else None
         _enrich_row(
             sold_row,
             reisift_hit=hit,
             ql_index=ql_index,
             opp_index=opp_index,
-            sold_ts=sold_ts_by_collapse.get(ck),
+            sold_ts=sold_ts,
         )
         _apply_sf_txn(
             sold_row,
             txn_closed_index=txn_closed_index,
             txn_contract_index=txn_contract_index,
-            sold_ts=sold_ts_by_collapse.get(ck),
+            sold_ts=sold_ts,
         )
 
     report(90, "Building rollups…")
@@ -1337,23 +1447,39 @@ def analyze(
 
     multi_txn = sum(1 for r in rows if r.transaction_count > 1)
     methodology_note = (
-        "Universe = marketed-town buybox only "
-        f"({BUYBOX_TOWN_COUNT:,} towns; {sold_rows_excluded_buybox:,} of "
+        "Geographic universe = Nassau/Suffolk, NY, minus consolidated ZIP exclusions; "
+        "city exclusions apply only when ZIP is missing. "
+        f"({len(EXCLUDED_ZIPS):,} excluded ZIPs; {sold_rows_excluded_buybox:,} of "
         f"{sold_rows_scanned:,} sold scrape rows excluded at ingest). "
         "Primary KPI: never prospected investor = investor sale AND not HHB closed AND no "
         "Prospect list from 8020 / Court Alerts / LI Profiles (coverage / data-quality check). "
         "Lost to investor = we had it (In My Records scrape OR REISift/CRM presence) AND "
         "investor AND not HHB closed (loss rate denominator = properties we had). "
-        "Grain = unique property × sold month "
-        f"(multi-txn Dataflik rows collapse; {multi_txn:,} properties had >1 txn). "
+        "Grain = one property across the report, anchored to its earliest observed sold month. "
+        "Later sales contribute transaction counts only; earliest-month evidence determines KPIs. "
+        f"({multi_txn:,} properties had >1 distinct transaction). "
+        + (
+            "Property details: only identity-verified properties passing supported snapshot "
+            "rules enter KPIs; exclusions and unresolved properties remain in the screening audit. "
+            "Ownership duration, LTV and non-seller/religious-owner exclusion are not evaluated. "
+            "Seller categories infer ownership from one uniquely matched earliest-month "
+            "sale event (buyer and price), never from current owner names. "
+            if property_details_path else
+            "No property details supplied: only geographic buybox rules are evaluated. "
+        )
+        +
         f"Canonical pipeline: {CANONICAL_PIPELINE}."
     )
 
     report(100, "Done")
     return InvestorSoldResult(
+        property_screening=screening,
+        property_screening_rows=screening_rows,
         sold_rows_scanned=sold_rows_scanned,
         sold_rows_excluded_buybox=sold_rows_excluded_buybox,
-        buybox_town_count=BUYBOX_TOWN_COUNT,
+        buybox_excluded_zip_count=len(EXCLUDED_ZIPS),
+        buybox_excluded_city_count=len(EXCLUDED_CITIES),
+        buybox_exclusions=dict(buybox_exclusions),
         sold_rows_ingested=txn_n,
         property_rows=n,
         unique_addresses=len(unique_keys),
@@ -1418,12 +1544,20 @@ def build_export_workbook(result: InvestorSoldResult) -> bytes:
         raise ValueError("Export requires openpyxl") from exc
 
     all_rows = [r.to_dict() for r in result.rows]
+    geography_summary = (
+        [
+            {"metric": "Excluded ZIPs", "value": result.buybox_excluded_zip_count},
+            {"metric": "Excluded city names / aliases", "value": result.buybox_excluded_city_count},
+        ]
+        if result.property_grain == "property_earliest_sale"
+        else [{"metric": "Buybox towns (legacy report)", "value": result.buybox_town_count}]
+    )
     summary_rows = [
         {"metric": "Sold scrape rows scanned", "value": result.sold_rows_scanned},
         {"metric": "Sold rows excluded (outside buybox)", "value": result.sold_rows_excluded_buybox},
-        {"metric": "Buybox towns", "value": result.buybox_town_count},
+        *geography_summary,
         {"metric": "Sold transactions ingested (buybox)", "value": result.sold_rows_ingested},
-        {"metric": "Property × month rows", "value": result.property_rows},
+        {"metric": "Unique properties (earliest sale)" if result.property_grain == "property_earliest_sale" else "Property × month rows", "value": result.property_rows},
         {"metric": "Unique addresses", "value": result.unique_addresses},
         {"metric": "Never prospected (investor)", "value": result.never_prospected_investor_count},
         {
@@ -1452,6 +1586,25 @@ def build_export_workbook(result: InvestorSoldResult) -> bytes:
         {"metric": "Methodology", "value": result.methodology_note},
     ]
 
+    summary_rows.extend(
+        {"metric": f"Excluded: {reason}", "value": count}
+        for reason, count in sorted(result.buybox_exclusions.items())
+    )
+    if result.property_screening.get("enabled"):
+        summary_rows.extend(
+            {"metric": f"Property screening: {name}", "value": result.property_screening.get(name, 0)}
+            for name in ("target_count", "eligible", "excluded", "unresolved")
+        )
+        summary_rows.extend(
+            {"metric": f"Seller category (eligible): {name}", "value": count}
+            for name, count in sorted(result.property_screening.get("seller_categories", {}).items())
+        )
+        summary_rows.append({
+            "metric": "Buybox rules not evaluated",
+            "value": ", ".join(result.property_screening.get("unsupported_rules", [])),
+        })
+    summary_rows.extend({"metric": "Warning", "value": warning} for warning in result.warnings)
+
     bio = BytesIO()
     with pd.ExcelWriter(bio, engine="openpyxl") as writer:
         pd.DataFrame(summary_rows).to_excel(writer, sheet_name="Summary", index=False)
@@ -1464,6 +1617,10 @@ def build_export_workbook(result: InvestorSoldResult) -> bytes:
         )
         pd.DataFrame(result.by_sold_month).to_excel(writer, sheet_name="By Month", index=False)
         pd.DataFrame(all_rows).to_excel(writer, sheet_name="Journey", index=False)
+        if result.property_screening.get("enabled"):
+            pd.DataFrame(result.property_screening_rows).to_excel(
+                writer, sheet_name="Property Screening", index=False
+            )
         pd.DataFrame(
             [r for r in all_rows if r.get("never_prospected_investor")]
         ).to_excel(writer, sheet_name="Never Prospected Inv", index=False)

@@ -1,82 +1,101 @@
-"""Tests for Gate 7 marketed-town buybox."""
-
-from __future__ import annotations
-
+"""Regression tests for the approved Gate 7 geography universe."""
 from pathlib import Path
-
 import pytest
 
-from app.services.buybox_towns import BUYBOX_TOWN_COUNT, in_buybox, normalize_town
-from app.services.buybox_zips import in_buybox_zip, normalize_zip
+from app.services.buybox_towns import (
+    BUYBOX_TOWN_COUNT, EXCLUDED_CITIES, evaluate_buybox, in_buybox, normalize_town,
+)
+from app.services.buybox_zips import EXCLUDED_ZIPS, in_buybox_zip, normalize_zip
 from app.services.investor_sold import analyze
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def test_normalize_town_strips_and_casefolds():
+def check(city="Hempstead", zip_code="11550", county="Nassau", state="NY"):
+    return evaluate_buybox(city, zip_code, county, state)
+
+
+def test_exclusion_union_matches_approved_source():
+    assert len(EXCLUDED_ZIPS) == 72
+    assert len(EXCLUDED_CITIES) == 84
+    assert {"westhampton", "west hampton", "westhampton beach", "west hampton beach", "e moriches"} <= EXCLUDED_CITIES
+    assert {"11557", "11598", "11545", "11576", "11771"} <= EXCLUDED_ZIPS
+    assert "james" in EXCLUDED_CITIES
+    assert "saint james" not in EXCLUDED_CITIES
+
+
+@pytest.mark.parametrize("zip_code", sorted(EXCLUDED_ZIPS))
+def test_excluded_zip_cannot_be_rescued_by_city(zip_code):
+    decision = check(city="Hempstead", zip_code=zip_code)
+    assert not decision.included
+    assert decision.reason == "excluded_zip"
+
+
+@pytest.mark.parametrize("city", sorted(EXCLUDED_CITIES))
+def test_excluded_city_is_only_used_without_zip(city):
+    assert check(city=city, zip_code="").reason == "excluded_city"
+    assert check(city=city, zip_code="11550").reason == "included_zip"
+
+
+def test_missing_zip_city_fallback_is_not_old_positive_allowlist():
+    assert check("Massapequa Pk", "").included
+    assert check("Brookville", None).included
+    assert check(" East   Moriches, ", "").reason == "excluded_city"
+    assert check("", "").reason == "missing_city"
+    assert check("Saint James", "").included
+    assert check("Saint James", "11780").reason == "excluded_zip"
+
+
+@pytest.mark.parametrize("county,state,reason", [
+    ("Queens", "NY", "excluded_county"),
+    ("Kings", "NY", "excluded_county"),
+    ("Erie", "NY", "excluded_county"),
+    ("", "NY", "excluded_county"),
+    (None, "NY", "excluded_county"),
+    ("Nassau", "FL", "excluded_state"),
+    ("Suffolk", "MA", "excluded_state"),
+    ("Nassau", "", "excluded_state"),
+    ("Nassau", None, "excluded_state"),
+])
+def test_county_state_are_required_even_for_allowed_zip(county, state, reason):
+    assert check(county=county, state=state).reason == reason
+
+
+def test_county_state_normalization_and_wrapper():
+    assert check(county=" Nassau County ", state="new york").included
+    assert in_buybox("Coram", "11727", "Suffolk", "NY")
+    assert not in_buybox("Hempstead", "11550")
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("11550", "11550"), ("11550-1234", "11550"), ("115501234", "11550"),
+    ("11550.0", "11550"), (11550.0, "11550"), ("6390.0", "06390"),
+    ("6390", "06390"), ("06390", "06390"), ("", None), (None, None),
+    ("nan", None), ("abc", None), ("zip11550", None), ("115501", None),
+    ("11550-abc", None), ("123", None), ("11550 extra", None),
+])
+def test_normalize_zip(raw, expected):
+    assert normalize_zip(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["nan", "abc", "zip11550", "115501", "11550-abc", "123"])
+def test_malformed_nonblank_zip_cannot_fall_back(raw):
+    decision = check(zip_code=raw)
+    assert not decision.included
+    assert decision.reason == "invalid_zip"
+
+
+def test_zip_only_helper_requires_separate_county_scope():
+    assert in_buybox_zip("11550")
+    assert not in_buybox_zip("11968")
+    assert not in_buybox_zip("")
+    assert not in_buybox_zip("abc")
+
+
+def test_town_normalization():
     assert normalize_town("  East Northport, ") == "east northport"
-    assert normalize_town("FRANKLIN SQUAR") == "franklin squar"
     assert normalize_town("Bay   Shore") == "bay shore"
-    assert normalize_town("") == ""
-    assert normalize_town(None) is not None and normalize_town(None) == ""
-
-
-def test_in_buybox_allowlist_and_aliases():
-    assert in_buybox("Hempstead") is True
-    assert in_buybox("hempstead") is True
-    assert in_buybox("Bay Shore") is True
-    assert in_buybox("bayshore") is True
-    assert in_buybox("E Farmingdale") is True
-    assert in_buybox("N babylon") is True
-    assert in_buybox("Buffalo") is False
-    assert in_buybox("Albany") is False
-    assert in_buybox("") is False
-    assert BUYBOX_TOWN_COUNT >= 200
-
-
-def test_in_buybox_removed_and_added_towns():
-    # Removed 2026-09-23: confirmed suppressed (or shared-zip risk) in docs/BUYBOX_8020REI.md S13.
-    for town in (
-        "East Marion", "East Moriches", "E Moriches", "Eastport",
-        "Lloyd Harbor", "Southold", "Westhampton Beach", "Brookville",
-    ):
-        assert in_buybox(town) is False, town
-    # Added 2026-09-23: evidenced by nonzero 8020REI buybox score, not suppressed.
-    for town in ("Captree Island", "Port Washington North", "Davis Park", "Oyster Bay Cove"):
-        assert in_buybox(town) is True, town
-
-
-def test_normalize_zip():
-    assert normalize_zip("11550") == "11550"
-    assert normalize_zip("11550-1234") == "11550"
-    assert normalize_zip("11550.0") == "11550"
-    assert normalize_zip("6390.0") == "06390"
-    assert normalize_zip("6390") == "06390"
-    assert normalize_zip("06390") == "06390"
-    assert normalize_zip("") is None
-    assert normalize_zip(None) is None
-    assert normalize_zip("nan") is None
-    assert normalize_zip("abc") is None
-
-
-def test_in_buybox_zip():
-    assert in_buybox_zip("11550") is True
-    assert in_buybox_zip("11758") is True
-    assert in_buybox_zip("11545") is False  # not on the flat zip allowlist
-    assert in_buybox_zip("14201") is False  # Buffalo
-    assert in_buybox_zip("") is False
-    assert in_buybox_zip("abc") is False
-
-
-def test_in_buybox_zip_recovers_unlisted_city_spelling():
-    assert in_buybox("Massapequa Pk") is False  # town-only still fails
-    assert in_buybox("Massapequa Pk", "11758") is True  # zip recovers it
-
-
-def test_in_buybox_either_list_matching_is_enough():
-    assert in_buybox("Hempstead", "not-a-zip") is True  # town matches, zip doesn't
-    assert in_buybox("Not A Real Town", "11550") is True  # zip matches, town doesn't
-    assert in_buybox("Buffalo", "14201") is False  # neither matches
+    assert normalize_town(None) == ""
 
 
 def test_analyze_excludes_non_buybox_cities(tmp_path):
@@ -97,7 +116,8 @@ def test_analyze_excludes_non_buybox_cities(tmp_path):
     assert result.sold_rows_scanned == 2
     assert result.sold_rows_excluded_buybox == 1
     assert result.sold_rows_ingested == 1
-    assert result.buybox_town_count == BUYBOX_TOWN_COUNT
+    assert result.buybox_excluded_zip_count == 72
+    assert result.buybox_exclusions == {"excluded_county": 1}
     assert result.property_rows == 1
     assert result.rows[0].city == "Hempstead"
     assert "buybox" in result.methodology_note.lower()

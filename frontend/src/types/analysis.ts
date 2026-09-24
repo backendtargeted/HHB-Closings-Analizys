@@ -121,7 +121,7 @@ export interface UploadCapabilitiesResponse {
   };
 }
 
-export type ResumableUploadKind = 'csv' | 'closings' | 'reisift' | 'qualified_leads' | 'tabular';
+export type ResumableUploadKind = 'csv' | 'closings' | 'reisift' | 'qualified_leads' | 'tabular' | 'investor_sold_bundle' | 'property_details';
 
 export interface ResumableUploadInitResponse {
   upload_id: string;

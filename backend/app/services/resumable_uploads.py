@@ -76,14 +76,17 @@ _TABULAR_KINDS = ("reisift", "qualified_leads", "tabular")
 
 def _validate_kind(kind: str) -> str:
     k = (kind or "").strip().lower()
-    if k not in ("csv", "closings", "reisift", "qualified_leads", "tabular"):
-        raise ValueError("kind must be csv, closings, reisift, qualified_leads, or tabular")
+    if k not in ("csv", "closings", "reisift", "qualified_leads", "tabular", "investor_sold_bundle", "property_details"):
+        raise ValueError("kind must be csv, closings, reisift, qualified_leads, tabular, investor_sold_bundle, or property_details")
     return k
 
 
 def _validate_filename(kind: str, filename: str) -> str:
     safe = _safe_name(filename)
     lowered = safe.lower()
+    required_extension = {"investor_sold_bundle": ".zip", "property_details": ".jsonl"}.get(kind)
+    if required_extension and not lowered.endswith(required_extension):
+        raise ValueError(f"{kind} upload filename must end with {required_extension}")
     if kind == "csv" and not lowered.endswith(".csv"):
         raise ValueError("CSV upload filename must end with .csv")
     if kind == "closings" and not (lowered.endswith(".xlsx") or lowered.endswith(".xls")):
