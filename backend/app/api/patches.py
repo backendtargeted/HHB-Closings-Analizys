@@ -90,10 +90,8 @@ def patches_monthly():
     uploads = {role: request.files.get(role) for role in roles}
     sf_present = [bool(uploads[role] and uploads[role].filename) for role in roles[1:]]
     sms = [f for f in request.files.getlist("sms_files") if f.filename]
-    if any(sf_present) and not all(sf_present):
-        return jsonify({"detail": "Upload all three Salesforce reports: qualified leads, opportunities, and transactions"}), 400
     if not any(sf_present) and not sms and not (uploads["cold_csv"] and uploads["cold_csv"].filename):
-        return jsonify({"detail": "Upload calling logs, SMS files, or the three Salesforce reports"}), 400
+        return jsonify({"detail": "Upload at least one calling, SMS, or Salesforce report"}), 400
     for role, upload in [*uploads.items(), *(("sms_files", f) for f in sms)]:
         if not upload or not upload.filename:
             continue

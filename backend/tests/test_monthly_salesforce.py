@@ -138,6 +138,19 @@ def test_invalid_month_rejected(month):
         build_monthly_salesforce(month, ql_path="a.xlsx", opportunities_path="b.xlsx", transactions_path="c.xlsx")
 
 
-def test_all_sources_required():
-    with pytest.raises(ValueError, match="required"):
-        build_monthly_salesforce("2026-08", ql_path="", opportunities_path="a.xlsx", transactions_path="b.xlsx")
+def test_at_least_one_source_required():
+    with pytest.raises(ValueError, match="at least one"):
+        build_monthly_salesforce("2026-08")
+
+
+@pytest.mark.parametrize("role, row", [
+    ("ql_path", {"Street": "1 Main St", "Lead Status": "New", "Create Date": "2026-08-02"}),
+    ("opportunities_path", {"Address (Street)": "1 Main St", "Stage": "New", "Created Date": "2026-08-02"}),
+    ("transactions_path", {"Address (Street)": "1 Main St", "Path": "Closed", "Closed Date": "2026-08-02"}),
+])
+def test_each_salesforce_report_runs_independently(tmp_path, role, row):
+    path = tmp_path / "report.csv"
+    pd.DataFrame([row]).to_csv(path, index=False)
+    result = build_monthly_salesforce("2026-08", **{role: str(path)})
+    assert len(result.tags) == 1
+    assert len(result.summary["sources"]) == 1

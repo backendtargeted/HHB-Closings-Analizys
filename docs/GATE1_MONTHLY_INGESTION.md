@@ -1,6 +1,6 @@
 # Gate 1 monthly ingestion
 
-Choose a reporting month, then upload calling logs, SMS labels/status exports, or the three Salesforce reports. Each run covers one month. Repeat with another month without renaming the source files. The legacy CRM workflow remains available separately.
+Choose the Cold calling, SMS, or Salesforce tab. Each has its own reporting month, uploads, preview, processing, and downloads, retained when switching tabs. A calling run needs only the calling CSV; an SMS run needs only SMS CSVs. Salesforce accepts any one report or several reports together. Other tabs never add requirements or files to the selected run. Each run covers one month. Repeat with another month without renaming source files. The legacy CRM workflow remains available separately.
 
 The UI submits a background run and polls its result. Finished exports are stored under `backend/uploads/patches/<job_id>` and remain downloadable after a server restart. An interrupted unfinished run must be submitted again. Nothing is imported into REISift automatically.
 

@@ -26,7 +26,10 @@ function SampleTable({ title, rows }: { title: string; rows?: Record<string, unk
   </div>;
 }
 
-function MonthlyPatchesWorkspace({ onBusyChange }: { onBusyChange: (busy: boolean) => void }) {
+type Source = 'calling' | 'sms' | 'salesforce';
+const sourceNames: Record<Source, string> = { calling: 'Cold calling', sms: 'SMS', salesforce: 'Salesforce' };
+
+function MonthlyPatchesWorkspace({ source }: { source: Source }) {
   const [reportMonth, setReportMonth] = useState('');
   const [coldFile, setColdFile] = useState<File | null>(null);
   const [smsFiles, setSmsFiles] = useState<File[]>([]);
@@ -40,11 +43,10 @@ function MonthlyPatchesWorkspace({ onBusyChange }: { onBusyChange: (busy: boolea
   const [uploadKey, setUploadKey] = useState(0);
   const folderInput = useRef<HTMLInputElement>(null);
   const sfCount = [qlFile, oppsFile, transactionsFile].filter(Boolean).length;
-  const completeSf = sfCount === 3;
   const validMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(reportMonth);
-  const hasSource = Boolean(coldFile || smsFiles.length || completeSf);
+  const hasSource = source === 'calling' ? Boolean(coldFile) : source === 'sms' ? smsFiles.length > 0 : sfCount > 0;
   const busy = loading || exporting;
-  const canPreview = validMonth && hasSource && (sfCount === 0 || completeSf);
+  const canPreview = validMonth && hasSource;
   const invalidate = () => { setPreview(null); setError(''); };
   const addSms = (files: FileList | null) => {
     if (!files) return;
@@ -58,31 +60,33 @@ function MonthlyPatchesWorkspace({ onBusyChange }: { onBusyChange: (busy: boolea
   };
   const runPreview = async () => {
     if (!canPreview) return;
-    setLoading(true); onBusyChange(true); setError(''); setPreview(null);
+    setLoading(true); setError(''); setPreview(null);
     try {
       const form = new FormData();
       form.append('report_month', reportMonth);
-      if (coldFile) form.append('cold_csv', coldFile);
-      smsFiles.forEach((file) => form.append('sms_files', file, file.name));
-      if (qlFile) form.append('qualified_leads', qlFile);
-      if (oppsFile) form.append('opportunities', oppsFile);
-      if (transactionsFile) form.append('transactions', transactionsFile);
+      if (source === 'calling' && coldFile) form.append('cold_csv', coldFile);
+      if (source === 'sms') smsFiles.forEach((file) => form.append('sms_files', file, file.name));
+      if (source === 'salesforce') {
+        if (qlFile) form.append('qualified_leads', qlFile);
+        if (oppsFile) form.append('opportunities', oppsFile);
+        if (transactionsFile) form.append('transactions', transactionsFile);
+      }
       setPreview(await uploadMonthlyPatches(form));
     } catch (err) { setError(getAxiosErrorMessage(err, 'Monthly preview failed')); }
-    finally { setLoading(false); onBusyChange(false); }
+    finally { setLoading(false); }
   };
   const download = async (kind: ExportKind) => {
     if (!preview) return;
-    setExporting(true); onBusyChange(true); setError('');
+    setExporting(true); setError('');
     try {
       const blob = await downloadPatchExport(preview.job_id, kind, false);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${preview.monthly?.report_month || reportMonth}_${exportNames[kind]}`;
+      link.download = `${source}_${preview.monthly?.report_month || reportMonth}_${exportNames[kind]}`;
       link.click(); URL.revokeObjectURL(url);
     } catch (err) { setError(getAxiosErrorMessage(err, 'Download failed')); }
-    finally { setExporting(false); onBusyChange(false); }
+    finally { setExporting(false); }
   };
   const reset = () => {
     setReportMonth(''); setColdFile(null); setSmsFiles([]); setQlFile(null); setOppsFile(null); setTransactionsFile(null);
@@ -96,31 +100,31 @@ function MonthlyPatchesWorkspace({ onBusyChange }: { onBusyChange: (busy: boolea
   ] : [];
 
   return <div className="space-y-6">
-    <div><h2 className="text-2xl font-bold text-amber-950">Gate 1 — Monthly ingestion</h2>
-      <p className="mt-2 max-w-3xl text-sm text-stone-600">Choose a reporting month, then upload calling/SMS activity, Salesforce reports, or both. Preview the resulting tags and review excluded rows before downloading REISift import files. No legacy CRM export is required.</p>
+    <div><h2 className="text-2xl font-bold text-amber-950">{sourceNames[source]} — Monthly ingestion</h2>
+      <p className="mt-2 max-w-3xl text-sm text-stone-600">{source === 'calling' ? 'Upload only your cold calling report. Choose its month, preview the tags, and download your calling import.' : source === 'sms' ? 'Upload only your SMS exports. Choose their month, preview the tags, and download your SMS import.' : 'Upload whichever Salesforce reports you have. Each report can be processed on its own.'}</p>
     </div>
     <fieldset disabled={busy} className="space-y-5">
       <label className="block max-w-xs text-sm font-semibold text-stone-800">Reporting month — required
         <input aria-label="Reporting month" type="month" value={reportMonth} onInput={(event) => { setReportMonth(event.currentTarget.value); invalidate(); }} onChange={(event) => { setReportMonth(event.target.value); invalidate(); }} className="mt-2 block w-full rounded-lg border border-stone-300 bg-white px-3 py-2 font-normal" />
       </label>
       <p className="text-xs text-stone-600">Event dates determine the month. Calling/SMS rows without a date use the selected month and are counted for review; invalid dates are excluded. Salesforce events require dates and never use a month fallback.</p>
-      <div key={uploadKey} className="grid gap-5 lg:grid-cols-2">
-        <section className="rounded-xl border border-stone-200 p-4 space-y-4">
-          <div><h3 className="font-semibold text-stone-800">Calling and SMS</h3><p className="mt-1 text-xs text-stone-500">Upload either source or both. You can run these independently of Salesforce.</p></div>
-          <label className="block text-sm font-medium text-stone-700">Cold calling (.csv)
+      <div key={uploadKey} className="space-y-5">
+        {source !== 'salesforce' && <section className="rounded-xl border border-stone-200 p-4 space-y-4">
+          {source === 'calling' && <><label className="block text-sm font-medium text-stone-700">Cold calling (.csv)
             <input aria-label="Cold calling CSV" type="file" accept=".csv" onChange={(event) => { setColdFile(event.target.files?.[0] ?? null); invalidate(); }} className="mt-2 block w-full text-xs" />
           </label>
-          {coldFile && <div className="text-xs text-stone-600"><p className="mb-1 break-all">Selected: {coldFile.name}</p><button type="button" className="underline" onClick={() => { setColdFile(null); setUploadKey((key) => key + 1); invalidate(); }}>Remove calling file</button></div>}
-          <label className="block text-sm font-medium text-stone-700">SMS labels or status files (.csv, multiple)
+          {coldFile && <div className="text-xs text-stone-600"><p className="mb-1 break-all">Selected: {coldFile.name}</p><button type="button" className="underline" onClick={() => { setColdFile(null); setUploadKey((key) => key + 1); invalidate(); }}>Remove calling file</button></div>}</>}
+          {source === 'sms' && <><label className="block text-sm font-medium text-stone-700">SMS labels or status files (.csv, multiple)
             <input aria-label="SMS CSV files" type="file" multiple accept=".csv" onChange={(event) => { addSms(event.target.files); event.target.value = ''; }} className="mt-2 block w-full text-xs" />
           </label>
           <p className="text-xs text-stone-500">Labels on each row take priority. Older exports without a labels column use their status filenames. Selecting the same filename replaces its previous copy.</p>
           <input ref={folderInput} aria-label="SMS folder" type="file" multiple {...({ webkitdirectory: '' } as Record<string, string>)} className="hidden" onChange={(event) => { addSms(event.target.files); event.target.value = ''; }} />
           <button type="button" onClick={() => folderInput.current?.click()} className="text-xs font-semibold text-amber-900 underline">Choose SMS folder</button>
           {!!smsFiles.length && <ul className="max-h-36 overflow-auto space-y-1 text-xs text-stone-600">{smsFiles.map((file) => <li key={file.name} className="flex items-center justify-between gap-2"><span className="break-all">{file.name}</span><button aria-label={`Remove SMS file ${file.name}`} type="button" onClick={() => { setSmsFiles((files) => files.filter((item) => item.name !== file.name)); invalidate(); }} className="font-semibold text-stone-700">Remove</button></li>)}</ul>}
-        </section>
-        <section className="rounded-xl border border-stone-200 p-4 space-y-4">
-          <div><h3 className="font-semibold text-stone-800">Salesforce</h3><p className="mt-1 text-xs text-stone-500">Upload all three report roles together, or leave this section empty. Salesforce can run without calling or SMS.</p></div>
+          </>}
+        </section>}
+        {source === 'salesforce' && <section className="rounded-xl border border-stone-200 p-4 space-y-4">
+          <div><h3 className="font-semibold text-stone-800">Salesforce reports</h3><p className="mt-1 text-xs text-stone-500">Select one or more reports. Only the files you select will be processed.</p></div>
           {([
             ['Qualified Leads', qlFile, setQlFile], ['Opportunities', oppsFile, setOppsFile], ['Transactions', transactionsFile, setTransactionsFile],
           ] as const).map(([label, file, setFile]) => <label key={label} className="block text-sm font-medium text-stone-700">{label} (.xlsx / .csv)
@@ -128,14 +132,13 @@ function MonthlyPatchesWorkspace({ onBusyChange }: { onBusyChange: (busy: boolea
             {file && <span className="mt-1 block text-xs text-stone-500 break-all">Selected: {file.name}</span>}
           </label>)}
           {sfCount > 0 && <button type="button" onClick={() => { setQlFile(null); setOppsFile(null); setTransactionsFile(null); setUploadKey((key) => key + 1); invalidate(); }} className="text-xs text-stone-600 underline">Remove Salesforce reports</button>}
-          {sfCount > 0 && !completeSf && <p role="status" className="text-xs text-amber-900">{sfCount} of 3 selected. Add all three Salesforce reports to preview, or remove them to run calling/SMS only.</p>}
-        </section>
+        </section>}
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" disabled={!canPreview || busy} onClick={runPreview} className="rounded-lg bg-amber-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-900 disabled:opacity-40">{loading ? 'Preparing monthly preview…' : 'Preview monthly tags'}</button>
+        <button type="button" disabled={!canPreview || busy} onClick={runPreview} className="rounded-lg bg-amber-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-900 disabled:opacity-40">{loading ? 'Preparing monthly preview…' : `Process ${sourceNames[source]}`}</button>
         <button type="button" onClick={reset} className="rounded-lg border border-stone-300 px-4 py-2 text-sm text-stone-700">New monthly run</button>
         {!reportMonth && <p className="text-xs text-stone-500">Select a month to begin.</p>}
-        {validMonth && !hasSource && sfCount === 0 && <p className="text-xs text-stone-500">Add at least one source.</p>}
+        {validMonth && !hasSource && <p className="text-xs text-stone-500">Add your {sourceNames[source]} report.</p>}
       </div>
     </fieldset>
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
@@ -168,12 +171,13 @@ function MonthlyPatchesWorkspace({ onBusyChange }: { onBusyChange: (busy: boolea
 }
 
 export default function PastPatchesWorkspace() {
-  const [mode, setMode] = useState<'monthly' | 'legacy'>('monthly');
-  const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<Source | 'legacy'>('calling');
   return <div className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm sm:p-8">
     <div className="mb-6 flex flex-wrap gap-2" role="group" aria-label="Gate 1 workflow">
-      {(['monthly', 'legacy'] as const).map((value) => <button key={value} type="button" disabled={busy} aria-pressed={mode === value} onClick={() => setMode(value)} className={`rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-40 ${mode === value ? 'bg-amber-100 text-amber-950' : 'text-stone-500 hover:bg-stone-50'}`}>{value === 'monthly' ? 'Monthly reports' : 'Legacy CRM workflow'}</button>)}
+      {(['calling', 'sms', 'salesforce'] as const).map((value) => <button key={value} type="button" aria-pressed={mode === value} onClick={() => setMode(value)} className={`rounded-lg px-3 py-2 text-sm font-semibold ${mode === value ? 'bg-amber-100 text-amber-950' : 'text-stone-500 hover:bg-stone-50'}`}>{sourceNames[value]}</button>)}
+      <button type="button" aria-pressed={mode === 'legacy'} onClick={() => setMode('legacy')} className="ml-auto text-xs text-stone-500 underline">Legacy workflow</button>
     </div>
-    {mode === 'monthly' ? <MonthlyPatchesWorkspace onBusyChange={setBusy} /> : <LegacyPastPatchesWorkspace />}
+    {(['calling', 'sms', 'salesforce'] as const).map(source => <div key={source} hidden={mode !== source}><MonthlyPatchesWorkspace source={source} /></div>)}
+    {mode === 'legacy' && <LegacyPastPatchesWorkspace />}
   </div>;
 }

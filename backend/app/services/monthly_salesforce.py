@@ -84,7 +84,7 @@ def _load(path: str) -> pd.DataFrame:
 
 
 def build_monthly_salesforce(
-    month: str, *, ql_path: str, opportunities_path: str, transactions_path: str,
+    month: str, *, ql_path: str | None = None, opportunities_path: str | None = None, transactions_path: str | None = None,
 ) -> MonthlySalesforceResult:
     """Return independently importable tags, dated events, review rows and row stats.
 
@@ -94,8 +94,8 @@ def build_monthly_salesforce(
     """
     if not re.fullmatch(r"\d{4}-(?:0[1-9]|1[0-2])", month):
         raise ValueError("month must be YYYY-MM")
-    if not all((ql_path, opportunities_path, transactions_path)):
-        raise ValueError("Qualified Leads, Opportunities and Transaction Pipeline reports are required")
+    if not any((ql_path, opportunities_path, transactions_path)):
+        raise ValueError("Upload at least one Salesforce report")
     sources = [("qualified_leads", ql_path, QL_ADDR),
                ("opportunities", opportunities_path, OPP_ADDR),
                ("transactions", transactions_path, TXN_ADDR)]
@@ -107,6 +107,8 @@ def build_monthly_salesforce(
         "Closing tags use the existing monthly (CLOSED) 8020 grammar; exact Closed Date is retained in event_date metadata. The token does not establish marketing attribution.",
     ]
     for source, path, address_spec in sources:
+        if not path:
+            continue
         frame = _load(path)
         role_column = {"qualified_leads": "Lead Status", "opportunities": "Stage", "transactions": "Path"}[source]
         if role_column not in frame:

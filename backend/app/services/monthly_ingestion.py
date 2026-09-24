@@ -24,10 +24,8 @@ def run_monthly_ingestion(report_month, *, cold_path=None, sms_entries=None,
     validate_report_month(report_month)
     sms_entries = sms_entries or []
     sf_paths = (qualified_leads, opportunities, transactions)
-    if any(sf_paths) and not all(sf_paths):
-        raise ValueError("Upload all three Salesforce reports: qualified leads, opportunities, and transactions")
     if not cold_path and not sms_entries and not any(sf_paths):
-        raise ValueError("Upload calling logs, SMS files, or the three Salesforce reports")
+        raise ValueError("Upload at least one calling, SMS, or Salesforce report")
 
     frames = {}
     sources, warnings, reviews = [], [], []
@@ -44,8 +42,12 @@ def run_monthly_ingestion(report_month, *, cold_path=None, sms_entries=None,
 
     if cold_path or sms_entries:
         marketing = run_monthly_marketing(cold_path, sms_entries, report_month)
-        frames["property_status_updates.csv"] = marketing.cold_df.loc[marketing.cold_df["status"].ne("")].copy()
-        frames["phone_status_tags_updates.csv"] = marketing.sms_df.loc[marketing.sms_df["phone_status"].ne("") & marketing.sms_df["phone"].ne("")].copy()
+        if cold_path:
+            frames["property_status_updates.csv"] = marketing.cold_df.loc[marketing.cold_df["status"].ne("")].copy()
+            samples["cold_calling"] = sample(frames["property_status_updates.csv"])
+        if sms_entries:
+            frames["phone_status_tags_updates.csv"] = marketing.sms_df.loc[marketing.sms_df["phone_status"].ne("") & marketing.sms_df["phone"].ne("")].copy()
+            samples["sms"] = sample(frames["phone_status_tags_updates.csv"])
         frames["marketing_activity_tags.csv"] = marketing.marketing_tags_df
         reviews.append(marketing.review_df)
         sources.extend(marketing.stats["sources"])
@@ -53,8 +55,8 @@ def run_monthly_ingestion(report_month, *, cold_path=None, sms_entries=None,
         tag_counts.update(marketing.stats["tag_counts"])
         for name in ("cold_unmapped", "sms_unmapped", "cold_input_counts", "cold_output_counts", "sms_input_counts", "sms_output_counts"):
             metrics[name] = getattr(marketing, name)
-        samples.update(cold_calling=sample(frames["property_status_updates.csv"]), sms=sample(frames["phone_status_tags_updates.csv"]), marketing_tags=sample(marketing.marketing_tags_df))
-    if all(sf_paths):
+        samples["marketing_tags"] = sample(marketing.marketing_tags_df)
+    if any(sf_paths):
         sf = build_monthly_salesforce(report_month, ql_path=qualified_leads,
                                      opportunities_path=opportunities, transactions_path=transactions)
         frames["salesforce_status_tags.csv"] = sf.tags

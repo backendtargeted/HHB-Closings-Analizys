@@ -79,11 +79,32 @@ def test_invalid_month_rejected(client, month):
     assert client.post("/api/patches/monthly", data={"report_month": month}).status_code == 400
 
 
-def test_incomplete_salesforce_and_wrong_file_type_rejected(client):
-    response = client.post("/api/patches/monthly", data={"report_month": "2026-09", "qualified_leads": (io.BytesIO(b"x"), "ql.csv")})
-    assert response.status_code == 400
-    assert "all three" in response.json["detail"]
+def test_salesforce_report_can_run_alone(client):
+    response = client.post("/api/patches/monthly", data={"report_month": "2026-09", "qualified_leads": upload_csv(
+        [{"Street": "1 Main St", "Create Date": "2026-09-02", "Lead Status": "New"}], "ql.csv")})
+    assert response.status_code == 200, response.json
+    assert [row["source"] for row in response.json["monthly"]["sources"]] == ["qualified_leads"]
+    assert len(response.json["samples"]["salesforce_tags"]) == 1
+
+
+def test_wrong_file_type_rejected(client):
     assert client.post("/api/patches/monthly", data={"report_month": "2026-09", "sms_files": (io.BytesIO(b"x"), "sms.xlsx")}).status_code == 400
+
+
+def test_calling_alone_needs_no_salesforce_or_sms_and_exports_only_calling(client):
+    response = client.post("/api/patches/monthly", data={"report_month": "2026-09", "cold_csv": upload_csv(
+        [{"Phone": "6315550100", "Address": "1 Main St", "Log Type": "Decision Maker - Lead", "Log Time (Date)": "9/2/2026"}], "calls.csv")})
+    assert response.status_code == 200, response.json
+    payload = response.json
+    assert payload["samples"]["cold_calling"][0]["status"] == "Lead"
+    assert payload["samples"]["salesforce_tags"] == []
+    assert payload["samples"]["sms"] == []
+    exported = client.get(f"/api/patches/{payload['job_id']}/export?file=all")
+    with zipfile.ZipFile(io.BytesIO(exported.data)) as bundle:
+        assert "property_status_updates.csv" in bundle.namelist()
+        assert "marketing_activity_tags.csv" in bundle.namelist()
+        assert "salesforce_status_tags.csv" not in bundle.namelist()
+        assert "phone_status_tags_updates.csv" not in bundle.namelist()
 
 
 def test_new_marketing_tags_roundtrip_without_inventing_provider():
