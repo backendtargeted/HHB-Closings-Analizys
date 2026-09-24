@@ -1,0 +1,58 @@
+{
+  "source_bytes": 527918711,
+  "target_properties": 4790,
+  "counts": {
+    "source_lines": 71014,
+    "max_line_bytes": 31176,
+    "skipped_outside_target_ids": 66243,
+    "target_lines": 4771,
+    "error_lines": 75,
+    "target_lines_county_matches": 4696,
+    "target_lines_zip_matches": 0,
+    "target_lines_parcel_matches": 4615
+  },
+  "covered_target_properties": 4770,
+  "target_properties_missing_details": 20,
+  "properties_with_nonempty_detail": 4696,
+  "properties_with_all_identity_checks_matching": 0,
+  "properties_with_earliest_month_seller_name": 4625,
+  "properties_with_single_distinct_earliest_month_seller": 4575,
+  "properties_with_seller_and_all_identity_checks": 0,
+  "available_fields_property_counts": {
+    "property_type": 4689,
+    "property_use": 4696,
+    "lot_sqrf": 4629,
+    "total_market_value": 4675,
+    "years_built": 3693,
+    "units_count": 4353,
+    "living_square_feet": 3396
+  },
+  "property_type_counts_per_detail_line": {
+    "single_family_residence": 4210,
+    "multi_family_residential": 210,
+    "condo": 196,
+    "(missing)": 82,
+    "land_residential": 72,
+    "multi_family_commercial": 1
+  },
+  "property_use_counts_per_detail_line": {
+    "Residential": 4689,
+    "(missing)": 75,
+    "Exempt": 5,
+    "Commercial": 2
+  },
+  "unit_counts_per_detail_line": {
+    "1": 4164,
+    "None": 418,
+    "2": 178,
+    "3": 9,
+    "4": 1,
+    "90": 1
+  },
+  "enrichment_dates": {
+    "2026-09-14": 70,
+    "2026-09-15": 2910,
+    "2026-09-16": 1791
+  },
+  "filtered_bytes": 9868539
+}

@@ -1,0 +1,1794 @@
+{
+  "status": "review candidate; not applied to application",
+  "source": "docs/BUYBOX_8020REI.md section 13",
+  "rule": "NY Nassau/Suffolk only; union of all suppression sources; ZIP authoritative; city fallback only without ZIP. Preview treats unusable ZIPs as missing; malformed nonblank ZIP policy remains to be defined (none in supplied sold CSV).",
+  "excluded_zips": [
+    "06390",
+    "10591",
+    "10598",
+    "11020",
+    "11021",
+    "11023",
+    "11024",
+    "11030",
+    "11050",
+    "11375",
+    "11421",
+    "11507",
+    "11509",
+    "11516",
+    "11545",
+    "11547",
+    "11548",
+    "11557",
+    "11559",
+    "11560",
+    "11569",
+    "11576",
+    "11577",
+    "11579",
+    "11581",
+    "11596",
+    "11598",
+    "11702",
+    "11732",
+    "11743",
+    "11771",
+    "11777",
+    "11780",
+    "11782",
+    "11786",
+    "11791",
+    "11797",
+    "11901",
+    "11930",
+    "11931",
+    "11932",
+    "11933",
+    "11935",
+    "11937",
+    "11939",
+    "11940",
+    "11941",
+    "11942",
+    "11944",
+    "11946",
+    "11947",
+    "11948",
+    "11952",
+    "11954",
+    "11956",
+    "11957",
+    "11958",
+    "11959",
+    "11962",
+    "11963",
+    "11964",
+    "11965",
+    "11968",
+    "11970",
+    "11971",
+    "11972",
+    "11975",
+    "11976",
+    "11977",
+    "11978",
+    "12601",
+    "12603"
+  ],
+  "excluded_cities": [
+    "albany",
+    "amagansett",
+    "aquebogue",
+    "atlantic beach",
+    "baiting hollow",
+    "bridgehampton",
+    "buffalo",
+    "cedarhurst",
+    "cherry grove",
+    "cutchogue",
+    "e moriches",
+    "east atlantic beach",
+    "east hampton",
+    "east hills",
+    "east marion",
+    "east moriches",
+    "east norwich",
+    "east quogue",
+    "eastport",
+    "fishers island",
+    "forest hills",
+    "gilgo beach",
+    "glen head",
+    "glenwood landing",
+    "great neck",
+    "greenport",
+    "halesite",
+    "hampton bays",
+    "henderson",
+    "hewlett",
+    "hewlett harbor",
+    "james",
+    "jamesport",
+    "kings point",
+    "laurel",
+    "laurel hollow",
+    "lawrence",
+    "lloyd harbor",
+    "locust valley",
+    "mattituck",
+    "montauk",
+    "muttontown",
+    "new suffolk",
+    "north haven",
+    "north hills",
+    "north woodmere",
+    "oak beach",
+    "oak island",
+    "old brookville",
+    "orient",
+    "peconic",
+    "plandome",
+    "point lookout",
+    "poughkeepsie",
+    "quogue",
+    "roslyn",
+    "roslyn estates",
+    "roslyn harbor",
+    "roslyn heights",
+    "sag harbor",
+    "sagaponack",
+    "sands point",
+    "sea cliff",
+    "searingtown",
+    "shelter island",
+    "shelter island heights",
+    "shoreham",
+    "south jamesport",
+    "southampton",
+    "southold",
+    "speonk",
+    "tarrytown",
+    "upper brookville",
+    "wainscott",
+    "water mill",
+    "west hampton",
+    "west hampton beach",
+    "westhampton",
+    "westhampton beach",
+    "williston park",
+    "woodbury",
+    "woodhaven",
+    "woodmere",
+    "yorktown heights"
+  ],
+  "zip_provenance": {
+    "11732": [
+      {
+        "source_town": "East Norwich",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11545": [
+      {
+        "source_town": "Glen Head",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      },
+      {
+        "source_town": "Muttontown",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      },
+      {
+        "source_town": "Old Brookville",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      },
+      {
+        "source_town": "Roslyn Harbor",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      },
+      {
+        "source_town": "Upper Brookville",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11901": [
+      {
+        "source_town": "Glen Head",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11547": [
+      {
+        "source_town": "Glenwood Landing",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11020": [
+      {
+        "source_town": "Great Neck",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11021": [
+      {
+        "source_town": "Great Neck",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11023": [
+      {
+        "source_town": "Great Neck",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11024": [
+      {
+        "source_town": "Great Neck",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      },
+      {
+        "source_town": "Kings Point",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11944": [
+      {
+        "source_town": "Greenport",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11946": [
+      {
+        "source_town": "Hampton Bays",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11560": [
+      {
+        "source_town": "Locust Valley",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11956": [
+      {
+        "source_town": "New Suffolk",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11569": [
+      {
+        "source_town": "Point Lookout",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11968": [
+      {
+        "source_town": "Southampton",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11509": [
+      {
+        "source_town": "Atlantic Beach",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      },
+      {
+        "source_town": "East Atlantic Beach",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11933": [
+      {
+        "source_town": "Baiting Hollow",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11702": [
+      {
+        "source_town": "Gilgo Beach",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      },
+      {
+        "source_town": "Oak Beach",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      },
+      {
+        "source_town": "Oak Island",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11743": [
+      {
+        "source_town": "Halesite",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      },
+      {
+        "source_town": "Lloyd Harbor",
+        "sources": [
+          "Tina"
+        ]
+      }
+    ],
+    "11557": [
+      {
+        "source_town": "Hewlett",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      },
+      {
+        "source_town": "Hewlett Harbor",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11598": [
+      {
+        "source_town": "Hewlett",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      },
+      {
+        "source_town": "Woodmere",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11791": [
+      {
+        "source_town": "Laurel Hollow",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      },
+      {
+        "source_town": "Muttontown",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11581": [
+      {
+        "source_town": "North Woodmere",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11576": [
+      {
+        "source_town": "Roslyn",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      },
+      {
+        "source_town": "East Hills",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      },
+      {
+        "source_town": "North Hills",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      },
+      {
+        "source_town": "Roslyn Estates",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      },
+      {
+        "source_town": "Roslyn Harbor",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11050": [
+      {
+        "source_town": "Sands Point",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11786": [
+      {
+        "source_town": "Shoreham",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11777": [
+      {
+        "source_town": "Shoreham",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11930": [
+      {
+        "source_town": "Amagansett",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11931": [
+      {
+        "source_town": "Aquebogue",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11932": [
+      {
+        "source_town": "Bridgehampton",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11516": [
+      {
+        "source_town": "Cedarhurst",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11782": [
+      {
+        "source_town": "Cherry Grove",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11935": [
+      {
+        "source_town": "Cutchogue",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11937": [
+      {
+        "source_town": "East Hampton",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11548": [
+      {
+        "source_town": "East Hills",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11577": [
+      {
+        "source_town": "East Hills",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      },
+      {
+        "source_town": "Roslyn Heights",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11942": [
+      {
+        "source_town": "East Quogue",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11375": [
+      {
+        "source_town": "Forest Hills",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11780": [
+      {
+        "source_town": "James",
+        "sources": [
+          "DM-Sept"
+        ]
+      }
+    ],
+    "11947": [
+      {
+        "source_town": "Jamesport",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11948": [
+      {
+        "source_town": "Laurel",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11559": [
+      {
+        "source_town": "Lawrence",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11952": [
+      {
+        "source_town": "Mattituck",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11954": [
+      {
+        "source_town": "Montauk",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11963": [
+      {
+        "source_town": "North Haven",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      },
+      {
+        "source_town": "Sag Harbor",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11030": [
+      {
+        "source_town": "North Hills",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      },
+      {
+        "source_town": "Plandome",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11957": [
+      {
+        "source_town": "Orient",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11958": [
+      {
+        "source_town": "Peconic",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "12601": [
+      {
+        "source_town": "Poughkeepsie",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "12603": [
+      {
+        "source_town": "Poughkeepsie",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11959": [
+      {
+        "source_town": "Quogue",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11962": [
+      {
+        "source_town": "Sagaponack",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11579": [
+      {
+        "source_town": "Sea Cliff",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11507": [
+      {
+        "source_town": "Searingtown",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11964": [
+      {
+        "source_town": "Shelter Island",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11965": [
+      {
+        "source_town": "Shelter Island Heights",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11972": [
+      {
+        "source_town": "Speonk",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "10591": [
+      {
+        "source_town": "Tarrytown",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11771": [
+      {
+        "source_town": "Upper Brookville",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11975": [
+      {
+        "source_town": "Wainscott",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11976": [
+      {
+        "source_town": "Water Mill",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11977": [
+      {
+        "source_town": "Westhampton / West Hampton",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11596": [
+      {
+        "source_town": "Williston Park",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11797": [
+      {
+        "source_town": "Woodbury",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11421": [
+      {
+        "source_town": "Woodhaven",
+        "sources": [
+          "DM-Sept"
+        ]
+      }
+    ],
+    "10598": [
+      {
+        "source_town": "Yorktown Heights",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "11939": [
+      {
+        "source_town": "East Marion",
+        "sources": [
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11940": [
+      {
+        "source_town": "East Moriches",
+        "sources": [
+          "Tina"
+        ]
+      }
+    ],
+    "11941": [
+      {
+        "source_town": "Eastport",
+        "sources": [
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "06390": [
+      {
+        "source_town": "Fishers Island",
+        "sources": [
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11971": [
+      {
+        "source_town": "Southold",
+        "sources": [
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11970": [
+      {
+        "source_town": "South Jamesport",
+        "sources": [
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "11978": [
+      {
+        "source_town": "West Hampton Beach",
+        "sources": [
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ]
+  },
+  "city_provenance": {
+    "east norwich": [
+      {
+        "source_town": "East Norwich",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "glen head": [
+      {
+        "source_town": "Glen Head",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "glenwood landing": [
+      {
+        "source_town": "Glenwood Landing",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "great neck": [
+      {
+        "source_town": "Great Neck",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "greenport": [
+      {
+        "source_town": "Greenport",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "hampton bays": [
+      {
+        "source_town": "Hampton Bays",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "kings point": [
+      {
+        "source_town": "Kings Point",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "locust valley": [
+      {
+        "source_town": "Locust Valley",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "new suffolk": [
+      {
+        "source_town": "New Suffolk",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "point lookout": [
+      {
+        "source_town": "Point Lookout",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "southampton": [
+      {
+        "source_town": "Southampton",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "atlantic beach": [
+      {
+        "source_town": "Atlantic Beach",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "baiting hollow": [
+      {
+        "source_town": "Baiting Hollow",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "east atlantic beach": [
+      {
+        "source_town": "East Atlantic Beach",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "gilgo beach": [
+      {
+        "source_town": "Gilgo Beach",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "halesite": [
+      {
+        "source_town": "Halesite",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "hewlett": [
+      {
+        "source_town": "Hewlett",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "laurel hollow": [
+      {
+        "source_town": "Laurel Hollow",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "muttontown": [
+      {
+        "source_town": "Muttontown",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "north woodmere": [
+      {
+        "source_town": "North Woodmere",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "oak beach": [
+      {
+        "source_town": "Oak Beach",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "oak island": [
+      {
+        "source_town": "Oak Island",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "roslyn": [
+      {
+        "source_town": "Roslyn",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "sands point": [
+      {
+        "source_town": "Sands Point",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "shoreham": [
+      {
+        "source_town": "Shoreham",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "woodmere": [
+      {
+        "source_town": "Woodmere",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "albany": [
+      {
+        "source_town": "Albany",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "amagansett": [
+      {
+        "source_town": "Amagansett",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "aquebogue": [
+      {
+        "source_town": "Aquebogue",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "bridgehampton": [
+      {
+        "source_town": "Bridgehampton",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "buffalo": [
+      {
+        "source_town": "Buffalo",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "cedarhurst": [
+      {
+        "source_town": "Cedarhurst",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "cherry grove": [
+      {
+        "source_town": "Cherry Grove",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "cutchogue": [
+      {
+        "source_town": "Cutchogue",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "east hampton": [
+      {
+        "source_town": "East Hampton",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "east hills": [
+      {
+        "source_town": "East Hills",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "east quogue": [
+      {
+        "source_town": "East Quogue",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "forest hills": [
+      {
+        "source_town": "Forest Hills",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "henderson": [
+      {
+        "source_town": "Henderson",
+        "sources": [
+          "DM-Sept"
+        ]
+      }
+    ],
+    "hewlett harbor": [
+      {
+        "source_town": "Hewlett Harbor",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "james": [
+      {
+        "source_town": "James",
+        "sources": [
+          "DM-Sept"
+        ]
+      }
+    ],
+    "jamesport": [
+      {
+        "source_town": "Jamesport",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "laurel": [
+      {
+        "source_town": "Laurel",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "lawrence": [
+      {
+        "source_town": "Lawrence",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "mattituck": [
+      {
+        "source_town": "Mattituck",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "montauk": [
+      {
+        "source_town": "Montauk",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "north haven": [
+      {
+        "source_town": "North Haven",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "north hills": [
+      {
+        "source_town": "North Hills",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "old brookville": [
+      {
+        "source_town": "Old Brookville",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "orient": [
+      {
+        "source_town": "Orient",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "peconic": [
+      {
+        "source_town": "Peconic",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "plandome": [
+      {
+        "source_town": "Plandome",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "poughkeepsie": [
+      {
+        "source_town": "Poughkeepsie",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "quogue": [
+      {
+        "source_town": "Quogue",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "roslyn estates": [
+      {
+        "source_town": "Roslyn Estates",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "roslyn harbor": [
+      {
+        "source_town": "Roslyn Harbor",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "roslyn heights": [
+      {
+        "source_town": "Roslyn Heights",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "sag harbor": [
+      {
+        "source_town": "Sag Harbor",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "sagaponack": [
+      {
+        "source_town": "Sagaponack",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "sea cliff": [
+      {
+        "source_town": "Sea Cliff",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "searingtown": [
+      {
+        "source_town": "Searingtown",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "shelter island": [
+      {
+        "source_town": "Shelter Island",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "shelter island heights": [
+      {
+        "source_town": "Shelter Island Heights",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "speonk": [
+      {
+        "source_town": "Speonk",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "tarrytown": [
+      {
+        "source_town": "Tarrytown",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "upper brookville": [
+      {
+        "source_town": "Upper Brookville",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "wainscott": [
+      {
+        "source_town": "Wainscott",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "water mill": [
+      {
+        "source_town": "Water Mill",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "westhampton": [
+      {
+        "source_town": "Westhampton / West Hampton",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "west hampton": [
+      {
+        "source_town": "Westhampton / West Hampton",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "williston park": [
+      {
+        "source_town": "Williston Park",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "woodbury": [
+      {
+        "source_town": "Woodbury",
+        "sources": [
+          "DM-Sept",
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "woodhaven": [
+      {
+        "source_town": "Woodhaven",
+        "sources": [
+          "DM-Sept"
+        ]
+      }
+    ],
+    "yorktown heights": [
+      {
+        "source_town": "Yorktown Heights",
+        "sources": [
+          "DM-Sept",
+          "Tina"
+        ]
+      }
+    ],
+    "east marion": [
+      {
+        "source_town": "East Marion",
+        "sources": [
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "east moriches": [
+      {
+        "source_town": "East Moriches",
+        "sources": [
+          "Tina"
+        ]
+      }
+    ],
+    "eastport": [
+      {
+        "source_town": "Eastport",
+        "sources": [
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "fishers island": [
+      {
+        "source_town": "Fishers Island",
+        "sources": [
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "lloyd harbor": [
+      {
+        "source_town": "Lloyd Harbor",
+        "sources": [
+          "Tina"
+        ]
+      }
+    ],
+    "southold": [
+      {
+        "source_town": "Southold",
+        "sources": [
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "south jamesport": [
+      {
+        "source_town": "South Jamesport",
+        "sources": [
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "west hampton beach": [
+      {
+        "source_town": "West Hampton Beach",
+        "sources": [
+          "Tina",
+          "8020 zip list"
+        ]
+      }
+    ],
+    "westhampton beach": [
+      {
+        "alias_of": "west hampton beach"
+      }
+    ],
+    "e moriches": [
+      {
+        "alias_of": "east moriches"
+      }
+    ]
+  }
+}

@@ -200,6 +200,8 @@ Chronological list of `(SF) UPDATED` / `(SF) STATUS` events before close (label 
 
 ## 10. Past patches → REISift → analysis
 
+The default Gate 1 workflow now scopes calling/SMS activity and dated Salesforce milestones to an explicitly selected month. See [Gate 1 monthly ingestion](GATE1_MONTHLY_INGESTION.md) for date precedence, supported reports, corrected label handling, and export schemas. Provider-neutral `(MARKETING) CC/SMS - M/YYYY` tags are parsed as channel activity, without creating list-purchase evidence. The four-file workflow below remains available as **Legacy CRM workflow**.
+
 **Past patches** (`marketing_mapper.run_patch_pipeline`) produces four CSVs:
 
 | File | Purpose |

@@ -44,7 +44,7 @@ const ModeSwitcher = ({ mode, onChange }: ModeSwitcherProps) => {
               <p className="text-xs font-bold uppercase tracking-wider text-amber-800 mb-1">Gate 1</p>
               <h2 className="text-lg font-bold text-amber-950 tracking-tight">Monthly ingestion</h2>
               <p className="text-amber-950/80 text-sm mt-2 leading-relaxed">
-                Upload cold calling, SMS, and CRM (closings optional) → download REISift import bundle.
+                Select a month and upload calling/SMS or Salesforce reports → download the REISift import bundle.
                 Import into REISift before running Gate 2.
               </p>
             </div>

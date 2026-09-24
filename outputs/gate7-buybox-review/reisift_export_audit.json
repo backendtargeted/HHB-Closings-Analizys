@@ -1,0 +1,1151 @@
+{
+  "file": "reisift_export.csv",
+  "counts": {
+    "rows": 751250,
+    "zip_allowed": 647685,
+    "current_included": 725291,
+    "zip_first_included": 647863,
+    "blank_zip": 1541,
+    "nonblank_unusable_zip": 155,
+    "present_zip_outside_list_city_allowed": 77428,
+    "present_zip_outside_list_city_not_allowed": 24441,
+    "missing_zip_city_not_allowed": 1518,
+    "missing_zip_city_allowed": 178
+  },
+  "changed_zip_city": [
+    {
+      "zip": "11554",
+      "city": "East Meadow",
+      "rows": 12241,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11566",
+      "city": "Merrick",
+      "rows": 11912,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11572",
+      "city": "Oceanside",
+      "rows": 10172,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11552",
+      "city": "West Hempstead",
+      "rows": 7812,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11561",
+      "city": "Long Beach",
+      "rows": 6860,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11553",
+      "city": "Uniondale",
+      "rows": 6582,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11563",
+      "city": "Lynbrook",
+      "rows": 6220,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11570",
+      "city": "Rockville Centre",
+      "rows": 5847,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11565",
+      "city": "Malverne",
+      "rows": 3490,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11753",
+      "city": "Jericho",
+      "rows": 1867,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11558",
+      "city": "Island Park",
+      "rows": 1797,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11561",
+      "city": "Lido Beach",
+      "rows": 755,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11572",
+      "city": "Rockville Centre",
+      "rows": 169,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11568",
+      "city": "Old Westbury",
+      "rows": 160,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11434",
+      "city": "Jamaica",
+      "rows": 60,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11566",
+      "city": "North Merrick",
+      "rows": 58,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11420",
+      "city": "South Ozone Park",
+      "rows": 45,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11412",
+      "city": "Saint Albans",
+      "rows": 40,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11236",
+      "city": "Brooklyn",
+      "rows": 34,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11414",
+      "city": "Howard Beach",
+      "rows": 32,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11433",
+      "city": "Jamaica",
+      "rows": 31,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11411",
+      "city": "Cambria Heights",
+      "rows": 31,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11207",
+      "city": "Brooklyn",
+      "rows": 31,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11419",
+      "city": "South Richmond Hill",
+      "rows": 30,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11426",
+      "city": "Bellerose",
+      "rows": 29,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11377",
+      "city": "Woodside",
+      "rows": 28,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11691",
+      "city": "Far Rockaway",
+      "rows": 27,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11368",
+      "city": "Corona",
+      "rows": 27,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11234",
+      "city": "Brooklyn",
+      "rows": 26,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11435",
+      "city": "Jamaica",
+      "rows": 26,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11429",
+      "city": "Queens Village",
+      "rows": 26,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11208",
+      "city": "Brooklyn",
+      "rows": 26,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11432",
+      "city": "Jamaica",
+      "rows": 26,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11379",
+      "city": "Middle Village",
+      "rows": 25,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11378",
+      "city": "Maspeth",
+      "rows": 24,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11413",
+      "city": "Springfield Gardens",
+      "rows": 23,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11354",
+      "city": "Flushing",
+      "rows": 23,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11373",
+      "city": "Elmhurst",
+      "rows": 22,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11358",
+      "city": "Flushing",
+      "rows": 22,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11385",
+      "city": "Ridgewood",
+      "rows": 21,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11436",
+      "city": "Jamaica",
+      "rows": 20,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11361",
+      "city": "Bayside",
+      "rows": 20,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11355",
+      "city": "Flushing",
+      "rows": 20,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11362",
+      "city": "Little Neck",
+      "rows": 19,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11360",
+      "city": "Bayside",
+      "rows": 19,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11423",
+      "city": "Hollis",
+      "rows": 19,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11418",
+      "city": "Richmond Hill",
+      "rows": 18,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11367",
+      "city": "Flushing",
+      "rows": 18,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11203",
+      "city": "Brooklyn",
+      "rows": 18,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11412",
+      "city": "Jamaica",
+      "rows": 17,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11369",
+      "city": "East Elmhurst",
+      "rows": 16,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11422",
+      "city": "Rosedale",
+      "rows": 16,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11212",
+      "city": "Brooklyn",
+      "rows": 15,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11364",
+      "city": "Oakland Gardens",
+      "rows": 15,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11428",
+      "city": "Queens Village",
+      "rows": 15,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11370",
+      "city": "East Elmhurst",
+      "rows": 15,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11427",
+      "city": "Queens Village",
+      "rows": 13,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11417",
+      "city": "Ozone Park",
+      "rows": 13,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11560",
+      "city": "Oyster Bay",
+      "rows": 12,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11549",
+      "city": "Hempstead",
+      "rows": 11,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11420",
+      "city": "Jamaica",
+      "rows": 11,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11229",
+      "city": "Brooklyn",
+      "rows": 11,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11210",
+      "city": "Brooklyn",
+      "rows": 11,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11426",
+      "city": "Jamaica",
+      "rows": 10,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11235",
+      "city": "Brooklyn",
+      "rows": 10,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11223",
+      "city": "Brooklyn",
+      "rows": 10,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11004",
+      "city": "Glen Oaks",
+      "rows": 9,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11233",
+      "city": "Brooklyn",
+      "rows": 8,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11106",
+      "city": "Astoria",
+      "rows": 8,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11423",
+      "city": "Jamaica",
+      "rows": 8,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11102",
+      "city": "Astoria",
+      "rows": 8,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11566",
+      "city": "Hempstead",
+      "rows": 8,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11238",
+      "city": "Brooklyn",
+      "rows": 7,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11226",
+      "city": "Brooklyn",
+      "rows": 7,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11103",
+      "city": "Astoria",
+      "rows": 7,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11419",
+      "city": "Jamaica",
+      "rows": 7,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11224",
+      "city": "Brooklyn",
+      "rows": 7,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11563",
+      "city": "Hempstead",
+      "rows": 7,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11598",
+      "city": "Hempstead",
+      "rows": 7,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11552",
+      "city": "Hempstead",
+      "rows": 6,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11105",
+      "city": "Astoria",
+      "rows": 6,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11416",
+      "city": "Ozone Park",
+      "rows": 6,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11554",
+      "city": "Hempstead",
+      "rows": 6,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11545",
+      "city": "Oyster Bay",
+      "rows": 6,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11411",
+      "city": "Jamaica",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11364",
+      "city": "Bayside",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11414",
+      "city": "Jamaica",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11211",
+      "city": "Brooklyn",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11213",
+      "city": "Brooklyn",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11231",
+      "city": "Brooklyn",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11230",
+      "city": "Brooklyn",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11753",
+      "city": "Oyster Bay",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11415",
+      "city": "Kew Gardens",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11693",
+      "city": "Broad Channel",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11418",
+      "city": "Jamaica",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11221",
+      "city": "Brooklyn",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11201",
+      "city": "Brooklyn",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11947",
+      "city": "Riverhead",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11797",
+      "city": "Oyster Bay",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11570",
+      "city": "Hempstead",
+      "rows": 5,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11369",
+      "city": "Flushing",
+      "rows": 4,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11237",
+      "city": "Brooklyn",
+      "rows": 4,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11216",
+      "city": "Brooklyn",
+      "rows": 4,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11366",
+      "city": "Flushing",
+      "rows": 4,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11215",
+      "city": "Brooklyn",
+      "rows": 4,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11377",
+      "city": "Flushing",
+      "rows": 4,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11356",
+      "city": "Flushing",
+      "rows": 4,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11206",
+      "city": "Brooklyn",
+      "rows": 3,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11042",
+      "city": "New Hyde Park",
+      "rows": 3,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11225",
+      "city": "Brooklyn",
+      "rows": 3,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11363",
+      "city": "Little Neck",
+      "rows": 3,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11104",
+      "city": "Sunnyside",
+      "rows": 3,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11357",
+      "city": "Flushing",
+      "rows": 3,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11931",
+      "city": "Patchogue",
+      "rows": 3,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11385",
+      "city": "Flushing",
+      "rows": 3,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11204",
+      "city": "Brooklyn",
+      "rows": 3,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11572",
+      "city": "Hempstead",
+      "rows": 3,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11005",
+      "city": "Floral Park",
+      "rows": 3,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11694",
+      "city": "Belle Harbor",
+      "rows": 3,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11219",
+      "city": "Brooklyn",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11220",
+      "city": "Brooklyn",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11217",
+      "city": "Brooklyn",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11378",
+      "city": "Flushing",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11692",
+      "city": "Far Rockaway",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11375",
+      "city": "Flushing",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11373",
+      "city": "Flushing",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11422",
+      "city": "Jamaica",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11416",
+      "city": "Jamaica",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11579",
+      "city": "Oyster Bay",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11765",
+      "city": "Oyster Bay",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "19056",
+      "city": "Levittown",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11417",
+      "city": "Jamaica",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11509",
+      "city": "Hempstead",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11214",
+      "city": "Brooklyn",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11228",
+      "city": "Brooklyn",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11941",
+      "city": "Brookhaven",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11558",
+      "city": "Hempstead",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11559",
+      "city": "Hempstead",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11568",
+      "city": "Westbury",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11428",
+      "city": "Jamaica",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11697",
+      "city": "Breezy Point",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11429",
+      "city": "Jamaica",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11004",
+      "city": "Floral Park",
+      "rows": 2,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11516",
+      "city": "Hempstead",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11374",
+      "city": "Flushing",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "37027",
+      "city": "Brentwood",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11205",
+      "city": "Brooklyn",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "19054",
+      "city": "Levittown",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "08721",
+      "city": "Bayville",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11368",
+      "city": "Flushing",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11694",
+      "city": "Far Rockaway",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11364",
+      "city": "Flushing",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11761",
+      "city": "Brookhaven",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11101",
+      "city": "Hempstead",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "01154",
+      "city": "Hempstead",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11561",
+      "city": "Hempstead",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11948",
+      "city": "Riverhead",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11691",
+      "city": "Hempstead",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "12110",
+      "city": "Latham",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11436",
+      "city": "South Ozone Park",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11365",
+      "city": "Flushing",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11557",
+      "city": "Hempstead",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11320",
+      "city": "Hempstead",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "07727",
+      "city": "Farmingdale",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "02155",
+      "city": "Medford",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "07450",
+      "city": "Ridgewood",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "92057",
+      "city": "Oceanside",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11352",
+      "city": "Flushing",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11554",
+      "city": "Oyster Bay",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11970",
+      "city": "Riverhead",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11565",
+      "city": "Hempstead",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11423",
+      "city": "Hempstead",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11568",
+      "city": "Oyster Bay",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11361",
+      "city": "Flushing",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11421",
+      "city": "Jamaica",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11379",
+      "city": "Flushing",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "19057",
+      "city": "Levittown",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11418",
+      "city": "South Richmond Hill",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11434",
+      "city": "Springfield Gardens",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11357",
+      "city": "Beechhurst",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11413",
+      "city": "Rosedale",
+      "rows": 1,
+      "investor_rows": 0
+    },
+    {
+      "zip": "11357",
+      "city": "Malba",
+      "rows": 1,
+      "investor_rows": 0
+    }
+  ],
+  "examples": [
+    {
+      "source_row": 5,
+      "city": "Lynbrook",
+      "zip": "11563"
+    },
+    {
+      "source_row": 8,
+      "city": "East Meadow",
+      "zip": "11554"
+    },
+    {
+      "source_row": 59,
+      "city": "Rockville Centre",
+      "zip": "11570"
+    },
+    {
+      "source_row": 63,
+      "city": "West Hempstead",
+      "zip": "11552"
+    },
+    {
+      "source_row": 70,
+      "city": "Lynbrook",
+      "zip": "11563"
+    },
+    {
+      "source_row": 71,
+      "city": "East Meadow",
+      "zip": "11554"
+    },
+    {
+      "source_row": 81,
+      "city": "East Meadow",
+      "zip": "11554"
+    },
+    {
+      "source_row": 96,
+      "city": "East Meadow",
+      "zip": "11554"
+    }
+  ]
+}

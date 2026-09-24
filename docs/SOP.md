@@ -45,7 +45,7 @@ These same tags feed closings-attribution lifecycle **ACQUIRED** (`lifecycle.py`
 
 | Gate | UI name | Primary inputs | Answers | Code |
 |------|---------|----------------|---------|------|
-| **1** | Monthly ingestion (Past patches) | Cold CSV, SMS CSVs, CRM, closings XLSX | REISift import bundle | `marketing_mapper.py` |
+| **1** | Monthly ingestion | Selected month + calling/SMS CSVs or three Salesforce reports | Reviewed REISift import bundle | `monthly_ingestion.py`; [monthly guide](GATE1_MONTHLY_INGESTION.md) |
 | **2** | Consolidated list report | REISift export + Total QL | List / combo / channel / journey | `monthly_consolidated.py` |
 | **3** | Marketing ramp | REISift + QL (+ window) | Population touches + lag + embedded Gate 2 | `marketing_ramp.py` |
 | **4** | Web leads | REISift filtered to web / CourtAlerts cohort + QL | Web-lead credit vs prior list history | `web_leads.py` |

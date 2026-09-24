@@ -1,0 +1,30 @@
+{
+  "target_properties": 4790,
+  "county_and_parcel_verified_properties": 4615,
+  "verified_property_with_earliest_month_seller": 4614,
+  "verified_property_with_month_buyer_price_matching_seller": 2180,
+  "verified_property_with_unique_month_buyer_price_matching_seller_event": 2170,
+  "verified_property_with_multiple_matching_seller_events": 10,
+  "detail_lines_with_returned_address_zip": 0,
+  "detail_lines_with_returned_address_street": 0,
+  "property_type_screen_among_identity_verified": {
+    "SFH": 4180,
+    "2-9 units": 185,
+    "outside_documented_property_types": 227,
+    "property_type_or_units_unresolved": 23
+  },
+  "available_fields_among_identity_verified": {
+    "property_type": 4615,
+    "lot_sqrf": 4548,
+    "total_market_value": 4604,
+    "years_built": 3658,
+    "building_square_feet": 3682,
+    "living_square_feet": 3363
+  },
+  "notes": [
+    "Parcel equality uses uppercase alphanumeric form plus matching county.",
+    "Event match requires earliest sold month plus normalized buyer name and exact amount; source does not expose a matching deed ID.",
+    "Property attributes are September 2026 snapshots, not proven as-of-sale values.",
+    "No ownership categories inferred or re-enabled."
+  ]
+}

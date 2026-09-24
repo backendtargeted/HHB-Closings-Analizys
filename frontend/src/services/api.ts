@@ -291,9 +291,25 @@ export const uploadPatches = async (formData: FormData): Promise<PatchUploadResp
   return response.data;
 };
 
+export const uploadMonthlyPatches = async (formData: FormData): Promise<PatchUploadResponse> => {
+  formData.set('background', 'true');
+  const response = await api.post<PatchUploadResponse & { status?: string }>('/patches/monthly', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 10 * 60 * 1000,
+  });
+  if (response.status !== 202) return response.data;
+  const jobId = response.data.job_id;
+  for (;;) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    const progress = await api.get<PatchUploadResponse & { status: string; detail?: string }>(`/patches/monthly/${jobId}`);
+    if (progress.data.status === 'completed') return progress.data;
+    if (progress.data.status === 'failed') throw new Error(progress.data.detail || 'Monthly processing failed');
+  }
+};
+
 export const downloadPatchExport = async (
   jobId: string,
-  file: 'all' | 'property' | 'phone' | 'sf' | 'closings',
+  file: 'all' | 'property' | 'phone' | 'sf' | 'closings' | 'marketing' | 'review',
   allowUnmapped: boolean
 ): Promise<Blob> => {
   const response = await api.get(`/patches/${jobId}/export`, {

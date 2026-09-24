@@ -2,6 +2,23 @@ export interface PatchUploadResponse {
   job_id: string;
   metrics: PatchMetrics;
   samples: PatchSamples;
+  monthly?: {
+    report_month: string;
+    available_exports: string[];
+    sources: Array<{
+      source: string;
+      input_rows: number;
+      included_rows: number;
+      outside_month_rows: number;
+      missing_date_rows: number;
+      invalid_date_rows: number;
+      duplicate_rows: number;
+      unusable_identity_rows?: number;
+      unverified_closing_rows?: number;
+    }>;
+    warnings: string[];
+    tag_counts: Record<string, number>;
+  };
 }
 
 export interface PatchMetrics {
@@ -27,6 +44,8 @@ export interface PatchMetrics {
 }
 
 export interface PatchSamples {
+  marketing_tags?: Record<string, unknown>[];
+  review_rows?: Record<string, unknown>[];
   cold_calling: Record<string, unknown>[];
   sms: Record<string, unknown>[];
   salesforce_tags: Record<string, unknown>[];

@@ -1,0 +1,211 @@
+{
+  "counts": {
+    "raw_rows": 72918,
+    "nassau_suffolk_rows": 6335,
+    "candidate_geography_accepted": 4838,
+    "current_accepted": 17944,
+    "current_accepted_outside_nassau_suffolk": 12071,
+    "candidate_removed_from_current": 13115,
+    "candidate_added_to_current": 9,
+    "excluded_zip": 1497
+  },
+  "current_included_by_county": {
+    "Kings": 6378,
+    "Queens": 5565,
+    "Suffolk": 3469,
+    "Nassau": 2404,
+    "Albany": 128
+  },
+  "by_month": {
+    "2026-02-01": {
+      "raw": 10722,
+      "current": 3198,
+      "nassau_suffolk": 1536,
+      "candidate": 1157
+    },
+    "2026-03-01": {
+      "raw": 12357,
+      "current": 3702,
+      "nassau_suffolk": 1642,
+      "candidate": 1261
+    },
+    "2026-04-01": {
+      "raw": 12218,
+      "current": 3390,
+      "nassau_suffolk": 1570,
+      "candidate": 1220
+    },
+    "2026-05-01": {
+      "raw": 11638,
+      "current": 2726,
+      "nassau_suffolk": 1144,
+      "candidate": 881
+    },
+    "2026-06-01": {
+      "raw": 13910,
+      "current": 2563,
+      "nassau_suffolk": 350,
+      "candidate": 250
+    },
+    "2026-07-01": {
+      "raw": 12073,
+      "current": 2365,
+      "nassau_suffolk": 93,
+      "candidate": 69
+    }
+  },
+  "top_candidate_exclusions": [
+    {
+      "zip": "11743",
+      "city": "Huntington",
+      "rows": 104
+    },
+    {
+      "zip": "11937",
+      "city": "East Hampton",
+      "rows": 91
+    },
+    {
+      "zip": "11901",
+      "city": "Riverhead",
+      "rows": 77
+    },
+    {
+      "zip": "11791",
+      "city": "Syosset",
+      "rows": 68
+    },
+    {
+      "zip": "11050",
+      "city": "Port Washington",
+      "rows": 67
+    },
+    {
+      "zip": "11968",
+      "city": "Southampton",
+      "rows": 64
+    },
+    {
+      "zip": "11946",
+      "city": "Hampton Bays",
+      "rows": 49
+    },
+    {
+      "zip": "11963",
+      "city": "Sag Harbor",
+      "rows": 45
+    },
+    {
+      "zip": "11581",
+      "city": "Valley Stream",
+      "rows": 42
+    },
+    {
+      "zip": "11577",
+      "city": "Roslyn Heights",
+      "rows": 39
+    },
+    {
+      "zip": "11782",
+      "city": "Sayville",
+      "rows": 37
+    },
+    {
+      "zip": "11780",
+      "city": "Saint James",
+      "rows": 36
+    },
+    {
+      "zip": "11021",
+      "city": "Great Neck",
+      "rows": 36
+    },
+    {
+      "zip": "11030",
+      "city": "Manhasset",
+      "rows": 35
+    },
+    {
+      "zip": "11598",
+      "city": "Woodmere",
+      "rows": 35
+    },
+    {
+      "zip": "11702",
+      "city": "Babylon",
+      "rows": 34
+    },
+    {
+      "zip": "11576",
+      "city": "Roslyn",
+      "rows": 32
+    },
+    {
+      "zip": "11971",
+      "city": "Southold",
+      "rows": 26
+    },
+    {
+      "zip": "11954",
+      "city": "Montauk",
+      "rows": 26
+    },
+    {
+      "zip": "11545",
+      "city": "Glen Head",
+      "rows": 26
+    },
+    {
+      "zip": "11771",
+      "city": "Oyster Bay",
+      "rows": 25
+    },
+    {
+      "zip": "11557",
+      "city": "Hewlett",
+      "rows": 23
+    },
+    {
+      "zip": "11942",
+      "city": "East Quogue",
+      "rows": 22
+    },
+    {
+      "zip": "11933",
+      "city": "Calverton",
+      "rows": 22
+    },
+    {
+      "zip": "11976",
+      "city": "Water Mill",
+      "rows": 21
+    },
+    {
+      "zip": "11777",
+      "city": "Port Jefferson",
+      "rows": 20
+    },
+    {
+      "zip": "11560",
+      "city": "Locust Valley",
+      "rows": 20
+    },
+    {
+      "zip": "11978",
+      "city": "Westhampton Beach",
+      "rows": 19
+    },
+    {
+      "zip": "11559",
+      "city": "Lawrence",
+      "rows": 18
+    },
+    {
+      "zip": "11024",
+      "city": "Great Neck",
+      "rows": 18
+    }
+  ],
+  "excluded_zip_count": 72,
+  "excluded_city_key_count": 84
+}

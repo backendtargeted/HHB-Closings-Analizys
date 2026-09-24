@@ -1,0 +1,185 @@
+{
+  "inputs": {
+    "sold_rows_scanned": 72918,
+    "sold_rows_excluded_buybox": 68080,
+    "sold_rows_ingested": 4838,
+    "buybox_town_count": 0,
+    "buybox_excluded_zip_count": 72,
+    "buybox_excluded_city_count": 84,
+    "buybox_exclusions": {
+      "excluded_county": 66583,
+      "excluded_zip": 1497
+    },
+    "property_grain": "property_earliest_sale",
+    "property_rows": 4790,
+    "unique_addresses": 4771,
+    "enrichment_enabled": true
+  },
+  "multi_transaction_properties": 45,
+  "by_first_sold_month": [
+    {
+      "sold_month": "2026-02",
+      "count": 1152,
+      "investor": 212,
+      "in_our_list": 363,
+      "both": 60,
+      "neither": 637,
+      "marketed": 742,
+      "leads": 52,
+      "qualified_leads": 17,
+      "prospects": 56,
+      "had_presence": 811,
+      "lost_to_investor": 146,
+      "never_prospected_investor": 94
+    },
+    {
+      "sold_month": "2026-03",
+      "count": 1252,
+      "investor": 231,
+      "in_our_list": 0,
+      "both": 0,
+      "neither": 1021,
+      "marketed": 823,
+      "leads": 54,
+      "qualified_leads": 29,
+      "prospects": 62,
+      "had_presence": 886,
+      "lost_to_investor": 163,
+      "never_prospected_investor": 82
+    },
+    {
+      "sold_month": "2026-04",
+      "count": 1208,
+      "investor": 193,
+      "in_our_list": 0,
+      "both": 0,
+      "neither": 1015,
+      "marketed": 775,
+      "leads": 51,
+      "qualified_leads": 30,
+      "prospects": 60,
+      "had_presence": 825,
+      "lost_to_investor": 144,
+      "never_prospected_investor": 76
+    },
+    {
+      "sold_month": "2026-05",
+      "count": 871,
+      "investor": 154,
+      "in_our_list": 0,
+      "both": 0,
+      "neither": 717,
+      "marketed": 510,
+      "leads": 41,
+      "qualified_leads": 16,
+      "prospects": 46,
+      "had_presence": 556,
+      "lost_to_investor": 114,
+      "never_prospected_investor": 55
+    },
+    {
+      "sold_month": "2026-06",
+      "count": 242,
+      "investor": 58,
+      "in_our_list": 0,
+      "both": 0,
+      "neither": 184,
+      "marketed": 150,
+      "leads": 6,
+      "qualified_leads": 3,
+      "prospects": 7,
+      "had_presence": 160,
+      "lost_to_investor": 39,
+      "never_prospected_investor": 21
+    },
+    {
+      "sold_month": "2026-07",
+      "count": 65,
+      "investor": 16,
+      "in_our_list": 0,
+      "both": 0,
+      "neither": 49,
+      "marketed": 35,
+      "leads": 2,
+      "qualified_leads": 0,
+      "prospects": 2,
+      "had_presence": 42,
+      "lost_to_investor": 10,
+      "never_prospected_investor": 7
+    }
+  ],
+  "lost": {
+    "never_prospected_investor_count": 335,
+    "never_prospected_investor_pct": 38.77,
+    "lost_to_investor_count": 616,
+    "lost_to_investor_pct": 18.78,
+    "had_presence_count": 3280,
+    "had_presence_investor_count": 638,
+    "had_presence_non_investor_count": 2642,
+    "lost_by_stage": [
+      {
+        "stage": "NONE",
+        "label": "No list / history",
+        "count": 10,
+        "share_pct": 1.62
+      },
+      {
+        "stage": "PROSPECT",
+        "label": "Prospect",
+        "count": 35,
+        "share_pct": 5.68
+      },
+      {
+        "stage": "MARKETED",
+        "label": "Marketed",
+        "count": 514,
+        "share_pct": 83.44
+      },
+      {
+        "stage": "LEAD",
+        "label": "Lead",
+        "count": 35,
+        "share_pct": 5.68
+      },
+      {
+        "stage": "QUALIFIED_LEAD",
+        "label": "Qualified Lead",
+        "count": 21,
+        "share_pct": 3.41
+      },
+      {
+        "stage": "OPPORTUNITY",
+        "label": "Opportunity",
+        "count": 1,
+        "share_pct": 0.16
+      },
+      {
+        "stage": "HHB_CLOSED",
+        "label": "Closed",
+        "count": 0,
+        "share_pct": 0.0
+      }
+    ],
+    "had_presence_exits_by_buyer": {
+      "investor": 638,
+      "non_investor": 2642,
+      "lost_to_investor": 616,
+      "hhb_closed_investor": 22,
+      "scrape_in_list_investor": 60,
+      "scrape_in_list_non_investor": 303
+    }
+  },
+  "match": {
+    "lead_matched": 206,
+    "lead_rate_pct": 4.3,
+    "qualified_lead_matched": 95,
+    "qualified_lead_rate_pct": 1.98,
+    "prospect_matched": 233,
+    "prospect_rate_pct": 4.86,
+    "opp_matched": 3,
+    "opp_rate_pct": 0.06,
+    "under_contract_count": 2,
+    "hhb_closed_count": 45,
+    "reisift_matched_count": 3339
+  }
+}

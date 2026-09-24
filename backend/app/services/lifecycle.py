@@ -29,6 +29,7 @@ CONVERTED_LABELS: frozenset[str] = frozenset(
 # Engagement: active CRM / outreach states before conversion (seeded from CRM + common follow-ups).
 _ENGAGED_SEED = (
     "new",
+    "opportunity",
     "follow up",
     "not yet reached",
     "decision maker - lead",

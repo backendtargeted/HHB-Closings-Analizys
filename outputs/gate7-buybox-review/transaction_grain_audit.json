@@ -1,0 +1,13 @@
+{
+  "candidate_raw_rows": 4838,
+  "missing_dataflik_id": 0,
+  "property_months": 4816,
+  "unique_properties": 4790,
+  "multi_transaction_property_months": 20,
+  "multi_transaction_properties": 45,
+  "properties_in_multiple_months": 26,
+  "multiple_buyers_in_same_property_month": 13,
+  "blank_buyers": 1,
+  "transaction_ids_repeated_within_property_month": 0,
+  "max_rows_per_property": 4
+}

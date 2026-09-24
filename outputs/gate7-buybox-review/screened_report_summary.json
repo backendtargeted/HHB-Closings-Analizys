@@ -1,0 +1,223 @@
+{
+  "property_screening": {
+    "scanned": 71014,
+    "target_count": 4790,
+    "eligible": 3663,
+    "excluded": 947,
+    "unresolved": 180,
+    "reasons": {
+      "supported_rules_pass": 3663,
+      "property_type_outside_buybox": 227,
+      "sfh_market_value_outside_buybox": 669,
+      "property_age_under_10": 26,
+      "identity_mismatch": 81,
+      "unit_count_missing": 2,
+      "details_not_found": 20,
+      "unusable_details": 74,
+      "multi_market_value_outside_buybox": 4,
+      "unit_count_outside_buybox": 21,
+      "conflicting_property_type_units": 2,
+      "conflicting_duplicate_details": 1
+    },
+    "seller_categories": {
+      "Individual": 1295,
+      "Unclassified": 1879,
+      "Company": 415,
+      "Trust": 74
+    },
+    "matched_detail_records": 4771,
+    "malformed_lines": 0,
+    "oversized_lines": 0,
+    "unsupported_rules": [
+      "ownership_duration",
+      "LTV",
+      "non_seller_religious_owner_exclusion"
+    ],
+    "snapshot_caveat": "Property characteristics are enrichment-time snapshots, not verified as of sale. Seller categories are name-based estimates from matched historical sale events.",
+    "warnings": [],
+    "enabled": true
+  },
+  "inputs": {
+    "sold_rows_scanned": 72918,
+    "sold_rows_excluded_buybox": 68080,
+    "sold_rows_ingested": 4838,
+    "buybox_town_count": 0,
+    "buybox_excluded_zip_count": 72,
+    "buybox_excluded_city_count": 84,
+    "buybox_exclusions": {
+      "excluded_county": 66583,
+      "excluded_zip": 1497
+    },
+    "property_grain": "property_earliest_sale",
+    "property_rows": 3663,
+    "unique_addresses": 3663,
+    "enrichment_enabled": true
+  },
+  "multi_transaction_properties": 35,
+  "by_first_sold_month": [
+    {
+      "sold_month": "2026-02",
+      "count": 885,
+      "investor": 166,
+      "in_our_list": 288,
+      "both": 51,
+      "neither": 482,
+      "marketed": 627,
+      "leads": 44,
+      "qualified_leads": 14,
+      "prospects": 47,
+      "had_presence": 670,
+      "lost_to_investor": 123,
+      "never_prospected_investor": 65
+    },
+    {
+      "sold_month": "2026-03",
+      "count": 963,
+      "investor": 170,
+      "in_our_list": 0,
+      "both": 0,
+      "neither": 793,
+      "marketed": 697,
+      "leads": 39,
+      "qualified_leads": 22,
+      "prospects": 46,
+      "had_presence": 739,
+      "lost_to_investor": 136,
+      "never_prospected_investor": 47
+    },
+    {
+      "sold_month": "2026-04",
+      "count": 921,
+      "investor": 154,
+      "in_our_list": 0,
+      "both": 0,
+      "neither": 767,
+      "marketed": 641,
+      "leads": 40,
+      "qualified_leads": 25,
+      "prospects": 48,
+      "had_presence": 683,
+      "lost_to_investor": 128,
+      "never_prospected_investor": 50
+    },
+    {
+      "sold_month": "2026-05",
+      "count": 649,
+      "investor": 119,
+      "in_our_list": 0,
+      "both": 0,
+      "neither": 530,
+      "marketed": 426,
+      "leads": 33,
+      "qualified_leads": 13,
+      "prospects": 38,
+      "had_presence": 461,
+      "lost_to_investor": 97,
+      "never_prospected_investor": 36
+    },
+    {
+      "sold_month": "2026-06",
+      "count": 193,
+      "investor": 47,
+      "in_our_list": 0,
+      "both": 0,
+      "neither": 146,
+      "marketed": 127,
+      "leads": 5,
+      "qualified_leads": 2,
+      "prospects": 6,
+      "had_presence": 133,
+      "lost_to_investor": 32,
+      "never_prospected_investor": 15
+    },
+    {
+      "sold_month": "2026-07",
+      "count": 52,
+      "investor": 11,
+      "in_our_list": 0,
+      "both": 0,
+      "neither": 41,
+      "marketed": 32,
+      "leads": 1,
+      "qualified_leads": 0,
+      "prospects": 1,
+      "had_presence": 38,
+      "lost_to_investor": 8,
+      "never_prospected_investor": 4
+    }
+  ],
+  "lost": {
+    "never_prospected_investor_count": 217,
+    "never_prospected_investor_pct": 32.53,
+    "lost_to_investor_count": 524,
+    "lost_to_investor_pct": 19.24,
+    "had_presence_count": 2724,
+    "had_presence_investor_count": 543,
+    "had_presence_non_investor_count": 2181,
+    "lost_by_stage": [
+      {
+        "stage": "NONE",
+        "label": "No list / history",
+        "count": 7,
+        "share_pct": 1.34
+      },
+      {
+        "stage": "PROSPECT",
+        "label": "Prospect",
+        "count": 27,
+        "share_pct": 5.15
+      },
+      {
+        "stage": "MARKETED",
+        "label": "Marketed",
+        "count": 441,
+        "share_pct": 84.16
+      },
+      {
+        "stage": "LEAD",
+        "label": "Lead",
+        "count": 32,
+        "share_pct": 6.11
+      },
+      {
+        "stage": "QUALIFIED_LEAD",
+        "label": "Qualified Lead",
+        "count": 16,
+        "share_pct": 3.05
+      },
+      {
+        "stage": "OPPORTUNITY",
+        "label": "Opportunity",
+        "count": 1,
+        "share_pct": 0.19
+      },
+      {
+        "stage": "HHB_CLOSED",
+        "label": "Closed",
+        "count": 0,
+        "share_pct": 0.0
+      }
+    ],
+    "had_presence_exits_by_buyer": {
+      "investor": 543,
+      "non_investor": 2181,
+      "lost_to_investor": 524,
+      "hhb_closed_investor": 19,
+      "scrape_in_list_investor": 51,
+      "scrape_in_list_non_investor": 237
+    }
+  },
+  "match": {
+    "lead_matched": 162,
+    "lead_rate_pct": 4.42,
+    "qualified_lead_matched": 76,
+    "qualified_lead_rate_pct": 2.07,
+    "prospect_matched": 186,
+    "prospect_rate_pct": 5.08,
+    "opp_matched": 3,
+    "opp_rate_pct": 0.08,
+    "under_contract_count": 2,
+    "hhb_closed_count": 37,
+    "reisift_matched_count": 2763
+  }
+}

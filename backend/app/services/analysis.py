@@ -121,10 +121,11 @@ def parse_tags(tags_str):
         if not tag:
             continue
         
-        # Parse contact tags: (8020) CC - 12-2025, (8020) SMS - 11-2025, (8020) DM - 10-2025
-        contact_match = re.match(r'\(8020\)\s*(CC|SMS|DM)\s*-\s*(\d{1,2})[-\/](\d{4})', tag)
+        # Monthly campaign evidence does not establish a list provider. Both tag
+        # families describe the same channel/month event; neither creates a list purchase.
+        contact_match = re.match(r'\((?:8020|MARKETING)\)\s*(CC|SMS|DM)\s*-\s*(\d{1,2})[-\/](\d{4})$', tag, re.I)
         if contact_match:
-            channel = contact_match.group(1)
+            channel = contact_match.group(1).upper()
             month = int(contact_match.group(2))
             year = int(contact_match.group(3))
             

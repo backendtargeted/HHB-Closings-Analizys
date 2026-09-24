@@ -1,462 +1,179 @@
-import { useCallback, useRef, useState } from 'react';
-import { useDropzone } from 'react-dropzone';
-import {
-  deletePatchJob,
-  downloadPatchExport,
-  getAxiosErrorMessage,
-  uploadPatches,
-} from '../services/api';
+import { useRef, useState } from 'react';
+import { downloadPatchExport, getAxiosErrorMessage, uploadMonthlyPatches } from '../services/api';
 import type { PatchUploadResponse } from '../types/patches';
+import LegacyPastPatchesWorkspace from './LegacyPastPatchesWorkspace';
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+type ExportKind = 'all' | 'property' | 'phone' | 'sf' | 'closings' | 'marketing' | 'review';
+const exportNames: Record<ExportKind, string> = {
+  all: 'reisift_monthly_bundle.zip', property: 'property_status_updates.csv',
+  phone: 'phone_status_tags_updates.csv', sf: 'salesforce_status_tags.csv',
+  closings: 'closings_status_tags.csv', marketing: 'marketing_activity_tags.csv', review: 'ingestion_review.csv',
+};
+const readable = (value: string) => value.replace(/_/g, ' ');
+const prettyValue = (value: unknown) => value == null || value === '' ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+
+function SampleTable({ title, rows }: { title: string; rows?: Record<string, unknown>[] }) {
+  if (!rows?.length) return null;
+  const preferred = ['address', 'city', 'phone', 'tag', 'salesforce_tag', 'status', 'phone_status', 'phone_tag', 'event_date', 'event_month', 'date_source', 'source_status', 'reason', 'source_file', 'source_row', 'source_row_id'];
+  const columns = preferred.filter(column => rows.some(row => column in row && row[column] !== ''))
+    .filter(column => column !== 'salesforce_tag' || !rows.some(row => 'tag' in row));
+  return <div className="overflow-hidden rounded-lg border border-stone-200">
+    <h4 className="bg-stone-50 px-3 py-2 text-sm font-semibold text-stone-800">{title} <span className="font-normal text-stone-500">· sample</span></h4>
+    <div className="max-h-72 overflow-auto"><table className="w-full text-left text-xs">
+      <thead className="sticky top-0 bg-stone-100"><tr>{columns.map((column) => <th key={column} className="px-3 py-2 whitespace-nowrap font-semibold capitalize">{readable(column)}</th>)}</tr></thead>
+      <tbody>{rows.map((row, index) => <tr key={index} className="border-t border-stone-100">{columns.map((column) => <td key={column} className="min-w-32 max-w-lg break-words px-3 py-2">{prettyValue(row[column])}</td>)}</tr>)}</tbody>
+    </table></div>
+  </div>;
 }
 
-function CountBlock({
-  title,
-  counts,
-}: {
-  title: string;
-  counts: Record<string, number> | undefined;
-}) {
-  const entries = Object.entries(counts || {}).sort((a, b) => b[1] - a[1]);
-  if (entries.length === 0) {
-    return null;
-  }
-  return (
-    <div className="rounded-lg border border-stone-200 bg-stone-50/80 p-3">
-      <p className="text-xs font-semibold text-stone-700 uppercase tracking-wide mb-2">{title}</p>
-      <ul className="text-xs text-stone-600 space-y-0.5 max-h-32 overflow-y-auto">
-        {entries.map(([k, v]) => (
-          <li key={k}>
-            <span className="font-mono text-stone-800">{k || '<empty>'}</span>: {v}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function UnmappedList({ title, items }: { title: string; items: string[] }) {
-  if (!items?.length) {
-    return (
-      <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1.5">
-        {title}: none
-      </p>
-    );
-  }
-  return (
-    <div>
-      <p className="text-xs font-semibold text-amber-900 mb-1">{title}</p>
-      <ul className="text-xs text-amber-950/90 list-disc list-inside space-y-0.5">
-        {items.map((s) => (
-          <li key={s}>{s}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-const PastPatchesWorkspace = () => {
-  const folderInputRef = useRef<HTMLInputElement>(null);
+function MonthlyPatchesWorkspace({ onBusyChange }: { onBusyChange: (busy: boolean) => void }) {
+  const [reportMonth, setReportMonth] = useState('');
   const [coldFile, setColdFile] = useState<File | null>(null);
-  const [crmFile, setCrmFile] = useState<File | null>(null);
-  const [closingsFile, setClosingsFile] = useState<File | null>(null);
   const [smsFiles, setSmsFiles] = useState<File[]>([]);
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [jobId, setJobId] = useState<string | null>(null);
+  const [qlFile, setQlFile] = useState<File | null>(null);
+  const [oppsFile, setOppsFile] = useState<File | null>(null);
+  const [transactionsFile, setTransactionsFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PatchUploadResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [allowUnmapped, setAllowUnmapped] = useState(false);
   const [exporting, setExporting] = useState(false);
-
-  const mergeSms = useCallback((incoming: File[]) => {
-    const csvs = incoming.filter((f) => f.name.toLowerCase().endsWith('.csv'));
-    setSmsFiles((prev) => {
-      const map = new Map<string, File>();
-      prev.forEach((f) => map.set(f.name, f));
-      csvs.forEach((f) => map.set(f.name, f));
-      return Array.from(map.values());
+  const [error, setError] = useState('');
+  const [uploadKey, setUploadKey] = useState(0);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const sfCount = [qlFile, oppsFile, transactionsFile].filter(Boolean).length;
+  const completeSf = sfCount === 3;
+  const validMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(reportMonth);
+  const hasSource = Boolean(coldFile || smsFiles.length || completeSf);
+  const busy = loading || exporting;
+  const canPreview = validMonth && hasSource && (sfCount === 0 || completeSf);
+  const invalidate = () => { setPreview(null); setError(''); };
+  const addSms = (files: FileList | null) => {
+    if (!files) return;
+    const incoming = Array.from(files).filter((file) => file.name.toLowerCase().endsWith('.csv'));
+    setSmsFiles((previous) => {
+      const byName = new Map(previous.map((file) => [file.name, file]));
+      incoming.forEach((file) => byName.set(file.name, file));
+      return [...byName.values()];
     });
-  }, []);
-
-  const onDropCold = useCallback((files: File[]) => {
-    if (files[0]) setColdFile(files[0]);
-  }, []);
-  const onDropCrm = useCallback((files: File[]) => {
-    if (files[0]) setCrmFile(files[0]);
-  }, []);
-  const onDropClosings = useCallback((files: File[]) => {
-    if (files[0]) setClosingsFile(files[0]);
-  }, []);
-
-  const coldDrop = useDropzone({
-    onDrop: onDropCold,
-    accept: { 'text/csv': ['.csv'] },
-    multiple: false,
-  });
-  const crmDrop = useDropzone({
-    onDrop: onDropCrm,
-    accept: { 'text/csv': ['.csv'] },
-    multiple: false,
-  });
-  const closingsDrop = useDropzone({
-    onDrop: onDropClosings,
-    accept: {
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-    },
-    multiple: false,
-  });
-  const smsDrop = useDropzone({
-    onDrop: mergeSms,
-    accept: { 'text/csv': ['.csv'] },
-    multiple: true,
-  });
-
-  const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const list = Array.from(e.target.files || []).filter((f) =>
-      f.name.toLowerCase().endsWith('.csv')
-    );
-    mergeSms(list);
-    e.target.value = '';
+    invalidate();
   };
-
-  const canPreview = coldFile && crmFile && smsFiles.length > 0;
-
   const runPreview = async () => {
     if (!canPreview) return;
-    setLoading(true);
-    setError(null);
+    setLoading(true); onBusyChange(true); setError(''); setPreview(null);
     try {
-      const fd = new FormData();
-      fd.append('cold_csv', coldFile);
-      fd.append('crm_csv', crmFile);
-      if (closingsFile) {
-        fd.append('closings_xlsx', closingsFile);
-      }
-      smsFiles.forEach((f) => fd.append('sms_files', f, f.name));
-      const data = await uploadPatches(fd);
-      setJobId(data.job_id);
-      setPreview(data);
-      setStep(2);
-    } catch (err: unknown) {
-      setError(getAxiosErrorMessage(err, 'Preview failed'));
-    } finally {
-      setLoading(false);
-    }
+      const form = new FormData();
+      form.append('report_month', reportMonth);
+      if (coldFile) form.append('cold_csv', coldFile);
+      smsFiles.forEach((file) => form.append('sms_files', file, file.name));
+      if (qlFile) form.append('qualified_leads', qlFile);
+      if (oppsFile) form.append('opportunities', oppsFile);
+      if (transactionsFile) form.append('transactions', transactionsFile);
+      setPreview(await uploadMonthlyPatches(form));
+    } catch (err) { setError(getAxiosErrorMessage(err, 'Monthly preview failed')); }
+    finally { setLoading(false); onBusyChange(false); }
   };
-
-  const handleDownloadAll = async () => {
-    if (!jobId) return;
-    setExporting(true);
-    setError(null);
+  const download = async (kind: ExportKind) => {
+    if (!preview) return;
+    setExporting(true); onBusyChange(true); setError('');
     try {
-      const blob = await downloadPatchExport(jobId, 'all', allowUnmapped);
-      downloadBlob(blob, `reisift_import_${jobId}.zip`);
-      setStep(3);
-    } catch (err: unknown) {
-      setError(getAxiosErrorMessage(err, 'Export failed'));
-    } finally {
-      setExporting(false);
-    }
+      const blob = await downloadPatchExport(preview.job_id, kind, false);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${preview.monthly?.report_month || reportMonth}_${exportNames[kind]}`;
+      link.click(); URL.revokeObjectURL(url);
+    } catch (err) { setError(getAxiosErrorMessage(err, 'Download failed')); }
+    finally { setExporting(false); onBusyChange(false); }
   };
-
-  const handleDownloadSingle = async (kind: 'property' | 'phone' | 'sf' | 'closings') => {
-    if (!jobId) return;
-    setExporting(true);
-    setError(null);
-    try {
-      const blob = await downloadPatchExport(jobId, kind, allowUnmapped);
-      const names: Record<string, string> = {
-        property: 'property_status_updates.csv',
-        phone: 'phone_status_tags_updates.csv',
-        sf: 'salesforce_status_tags.csv',
-        closings: 'closings_status_tags.csv',
-      };
-      downloadBlob(blob, names[kind]);
-    } catch (err: unknown) {
-      setError(getAxiosErrorMessage(err, 'Download failed'));
-    } finally {
-      setExporting(false);
-    }
+  const reset = () => {
+    setReportMonth(''); setColdFile(null); setSmsFiles([]); setQlFile(null); setOppsFile(null); setTransactionsFile(null);
+    setUploadKey((value) => value + 1); invalidate();
   };
+  const monthly = preview?.monthly;
+  const unmapped = preview ? [
+    ...preview.metrics.cold_unmapped.map((value) => `Calling: ${value}`),
+    ...preview.metrics.sms_unmapped.map((value) => `SMS: ${value}`),
+    ...preview.metrics.crm_unmapped.map((value) => `Salesforce: ${value}`),
+  ] : [];
 
-  const resetWorkspace = async () => {
-    if (jobId) {
-      try {
-        await deletePatchJob(jobId);
-      } catch {
-        /* ignore */
-      }
-    }
-    setColdFile(null);
-    setCrmFile(null);
-    setClosingsFile(null);
-    setSmsFiles([]);
-    setJobId(null);
-    setPreview(null);
-    setStep(1);
-    setError(null);
-    setAllowUnmapped(false);
-  };
-
-  const m = preview?.metrics;
-
-  return (
-    <div className="w-full rounded-2xl border border-amber-200/90 bg-white ring-1 ring-amber-100/40 shadow-sm p-6 sm:p-8">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-amber-950 tracking-tight">Gate 1 — Monthly ingestion</h2>
-          <p className="text-sm text-stone-600 mt-1 max-w-2xl">
-            Upload cold calling, SMS, and CRM (closings optional). Preview mapping, then download
-            REISift import CSVs for bulk import before Gate 2.
-          </p>
-        </div>
-        <div className="flex gap-2 text-xs font-semibold">
-          <span
-            className={`px-2 py-1 rounded-md ${step >= 1 ? 'bg-amber-200 text-amber-950' : 'bg-stone-100 text-stone-500'}`}
-          >
-            1 Inputs
-          </span>
-          <span
-            className={`px-2 py-1 rounded-md ${step >= 2 ? 'bg-amber-200 text-amber-950' : 'bg-stone-100 text-stone-500'}`}
-          >
-            2 Preview
-          </span>
-          <span
-            className={`px-2 py-1 rounded-md ${step >= 3 ? 'bg-amber-200 text-amber-950' : 'bg-stone-100 text-stone-500'}`}
-          >
-            3 Export
-          </span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div>
-          <label className="block text-sm font-semibold text-stone-700 mb-2">Cold calling CSV</label>
-          <div
-            {...coldDrop.getRootProps()}
-            className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors ${
-              coldDrop.isDragActive ? 'border-amber-600 bg-amber-50' : 'border-stone-200 hover:border-amber-400'
-            }`}
-          >
-            <input {...coldDrop.getInputProps()} />
-            {coldFile ? (
-              <p className="text-sm text-emerald-700 font-medium">✓ {coldFile.name}</p>
-            ) : (
-              <p className="text-sm text-stone-600">Drop or click — Log Type + Phone + Address…</p>
-            )}
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-semibold text-stone-700 mb-2">CRM updates CSV</label>
-          <div
-            {...crmDrop.getRootProps()}
-            className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors ${
-              crmDrop.isDragActive ? 'border-amber-600 bg-amber-50' : 'border-stone-200 hover:border-amber-400'
-            }`}
-          >
-            <input {...crmDrop.getInputProps()} />
-            {crmFile ? (
-              <p className="text-sm text-emerald-700 font-medium">✓ {crmFile.name}</p>
-            ) : (
-              <p className="text-sm text-stone-600">Drop or click — needs leadstatus</p>
-            )}
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-semibold text-stone-700 mb-2">
-            Closings Excel (.xlsx) <span className="font-normal text-stone-500">(optional)</span>
-          </label>
-          <div
-            {...closingsDrop.getRootProps()}
-            className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors ${
-              closingsDrop.isDragActive ? 'border-amber-600 bg-amber-50' : 'border-stone-200 hover:border-amber-400'
-            }`}
-          >
-            <input {...closingsDrop.getInputProps()} />
-            {closingsFile ? (
-              <p className="text-sm text-emerald-700 font-medium">✓ {closingsFile.name}</p>
-            ) : (
-              <p className="text-sm text-stone-600">Optional — Date Closed + Address for closing tags</p>
-            )}
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-semibold text-stone-700 mb-2">SMS logs (CSV files)</label>
-          <div
-            {...smsDrop.getRootProps()}
-            className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors mb-2 ${
-              smsDrop.isDragActive ? 'border-amber-600 bg-amber-50' : 'border-stone-200 hover:border-amber-400'
-            }`}
-          >
-            <input {...smsDrop.getInputProps()} />
-            <p className="text-sm text-stone-600">
-              Drop many CSVs here, or use a folder picker (filename = status bucket).
-            </p>
-            {smsFiles.length > 0 && (
-              <p className="text-xs text-emerald-700 font-medium mt-2">{smsFiles.length} file(s) selected</p>
-            )}
-          </div>
-          <input
-            ref={folderInputRef}
-            type="file"
-            multiple
-            {...({ webkitdirectory: '' } as Record<string, string>)}
-            className="hidden"
-            onChange={handleFolderChange}
-          />
-          <button
-            type="button"
-            onClick={() => folderInputRef.current?.click()}
-            className="text-sm font-medium text-navy underline underline-offset-2"
-          >
-            Choose folder…
-          </button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-3 mb-6">
-        <button
-          type="button"
-          disabled={!canPreview || loading}
-          onClick={runPreview}
-          className="px-5 py-2.5 rounded-xl font-semibold text-white bg-amber-800 hover:bg-amber-900 disabled:bg-stone-300 disabled:text-stone-500"
-        >
-          {loading ? 'Running preview…' : 'Run preview'}
-        </button>
-        <button
-          type="button"
-          onClick={resetWorkspace}
-          className="px-4 py-2.5 rounded-xl text-sm font-medium border border-stone-300 text-stone-700 hover:bg-stone-50"
-        >
-          Reset
-        </button>
-      </div>
-
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-800">{error}</div>
-      )}
-
-      {preview && m && step >= 2 && (
-        <div className="space-y-6 border-t border-amber-200/60 pt-6">
-          <h3 className="text-lg font-bold text-amber-950">Preview</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <CountBlock title="Cold — input statuses" counts={m.cold_input_counts} />
-            <CountBlock title="Cold — mapped property" counts={m.cold_output_counts} />
-            <CountBlock title="SMS — input (filename)" counts={m.sms_input_counts} />
-            <CountBlock title="SMS — phone status" counts={m.sms_output_counts} />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div className="rounded-lg border border-stone-200 p-3 bg-white">
-              <p className="font-semibold text-stone-800 mb-2">CRM overrides</p>
-              <ul className="text-xs text-stone-600 space-y-1">
-                <li>CRM rows: {m.crm_total_rows ?? 0}</li>
-                <li>Matched by phone: {m.crm_matched_by_phone ?? 0}</li>
-                <li>Matched by address: {m.crm_matched_by_address ?? 0}</li>
-                <li>Cold overrides: {m.cold_overrides_applied ?? 0}</li>
-                <li>SMS overrides: {m.sms_overrides_applied ?? 0}</li>
-                <li>Unmatched CRM rows: {m.crm_unmatched_rows ?? 0}</li>
-              </ul>
-            </div>
-            <div className="rounded-lg border border-stone-200 p-3 bg-white">
-              <p className="font-semibold text-stone-800 mb-2">Salesforce-style tags</p>
-              <ul className="text-xs text-stone-600 space-y-1">
-                <li>Tags created: {m.sf_tags_created_total ?? 0}</li>
-                <li>STATUS tags: {m.sf_tags_created_status ?? 0}</li>
-                <li>UPDATED tags: {m.sf_tags_created_updated ?? 0}</li>
-                <li>Skipped (bad updated_on): {m.sf_skipped_updated_on ?? 0}</li>
-                <li>Skipped (bad lead date): {m.sf_skipped_created_date ?? 0}</li>
-              </ul>
-            </div>
-            <div className="rounded-lg border border-stone-200 p-3 bg-white">
-              <p className="font-semibold text-stone-800 mb-2">Closings tags</p>
-              <p className="text-xs text-stone-600">Rows with (CLOSED) 8020 tag: {m.closings_rows ?? 0}</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <UnmappedList title="Unmapped cold statuses" items={m.cold_unmapped || []} />
-            <UnmappedList title="Unmapped SMS statuses" items={m.sms_unmapped || []} />
-            <UnmappedList title="Unmapped CRM statuses" items={m.crm_unmapped || []} />
-          </div>
-
-          <h4 className="text-sm font-bold text-stone-800">Sample rows</h4>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
-            {(['cold_calling', 'sms', 'salesforce_tags', 'closings_tags'] as const).map((key) => (
-              <div key={key} className="rounded-lg border border-stone-200 overflow-hidden">
-                <div className="bg-stone-100 px-2 py-1 font-semibold text-stone-700">{key}</div>
-                <pre className="p-2 max-h-40 overflow-auto text-stone-600 whitespace-pre-wrap">
-                  {JSON.stringify(preview.samples[key]?.slice(0, 3) ?? [], null, 2)}
-                </pre>
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 space-y-4">
-            <label className="flex items-center gap-2 text-sm text-amber-950 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={allowUnmapped}
-                onChange={(e) => setAllowUnmapped(e.target.checked)}
-                className="rounded border-amber-400"
-              />
-              <span>
-                Allow export with unmapped statuses (otherwise fix mappings or leave unchecked)
-              </span>
-            </label>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={exporting}
-                onClick={handleDownloadAll}
-                className="px-5 py-2.5 rounded-xl font-semibold text-white bg-navy hover:bg-navy/90 disabled:opacity-50"
-              >
-                {exporting ? 'Preparing…' : 'Download REISift bundle (.zip)'}
-              </button>
-              <button
-                type="button"
-                disabled={exporting}
-                onClick={() => handleDownloadSingle('property')}
-                className="px-3 py-2 rounded-lg text-xs font-medium border border-stone-300 bg-white"
-              >
-                property_status…
-              </button>
-              <button
-                type="button"
-                disabled={exporting}
-                onClick={() => handleDownloadSingle('phone')}
-                className="px-3 py-2 rounded-lg text-xs font-medium border border-stone-300 bg-white"
-              >
-                phone_status…
-              </button>
-              <button
-                type="button"
-                disabled={exporting}
-                onClick={() => handleDownloadSingle('sf')}
-                className="px-3 py-2 rounded-lg text-xs font-medium border border-stone-300 bg-white"
-              >
-                salesforce_status…
-              </button>
-              <button
-                type="button"
-                disabled={exporting}
-                onClick={() => handleDownloadSingle('closings')}
-                className="px-3 py-2 rounded-lg text-xs font-medium border border-stone-300 bg-white"
-              >
-                closings_status…
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+  return <div className="space-y-6">
+    <div><h2 className="text-2xl font-bold text-amber-950">Gate 1 — Monthly ingestion</h2>
+      <p className="mt-2 max-w-3xl text-sm text-stone-600">Choose a reporting month, then upload calling/SMS activity, Salesforce reports, or both. Preview the resulting tags and review excluded rows before downloading REISift import files. No legacy CRM export is required.</p>
     </div>
-  );
-};
+    <fieldset disabled={busy} className="space-y-5">
+      <label className="block max-w-xs text-sm font-semibold text-stone-800">Reporting month — required
+        <input aria-label="Reporting month" type="month" value={reportMonth} onInput={(event) => { setReportMonth(event.currentTarget.value); invalidate(); }} onChange={(event) => { setReportMonth(event.target.value); invalidate(); }} className="mt-2 block w-full rounded-lg border border-stone-300 bg-white px-3 py-2 font-normal" />
+      </label>
+      <p className="text-xs text-stone-600">Event dates determine the month. Calling/SMS rows without a date use the selected month and are counted for review; invalid dates are excluded. Salesforce events require dates and never use a month fallback.</p>
+      <div key={uploadKey} className="grid gap-5 lg:grid-cols-2">
+        <section className="rounded-xl border border-stone-200 p-4 space-y-4">
+          <div><h3 className="font-semibold text-stone-800">Calling and SMS</h3><p className="mt-1 text-xs text-stone-500">Upload either source or both. You can run these independently of Salesforce.</p></div>
+          <label className="block text-sm font-medium text-stone-700">Cold calling (.csv)
+            <input aria-label="Cold calling CSV" type="file" accept=".csv" onChange={(event) => { setColdFile(event.target.files?.[0] ?? null); invalidate(); }} className="mt-2 block w-full text-xs" />
+          </label>
+          {coldFile && <div className="text-xs text-stone-600"><p className="mb-1 break-all">Selected: {coldFile.name}</p><button type="button" className="underline" onClick={() => { setColdFile(null); setUploadKey((key) => key + 1); invalidate(); }}>Remove calling file</button></div>}
+          <label className="block text-sm font-medium text-stone-700">SMS labels or status files (.csv, multiple)
+            <input aria-label="SMS CSV files" type="file" multiple accept=".csv" onChange={(event) => { addSms(event.target.files); event.target.value = ''; }} className="mt-2 block w-full text-xs" />
+          </label>
+          <p className="text-xs text-stone-500">Labels on each row take priority. Older exports without a labels column use their status filenames. Selecting the same filename replaces its previous copy.</p>
+          <input ref={folderInput} aria-label="SMS folder" type="file" multiple {...({ webkitdirectory: '' } as Record<string, string>)} className="hidden" onChange={(event) => { addSms(event.target.files); event.target.value = ''; }} />
+          <button type="button" onClick={() => folderInput.current?.click()} className="text-xs font-semibold text-amber-900 underline">Choose SMS folder</button>
+          {!!smsFiles.length && <ul className="max-h-36 overflow-auto space-y-1 text-xs text-stone-600">{smsFiles.map((file) => <li key={file.name} className="flex items-center justify-between gap-2"><span className="break-all">{file.name}</span><button aria-label={`Remove SMS file ${file.name}`} type="button" onClick={() => { setSmsFiles((files) => files.filter((item) => item.name !== file.name)); invalidate(); }} className="font-semibold text-stone-700">Remove</button></li>)}</ul>}
+        </section>
+        <section className="rounded-xl border border-stone-200 p-4 space-y-4">
+          <div><h3 className="font-semibold text-stone-800">Salesforce</h3><p className="mt-1 text-xs text-stone-500">Upload all three report roles together, or leave this section empty. Salesforce can run without calling or SMS.</p></div>
+          {([
+            ['Qualified Leads', qlFile, setQlFile], ['Opportunities', oppsFile, setOppsFile], ['Transactions', transactionsFile, setTransactionsFile],
+          ] as const).map(([label, file, setFile]) => <label key={label} className="block text-sm font-medium text-stone-700">{label} (.xlsx / .csv)
+            <input aria-label={`Salesforce ${label} report`} type="file" accept=".xlsx,.csv" onChange={(event) => { setFile(event.target.files?.[0] ?? null); invalidate(); }} className="mt-2 block w-full text-xs" />
+            {file && <span className="mt-1 block text-xs text-stone-500 break-all">Selected: {file.name}</span>}
+          </label>)}
+          {sfCount > 0 && <button type="button" onClick={() => { setQlFile(null); setOppsFile(null); setTransactionsFile(null); setUploadKey((key) => key + 1); invalidate(); }} className="text-xs text-stone-600 underline">Remove Salesforce reports</button>}
+          {sfCount > 0 && !completeSf && <p role="status" className="text-xs text-amber-900">{sfCount} of 3 selected. Add all three Salesforce reports to preview, or remove them to run calling/SMS only.</p>}
+        </section>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" disabled={!canPreview || busy} onClick={runPreview} className="rounded-lg bg-amber-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-900 disabled:opacity-40">{loading ? 'Preparing monthly preview…' : 'Preview monthly tags'}</button>
+        <button type="button" onClick={reset} className="rounded-lg border border-stone-300 px-4 py-2 text-sm text-stone-700">New monthly run</button>
+        {!reportMonth && <p className="text-xs text-stone-500">Select a month to begin.</p>}
+        {validMonth && !hasSource && sfCount === 0 && <p className="text-xs text-stone-500">Add at least one source.</p>}
+      </div>
+    </fieldset>
+    {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+    {preview && <section className="space-y-5 border-t border-amber-200 pt-5">
+      <div><h3 className="text-lg font-bold text-amber-950">Preview · {monthly?.report_month || reportMonth}</h3><p className="mt-1 text-xs text-stone-500">Files are prepared for download. Nothing has been imported into REISift.</p></div>
+      {!!monthly?.warnings?.length && <ul className="rounded-lg bg-amber-50 p-4 text-xs text-amber-950 space-y-1">{monthly.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
+      {!!monthly?.sources?.length && <div className="overflow-x-auto rounded-lg border border-stone-200"><table className="w-full text-left text-xs"><caption className="p-3 text-left text-sm font-semibold text-stone-800">Source and date review</caption>
+        <thead className="bg-stone-50"><tr>{['Source', 'Input rows', 'Included', 'Outside month', 'Missing date', 'Invalid date', 'Duplicates', 'Unusable identity', 'Unverified closing'].map((label) => <th key={label} className="px-3 py-2 whitespace-nowrap">{label}</th>)}</tr></thead>
+        <tbody>{monthly.sources.map((source, index) => <tr key={`${source.source}-${index}`} className="border-t border-stone-100"><td className="px-3 py-2 capitalize">{readable(source.source)}</td>{[source.input_rows, source.included_rows, source.outside_month_rows, source.missing_date_rows, source.invalid_date_rows, source.duplicate_rows, source.unusable_identity_rows, source.unverified_closing_rows].map((value, i) => <td key={i} className="px-3 py-2">{value == null ? '—' : value.toLocaleString()}</td>)}</tr>)}</tbody>
+      </table><p className="px-3 pb-3 text-xs text-stone-500">Missing campaign dates may be included using the selected month; missing Salesforce dates are excluded. Review counts can overlap and do not necessarily sum to input rows.</p></div>}
+      {!!monthly?.tag_counts && <div><h4 className="mb-2 text-sm font-semibold text-stone-800">Generated tags</h4>{Object.keys(monthly.tag_counts).length ? <ul className="grid gap-2 sm:grid-cols-2">{Object.entries(monthly.tag_counts).map(([tag, count]) => <li key={tag} className="flex justify-between gap-3 rounded-lg border border-stone-200 p-3 text-xs"><span className="break-words font-mono text-stone-700">{tag}</span><span className="font-semibold text-stone-900">{count.toLocaleString()}</span></li>)}</ul> : <p className="text-xs text-stone-500">No tags generated for this month.</p>}</div>}
+      {!!unmapped.length && <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-950"><h4 className="font-semibold mb-1">Unmapped statuses</h4><p className="mb-2">Omitted from status updates and retained in the review CSV. Valid marketing tags remain available for export.</p><ul className="list-disc pl-4">{unmapped.map((status, index) => <li key={index}>{status}</li>)}</ul></div>}
+      <div className="space-y-4">
+        <SampleTable title="Marketing activity tags" rows={preview.samples.marketing_tags} />
+        <SampleTable title="Salesforce lifecycle tags" rows={preview.samples.salesforce_tags} />
+        <SampleTable title="Closing tags" rows={preview.samples.closings_tags} />
+        <SampleTable title="Calling property status updates" rows={preview.samples.cold_calling} />
+        <SampleTable title="SMS phone status updates" rows={preview.samples.sms} />
+        <SampleTable title="Rows requiring review" rows={preview.samples.review_rows} />
+      </div>
+      <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-3">
+        <p className="text-xs text-amber-950">For historical backfills, import dated tags. Importing status snapshots may overwrite a property's or phone's current REISift status.</p>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={busy} onClick={() => download('all')} className="rounded-lg bg-amber-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{exporting ? 'Preparing download…' : `Download ${monthly?.report_month || reportMonth} bundle (.zip)`}</button>
+          {([['marketing', 'Marketing tags'], ['sf', 'Salesforce tags'], ['property', 'Property updates'], ['phone', 'Phone updates'], ['review', 'Review CSV']] as const).filter(([kind]) => monthly?.available_exports.includes(exportNames[kind])).map(([kind, label]) => <button key={kind} type="button" disabled={busy} onClick={() => download(kind)} className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-medium text-stone-700 disabled:opacity-40">{label}</button>)}
+        </div>
+      </div>
+    </section>}
+  </div>;
+}
 
-export default PastPatchesWorkspace;
+export default function PastPatchesWorkspace() {
+  const [mode, setMode] = useState<'monthly' | 'legacy'>('monthly');
+  const [busy, setBusy] = useState(false);
+  return <div className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm sm:p-8">
+    <div className="mb-6 flex flex-wrap gap-2" role="group" aria-label="Gate 1 workflow">
+      {(['monthly', 'legacy'] as const).map((value) => <button key={value} type="button" disabled={busy} aria-pressed={mode === value} onClick={() => setMode(value)} className={`rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-40 ${mode === value ? 'bg-amber-100 text-amber-950' : 'text-stone-500 hover:bg-stone-50'}`}>{value === 'monthly' ? 'Monthly reports' : 'Legacy CRM workflow'}</button>)}
+    </div>
+    {mode === 'monthly' ? <MonthlyPatchesWorkspace onBusyChange={setBusy} /> : <LegacyPastPatchesWorkspace />}
+  </div>;
+}
