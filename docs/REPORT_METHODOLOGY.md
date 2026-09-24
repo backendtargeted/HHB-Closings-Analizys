@@ -369,6 +369,8 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 **Lost definition (secondary, unchanged):** We had it (scrape `in_my_records` **or** REISift/CRM presence: list tags, marketed, Podio/SF lead, QL, opp, UC, Closed) AND `investor` AND not HHB Closed. Loss rate denominator = properties we had. Scrape “In Our List” remains a segment cut, not a second loss KPI.
 
+REISift address matching alone does not establish pre-sale presence when `Created` is after the sold month. Dated pre-sale history and independent CRM matches still receive credit, even if imported later; current undated Lists/Podio membership on a post-sale record does not. When `Created` is unavailable, dated tag history establishes the presence cutoff; entirely undated legacy records retain their existing presence treatment. `reisift_matched` reports the address match and `reisift_present_at_sale` reports its temporal eligibility. Salesforce QL/Opportunity matching and scrape-only Prospect credit do not require a REISift match. Buybox rows without a parseable sold month stop analysis with a row-specific error (a valid period label can supply the month when the date is invalid).
+
 **Universe (buybox — delicate / provider evaluation):** CleanREISift sold scrape rows whose `property_city` matches the marketed-town allowlist in `backend/app/services/buybox_towns.py` (normalized casefold / strip). Rows outside the buybox are dropped at ingest before collapse/enrich/KPIs. **Full contract:** [BUYBOX.md](BUYBOX.md) (what we filter, what sold CSV cannot support, how to phrase KPIs). Address keys rebuilt with `make_address_key` from property address parts (do not trust the scrape `address_key` string for joins).
 
 **Required inputs:** Sold CSV + REISift export + Salesforce Total Qualified Leads. Opportunities optional (Opp stage). **Salesforce Transaction Pipeline** optional (`Closed Date` → Closed; `Date Contract Signed` / accepted offer → Opportunity / under contract). This is the single sold-properties product report; the former REISift `in_sold_properties_full` cohort report was removed.
@@ -392,4 +394,3 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 **Export:** Summary, Lost By Stage, By Segment, Pipeline Funnel, By Month, Journey, Never Prospected Inv, Lost To Investor, Investor, We Had, In Our List, Both, Never Marketed.
 
 Canonical implementation: `backend/app/services/investor_sold.py`.
-

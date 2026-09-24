@@ -27,7 +27,7 @@ from .buybox_towns import BUYBOX_TOWN_COUNT, in_buybox
 from .closing_resolution import resolve_milestones_from_parsed
 from .lifecycle import ENGAGED_LABELS, build_events, compute_stage_funnel_open, get_highest_stage
 from .marketing_mapper import find_column_name, make_address_key, normalize_status, smart_read_csv
-from .monthly_consolidated import REISIFT_ADDR, TAGS_CANDIDATES, load_reisift_file
+from .monthly_consolidated import CREATED_CANDIDATES, REISIFT_ADDR, TAGS_CANDIDATES, load_reisift_file
 from .probate import (
     OPP_ADDR,
     OPP_DATE_CANDIDATES,
@@ -155,7 +155,11 @@ def had_presence(row: "InvestorSoldRow") -> bool:
     """True when we had the property on list and/or in REISift/CRM before/at sale."""
     return bool(
         row.in_my_records
-        or row.reisift_matched
+        or (
+            row.reisift_present_at_sale
+            if row.reisift_present_at_sale is not None
+            else row.reisift_matched  # Compatibility with saved reports lacking this field.
+        )
         or row.marketed
         or row.lead_matched
         or row.qualified_lead_matched
@@ -224,6 +228,7 @@ class InvestorSoldRow:
     transaction_count: int = 1
     list_purchase_date: str = ""
     reisift_matched: bool = False
+    reisift_present_at_sale: Optional[bool] = None
     marketed: bool = False
     cc_touch_count: int = 0
     sms_touch_count: int = 0
@@ -275,6 +280,7 @@ class InvestorSoldRow:
             "transaction_count": self.transaction_count,
             "list_purchase_date": self.list_purchase_date,
             "reisift_matched": self.reisift_matched,
+            "reisift_present_at_sale": self.reisift_present_at_sale,
             "marketed": self.marketed,
             "cc_touch_count": self.cc_touch_count,
             "sms_touch_count": self.sms_touch_count,
@@ -511,7 +517,10 @@ def _row_kwargs(item: Dict[str, Any]) -> Dict[str, Any]:
     str_keys = allowed - {
         "investor",
         "in_my_records",
+        "had_presence",
+        "never_prospected_investor",
         "reisift_matched",
+        "reisift_present_at_sale",
         "marketed",
         "lead_matched",
         "qualified_lead_matched",
@@ -667,6 +676,7 @@ def _build_reisift_index(reisift_df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
     if not tags_col:
         raise ValueError("Missing required column: Tags")
     lists_col = find_column_name(reisift_df, LISTS_CANDIDATES)
+    created_col = find_column_name(reisift_df, CREATED_CANDIDATES)
     addr_cols = {k: find_column_name(reisift_df, v) for k, v in REISIFT_ADDR.items()}
     index: Dict[str, Dict[str, Any]] = {}
     for _, row in reisift_df.iterrows():
@@ -682,6 +692,7 @@ def _build_reisift_index(reisift_df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
             "tags": str(row.get(tags_col, "") or "").strip(),
             "lists": str(row.get(lists_col, "") or "").strip() if lists_col else "",
             "phones": _phones_from_row(row, REISIFT_PHONE_CANDIDATES),
+            "created": _col_val(row, created_col),
         }
     return index
 
@@ -694,9 +705,10 @@ def _enrich_row(
     opp_index: Optional[MatchIndex],
     sold_ts: Optional[pd.Timestamp],
 ) -> None:
-    if not reisift_hit:
-        return
-    sold_row.reisift_matched = True
+    if sold_ts is None:
+        raise ValueError("A valid sold month is required for pipeline enrichment")
+    sold_row.reisift_matched = reisift_hit is not None
+    reisift_hit = reisift_hit or {}
     tags_val = str(reisift_hit.get("tags") or "")
     lists_val = str(reisift_hit.get("lists") or "")
     parsed = _dedupe_parsed_tag_events(parse_tags(tags_val)) if tags_val else []
@@ -704,6 +716,24 @@ def _enrich_row(
 
     sold_end = _month_end(sold_ts) if sold_ts is not None else None
     sold_end_dt = sold_end.to_pydatetime() if sold_end is not None else None
+
+    # Keep address matching distinct from evidence that we had the record at sale.
+    # Dated history can predate a later import, so retain it for stage enrichment.
+    created = pd.to_datetime(reisift_hit.get("created", ""), errors="coerce", utc=True)
+    future_created = pd.notna(created) and created.date() > sold_end.date()
+    dated_events = [
+        dt for p in parsed
+        if (dt := _parse_iso_dt(str(p.get("date", "")))) is not None
+    ]
+    if pd.notna(created):
+        sold_row.reisift_present_at_sale = not future_created
+    elif dated_events:
+        sold_row.reisift_present_at_sale = any(dt <= sold_end_dt for dt in dated_events)
+    else:
+        # Undated legacy exports retain their existing presence semantics.
+        sold_row.reisift_present_at_sale = sold_row.reisift_matched
+    if future_created:
+        lists_val = ""  # Current undated membership cannot establish historical coverage.
 
     touch_counts, first_ch, first_date = _contact_touch_stats(
         parsed, on_or_before=sold_end_dt
@@ -768,7 +798,7 @@ def _enrich_row(
     from_sf = (
         _sf_engaged_before(parsed, sold_end_dt) if sold_end_dt is not None else False
     )
-    from_podio = _podio_crm_present(parsed)
+    from_podio = _podio_crm_present(parsed) and not future_created
 
     sold_row.lead_matched = from_sf or from_podio
     sold_row.qualified_lead_matched = from_ql
@@ -1028,11 +1058,11 @@ def analyze(
 
         street = _col_val(row, addr_cols.get("street"))
         city = _col_val(row, addr_cols.get("city"))
-        if not in_buybox(city):
+        zip_code = _col_val(row, addr_cols.get("zip"))
+        if not in_buybox(city, zip_code):
             sold_rows_excluded_buybox += 1
             continue
         state = _col_val(row, addr_cols.get("state"))
-        zip_code = _col_val(row, addr_cols.get("zip"))
         key = make_address_key(street, city, state, zip_code)
         if key:
             unique_keys.add(key)
@@ -1042,6 +1072,11 @@ def analyze(
         period_date = _col_val(row, period_date_col)
         period_label = _col_val(row, period_label_col)
         sold_ts = _parse_sold_ts(period_date, period_label)
+        if sold_ts is None:
+            raise ValueError(
+                f"Sold row {i + 1} ({street}): missing or invalid sold month "
+                f"(period_date={period_date!r}, period_label={period_label!r})"
+            )
         if sold_ts is not None:
             sold_months.append(sold_ts)
         sold_month = (

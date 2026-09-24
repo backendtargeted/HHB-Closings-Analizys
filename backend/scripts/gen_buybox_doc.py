@@ -43,7 +43,6 @@ typo_examples = [
     ("Seiden", "Selden"),
     ("StIslip", "Islip family (scrape spelling)"),
     ("E Farmingdale", "East Farmingdale"),
-    ("E Moriches", "East Moriches"),
     ("E Northport", "East Northport"),
     ("N babylon", "North Babylon"),
     ("W babylon", "West Babylon"),

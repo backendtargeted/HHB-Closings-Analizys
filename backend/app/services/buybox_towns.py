@@ -1,7 +1,8 @@
 """HHB marketed-town buybox for Gate 7 Investor Sold.
 
-Gate 7 universe = these cities only. Sold rows outside this set are dropped at
-ingest (before row build / enrich / KPIs).
+Gate 7 universe = these cities, OR the zip allowlist in `buybox_zips.py` (see
+`in_buybox` below) - either match is enough. Sold rows matching neither are
+dropped at ingest (before row build / enrich / KPIs).
 
 Operator contract (why, what sold CSV can filter, how to read provider KPIs):
 `docs/BUYBOX.md`. Regenerate the town appendix with
@@ -12,6 +13,8 @@ from __future__ import annotations
 
 import re
 from typing import FrozenSet, Optional
+
+from .buybox_zips import in_buybox_zip
 
 # Display spellings (including known scrape typos / aliases). Matching uses normalize_town().
 _BUYBOX_TOWN_LABELS: tuple[str, ...] = (
@@ -107,9 +110,6 @@ _BUYBOX_TOWN_LABELS: tuple[str, ...] = (
     'Cold Spring Harbor',
     'Dix Hills',
     'East Islip',
-    'East Marion',
-    'East Moriches',
-    'Eastport',
     'Floral Park',
     'Franklin Square',
     'Greenlawn',
@@ -134,7 +134,6 @@ _BUYBOX_TOWN_LABELS: tuple[str, ...] = (
     'North Bellmore',
     'Amity Harbor',
     'E Farmingdale',
-    'E Moriches',
     'Flanders',
     'Garden City',
     'Glen Cove',
@@ -149,7 +148,6 @@ _BUYBOX_TOWN_LABELS: tuple[str, ...] = (
     'South Huntington',
     'South Setauket',
     'St James',
-    'Westhampton Beach',
     'Wheatley Heights',
     'Wyandanch',
     'Albertson',
@@ -166,7 +164,6 @@ _BUYBOX_TOWN_LABELS: tuple[str, ...] = (
     'Breezy Point',
     'Broad Channel',
     'Brooklyn',
-    'Brookville',
     'Cambria Heights',
     'Corona',
     'E Northport',
@@ -197,7 +194,6 @@ _BUYBOX_TOWN_LABELS: tuple[str, ...] = (
     'Kew Gardens',
     'Latham',
     'Little Neck',
-    'Lloyd Harbor',
     'Malba',
     'Manhasset',
     'Manhasset Hills',
@@ -222,7 +218,6 @@ _BUYBOX_TOWN_LABELS: tuple[str, ...] = (
     'South Farmingdale',
     'South Ozone Park',
     'South Richmond Hill',
-    'Southold',
     'Springfield Gardens',
     'Stewart Manor',
     'StIslip',
@@ -231,6 +226,12 @@ _BUYBOX_TOWN_LABELS: tuple[str, ...] = (
     'N babylon',
     'W babylon',
     'Richmond Hill',
+    # Added 2026-09-23: evidenced by nonzero 8020REI buybox score in
+    # docs/BUYBOX_8020REI.md S4 (zip table), not suppressed, previously missing.
+    'Captree Island',
+    'Port Washington North',
+    'Davis Park',
+    'Oyster Bay Cove',
 )
 
 _TRAILING_PUNCT_RE = re.compile(r"[,;.]+$")
@@ -251,7 +252,12 @@ BUYBOX_TOWNS: FrozenSet[str] = frozenset(normalize_town(t) for t in _BUYBOX_TOWN
 BUYBOX_TOWN_COUNT: int = len(BUYBOX_TOWNS)
 
 
-def in_buybox(city: Optional[str]) -> bool:
-    """True when city matches a marketed-town allowlist entry."""
+def in_buybox(city: Optional[str], zip_code: Optional[str] = None) -> bool:
+    """True when city matches the town allowlist OR zip_code matches the zip
+    allowlist (backend/app/services/buybox_zips.py) - either is enough.
+    zip_code defaults to None so existing single-arg callers are unaffected.
+    """
+    if in_buybox_zip(zip_code):
+        return True
     key = normalize_town(city)
     return bool(key) and key in BUYBOX_TOWNS

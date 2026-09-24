@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import pandas as pd
 
 from app.services.investor_sold import (
     InvestorSoldRow,
@@ -16,6 +17,116 @@ from app.services.investor_sold import (
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture
+def sale_case(tmp_path):
+    """One July investor sale; REISift starts with an unrelated property."""
+    sold = pd.DataFrame([{
+        "property_address": "999 Nowhere Rd", "property_city": "Hempstead",
+        "state": "NY", "property_zip": "11550", "period_date": "2026-07-01",
+        "investor": "TRUE", "in_my_records": "FALSE",
+    }])
+    reisift = pd.DataFrame([{
+        "Property address": "1 Other St", "Property city": "Hempstead",
+        "Property state": "NY", "Property zip": "11550", "Tags": "",
+        "Lists": "", "Created": "",
+    }])
+    ql = pd.DataFrame(columns=["Street", "City", "State/Province", "Zip/Postal Code", "Create Date"])
+
+    def run(opps=None):
+        paths = {}
+        for name, frame in (("sold", sold), ("reisift", reisift), ("ql", ql)):
+            path = tmp_path / f"{name}.csv"
+            frame.to_csv(path, index=False)
+            paths[name] = str(path)
+        opps_path = None
+        if opps is not None:
+            opps_path = str(tmp_path / "opps.csv")
+            opps.to_csv(opps_path, index=False)
+        return analyze(paths["sold"], paths["reisift"], paths["ql"], opps_path)
+
+    return sold, reisift, ql, run
+
+
+@pytest.mark.parametrize("crm_kind", ["ql", "opportunity"])
+def test_crm_only_property_reaches_pipeline_and_counts_loss(sale_case, crm_kind):
+    _, _, ql, run = sale_case
+    opps = None
+    if crm_kind == "ql":
+        ql.loc[0] = ["999 Nowhere Rd", "Hempstead", "NY", "11550", "2026-06-15"]
+    else:
+        opps = pd.DataFrame([{
+            "Address (Street)": "999 Nowhere Rd", "Address (City)": "Hempstead",
+            "Address (State/Province)": "NY", "Address (ZIP/Postal Code)": "11550",
+            "Stage": "Offer Made", "Created Date": "2026-06-15",
+        }])
+    result = run(opps)
+    row = result.rows[0]
+    assert row.reisift_matched is False
+    assert row.pipeline_stage == ("QUALIFIED_LEAD" if crm_kind == "ql" else "OPPORTUNITY")
+    assert row.had_presence is True
+    assert result.lost_to_investor_count == 1
+
+
+def test_scrape_only_presence_reaches_prospect(sale_case):
+    sold, _, _, run = sale_case
+    sold.loc[0, "in_my_records"] = "TRUE"
+    result = run()
+    assert result.rows[0].pipeline_stage == "PROSPECT"
+    assert result.rows[0].never_prospected_investor is True
+    assert next(s["count"] for s in result.pipeline_funnel if s["stage"] == "PROSPECT") == 1
+
+
+@pytest.mark.parametrize("created,tags,lists", [
+    ("2026-08-01", "List Purchased 8020 8/2026", "8020 Absentee"),
+    ("2026-08-01", "PodioSellerLeads", "LI Profiles"),
+    ("", "List Purchased 8020 8/2026", "8020 Absentee"),
+])
+def test_post_sale_reisift_presence_does_not_count_as_loss(sale_case, created, tags, lists):
+    _, reisift, _, run = sale_case
+    reisift.loc[0, ["Property address", "Created", "Tags", "Lists"]] = [
+        "999 Nowhere Rd", created, tags, lists,
+    ]
+    result = run()
+    row = result.rows[0]
+    assert row.reisift_matched is True
+    assert row.reisift_present_at_sale is False
+    assert row.had_presence is False
+    assert row.pipeline_stage == "NONE"
+    assert row.never_prospected_investor is True
+    assert result.had_presence_count == result.lost_to_investor_count == 0
+    # Export reconstruction must not restore presence just because the address matched.
+    restored = result_from_metrics_dict(result.to_api_dict())
+    assert restored.rows[0].had_presence is False
+    assert restored.rows[0].reisift_present_at_sale is False
+
+
+def test_later_import_preserves_pre_sale_dated_history(sale_case):
+    _, reisift, _, run = sale_case
+    reisift.loc[0, ["Property address", "Created", "Tags"]] = [
+        "999 Nowhere Rd", "2026-08-01", "List Purchased 8020 6/2026",
+    ]
+    result = run()
+    assert result.rows[0].pipeline_stage == "PROSPECT"
+    assert result.rows[0].had_presence is True
+    assert result.rows[0].never_prospected_investor is False
+    assert result.lost_to_investor_count == 1
+
+
+@pytest.mark.parametrize("period", ["", "invalid"])
+def test_missing_or_invalid_sold_month_rejected(sale_case, period):
+    sold, _, _, run = sale_case
+    sold.loc[0, "period_date"] = period
+    with pytest.raises(ValueError, match="Sold row 1.*missing or invalid sold month"):
+        run()
+
+
+def test_valid_period_label_can_rescue_invalid_period_date(sale_case):
+    sold, _, _, run = sale_case
+    sold.loc[0, "period_date"] = "invalid"
+    sold.loc[0, "period_label"] = "Jul 2026"
+    assert run().rows[0].sold_month == "2026-07"
 
 
 @pytest.fixture

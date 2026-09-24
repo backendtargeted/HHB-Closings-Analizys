@@ -24,6 +24,7 @@ export interface InvestorSoldRow {
   transaction_count: number;
   list_purchase_date: string;
   reisift_matched: boolean;
+  reisift_present_at_sale?: boolean | null;
   marketed: boolean;
   cc_touch_count: number;
   sms_touch_count: number;
@@ -236,10 +237,11 @@ function emptyMatch(enrichment?: InvestorSoldMetrics['enrichment']): InvestorSol
 }
 
 function rowHadPresence(r: InvestorSoldRow): boolean {
+  if (typeof r.had_presence === 'boolean') return r.had_presence;
   return Boolean(
     r.had_presence ||
       r.in_my_records ||
-      r.reisift_matched ||
+      (r.reisift_present_at_sale ?? r.reisift_matched) ||
       r.marketed ||
       r.lead_matched ||
       r.qualified_lead_matched ||
