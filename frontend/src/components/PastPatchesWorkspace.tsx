@@ -14,7 +14,7 @@ const prettyValue = (value: unknown) => value == null || value === '' ? '—' : 
 
 function SampleTable({ title, rows }: { title: string; rows?: Record<string, unknown>[] }) {
   if (!rows?.length) return null;
-  const preferred = ['address', 'city', 'phone', 'tag', 'salesforce_tag', 'status', 'phone_status', 'phone_tag', 'event_date', 'event_month', 'date_source', 'source_status', 'reason', 'source_file', 'source_row', 'source_row_id'];
+  const preferred = ['address', 'city', 'phone', 'tag', 'salesforce_tag', 'status', 'phone_status', 'phone_tag', 'review_target', 'event_date', 'event_month', 'date_source', 'source_status', 'reason', 'source_file', 'source_row', 'source_row_id'];
   const columns = preferred.filter(column => rows.some(row => column in row && row[column] !== ''))
     .filter(column => column !== 'salesforce_tag' || !rows.some(row => 'tag' in row));
   return <div className="overflow-hidden rounded-lg border border-stone-200">
@@ -94,8 +94,8 @@ function MonthlyPatchesWorkspace({ source }: { source: Source }) {
   };
   const monthly = preview?.monthly;
   const unmapped = preview ? [
-    ...preview.metrics.cold_unmapped.map((value) => `Calling: ${value}`),
-    ...preview.metrics.sms_unmapped.map((value) => `SMS: ${value}`),
+    ...(preview.metrics.unmapped_by_target?.property ?? []).map((value) => `Property: ${value}`),
+    ...(preview.metrics.unmapped_by_target?.phone ?? []).map((value) => `Phone: ${value}`),
     ...preview.metrics.crm_unmapped.map((value) => `Salesforce: ${value}`),
   ] : [];
 
@@ -103,6 +103,7 @@ function MonthlyPatchesWorkspace({ source }: { source: Source }) {
     <div><h2 className="text-2xl font-bold text-amber-950">{sourceNames[source]} — Monthly ingestion</h2>
       <p className="mt-2 max-w-3xl text-sm text-stone-600">{source === 'calling' ? 'Upload only your cold calling report. Choose its month, preview the tags, and download your calling import.' : source === 'sms' ? 'Upload only your SMS exports. Choose their month, preview the tags, and download your SMS import.' : 'Upload whichever Salesforce reports you have. Each report can be processed on its own.'}</p>
     </div>
+    {source !== 'salesforce' && <p className="text-sm text-stone-600">This source can generate property statuses, phone statuses, custom phone tags, and dated property activity tags. Each mapping is evaluated independently.</p>}
     <fieldset disabled={busy} className="space-y-5">
       <label className="block max-w-xs text-sm font-semibold text-stone-800">Reporting month — required
         <input aria-label="Reporting month" type="month" value={reportMonth} onInput={(event) => { setReportMonth(event.currentTarget.value); invalidate(); }} onChange={(event) => { setReportMonth(event.target.value); invalidate(); }} className="mt-2 block w-full rounded-lg border border-stone-300 bg-white px-3 py-2 font-normal" />
@@ -144,19 +145,20 @@ function MonthlyPatchesWorkspace({ source }: { source: Source }) {
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {preview && <section className="space-y-5 border-t border-amber-200 pt-5">
       <div><h3 className="text-lg font-bold text-amber-950">Preview · {monthly?.report_month || reportMonth}</h3><p className="mt-1 text-xs text-stone-500">Files are prepared for download. Nothing has been imported into REISift.</p></div>
+      {source !== 'salesforce' && <div className="grid gap-3 sm:grid-cols-2">{([['Property status updates', preview.metrics.property_updates], ['Phone status & tag updates', preview.metrics.phone_updates]] as const).map(([label, count]) => <div key={label} className="rounded-lg border border-stone-200 p-4"><p className="text-sm text-stone-600">{label}</p><p className="text-2xl font-semibold text-amber-950">{(count ?? 0).toLocaleString()}</p></div>)}</div>}
       {!!monthly?.warnings?.length && <ul className="rounded-lg bg-amber-50 p-4 text-xs text-amber-950 space-y-1">{monthly.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
       {!!monthly?.sources?.length && <div className="overflow-x-auto rounded-lg border border-stone-200"><table className="w-full text-left text-xs"><caption className="p-3 text-left text-sm font-semibold text-stone-800">Source and date review</caption>
         <thead className="bg-stone-50"><tr>{['Source', 'Input rows', 'Included', 'Outside month', 'Missing date', 'Invalid date', 'Duplicates', 'Unusable identity', 'Unverified closing'].map((label) => <th key={label} className="px-3 py-2 whitespace-nowrap">{label}</th>)}</tr></thead>
         <tbody>{monthly.sources.map((source, index) => <tr key={`${source.source}-${index}`} className="border-t border-stone-100"><td className="px-3 py-2 capitalize">{readable(source.source)}</td>{[source.input_rows, source.included_rows, source.outside_month_rows, source.missing_date_rows, source.invalid_date_rows, source.duplicate_rows, source.unusable_identity_rows, source.unverified_closing_rows].map((value, i) => <td key={i} className="px-3 py-2">{value == null ? '—' : value.toLocaleString()}</td>)}</tr>)}</tbody>
       </table><p className="px-3 pb-3 text-xs text-stone-500">Missing campaign dates may be included using the selected month; missing Salesforce dates are excluded. Review counts can overlap and do not necessarily sum to input rows.</p></div>}
       {!!monthly?.tag_counts && <div><h4 className="mb-2 text-sm font-semibold text-stone-800">Generated tags</h4>{Object.keys(monthly.tag_counts).length ? <ul className="grid gap-2 sm:grid-cols-2">{Object.entries(monthly.tag_counts).map(([tag, count]) => <li key={tag} className="flex justify-between gap-3 rounded-lg border border-stone-200 p-3 text-xs"><span className="break-words font-mono text-stone-700">{tag}</span><span className="font-semibold text-stone-900">{count.toLocaleString()}</span></li>)}</ul> : <p className="text-xs text-stone-500">No tags generated for this month.</p>}</div>}
-      {!!unmapped.length && <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-950"><h4 className="font-semibold mb-1">Unmapped statuses</h4><p className="mb-2">Omitted from status updates and retained in the review CSV. Valid marketing tags remain available for export.</p><ul className="list-disc pl-4">{unmapped.map((status, index) => <li key={index}>{status}</li>)}</ul></div>}
+      {!!unmapped.length && <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-950"><h4 className="font-semibold mb-1">Mappings needing review</h4><p className="mb-2">These labels have no approved mapping for the indicated target. Known property and phone mappings are still exported independently, along with valid dated activity tags. Review the source evidence in the review CSV.</p><ul className="list-disc pl-4">{unmapped.map((status, index) => <li key={index}>{status}</li>)}</ul></div>}
       <div className="space-y-4">
         <SampleTable title="Marketing activity tags" rows={preview.samples.marketing_tags} />
         <SampleTable title="Salesforce lifecycle tags" rows={preview.samples.salesforce_tags} />
         <SampleTable title="Closing tags" rows={preview.samples.closings_tags} />
-        <SampleTable title="Calling property status updates" rows={preview.samples.cold_calling} />
-        <SampleTable title="SMS phone status updates" rows={preview.samples.sms} />
+        <SampleTable title="Property status updates" rows={preview.samples.cold_calling} />
+        <SampleTable title="Phone statuses & custom tags" rows={preview.samples.sms} />
         <SampleTable title="Rows requiring review" rows={preview.samples.review_rows} />
       </div>
       <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-3">

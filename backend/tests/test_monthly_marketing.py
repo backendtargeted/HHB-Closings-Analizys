@@ -48,8 +48,8 @@ def test_sms_real_phone1_row_labels_not_filename_and_conflicts_unresolved(tmp_pa
     path = write(tmp_path, "Charles SMS Labels (2).csv", rows)
     result = run_monthly_marketing(None, [("Charles SMS Labels (2).csv", path)], "2026-09")
     # Both labels have the same documented phone disposition, so no chronological priority is invented.
-    assert result.sms_df.iloc[0].phone_status == "CORRECT"
-    assert result.sms_df.iloc[1].phone_status == "WRONG"
+    assert result.sms_df.iloc[0].phone_status == "Correct"
+    assert result.sms_df.iloc[1].phone_status == "Wrong"
     assert result.sms_df.iloc[2].phone_status == ""
     assert result.sms_unmapped == ["undefined"]
     assert set(result.sms_df.date_source) == {"selected_month_fallback"}
@@ -62,15 +62,17 @@ def test_conflicting_sms_phone_labels_have_no_silent_priority(tmp_path):
     path = write(tmp_path, "sms.csv", [{"Phone 1": "6315550100", "Labels": "Wrong Number|Decision Maker"}])
     result = run_monthly_marketing(None, [("sms.csv", path)], "2026-09")
     assert result.sms_df.iloc[0].phone_status == ""
-    assert result.sms_df.iloc[0].row_validation_reason == "conflicting_status_labels"
-    assert result.review_df.iloc[0].review_reason == "conflicting_status_labels"
+    assert result.sms_df.iloc[0].phone_validation_reason == "conflicting_phone_labels"
+    assert "conflicting_phone_labels" in set(result.review_df.review_reason)
 
 
 def test_nyi_not_silently_promoted_to_lead(tmp_path):
     path = write(tmp_path, "calls.csv", [cold(status="Decision Maker - NYI")])
     result = run_monthly_marketing(path, [], "2026-09")
-    assert result.cold_df.iloc[0].status == ""
-    assert result.cold_unmapped == ["decision maker - nyi"]
+    assert result.cold_df.iloc[0].status == "Follow Up"
+    assert result.phone_df.iloc[0].phone_status == "Correct"
+    assert set(result.phone_df.iloc[0].phone_tag.split(",")) == {"Correct", "Contacted"}
+    assert result.cold_unmapped == []
 
 
 def test_exact_duplicate_logs_do_not_inflate_counts(tmp_path):
@@ -86,7 +88,7 @@ def test_exact_duplicate_logs_do_not_inflate_counts(tmp_path):
 def test_legacy_sms_filename_supported_and_created_is_not_a_send_date(tmp_path):
     path = write(tmp_path, "sms.csv", [{"Phone": "6315550100", "Created": "2000-01-01"}])
     result = run_monthly_marketing(None, [("Wrong Number (6).csv", path)], "2026-09")
-    assert result.sms_df.iloc[0].phone_status == "WRONG"
+    assert result.sms_df.iloc[0].phone_status == "Wrong"
     assert result.sms_df.iloc[0].date_source == "selected_month_fallback"
 
 
@@ -114,12 +116,12 @@ def test_all_outside_month_retains_empty_export_schema(tmp_path):
 def test_latest_call_controls_status_regardless_of_input_order(tmp_path):
     rows = [cold("9/9/2026", status="Wrong Number"), cold("9/1/2026", status="Decision Maker - Lead")]
     result = run_monthly_marketing(write(tmp_path, "calls.csv", rows), [], "2026-09")
-    assert list(result.cold_df.status) == ["Wrong Number"]
+    assert list(result.cold_df.status) == ["Follow Up"]
     assert len(result.marketing_tags_df) == 2
 
 
 def test_unknown_latest_call_does_not_resurrect_older_lead(tmp_path):
-    rows = [cold("9/1/2026"), cold("9/2/2026", status="Decision Maker - NYI")]
+    rows = [cold("9/1/2026"), cold("9/2/2026", status="Unknown")]
     result = run_monthly_marketing(write(tmp_path, "calls.csv", rows), [], "2026-09")
     assert list(result.cold_df.status) == [""]
 
@@ -128,7 +130,7 @@ def test_same_day_times_and_unresolved_ties(tmp_path):
     early = {**cold(status="Wrong Number"), "Log Time (Time)": "10:00:00"}
     late = {**cold(), "Log Time (Time)": "11:00:00"}
     result = run_monthly_marketing(write(tmp_path, "calls.csv", [late, early]), [], "2026-09")
-    assert list(result.cold_df.status) == ["Lead"]
+    assert list(result.cold_df.status) == ["lead"]
     result = run_monthly_marketing(write(tmp_path, "calls.csv", [late, {**early, "Log Time (Time)": "11:00:00"}]), [], "2026-09")
     assert list(result.cold_df.status) == [""]
     assert "conflicting_status_events" in set(result.review_df.review_reason)
@@ -146,6 +148,6 @@ def test_sms_label_synonyms_and_untouched_rows(tmp_path):
         ["Do Not Call", "New Lead", "Undefined", "Agent Untouched Yet", "No Label"])])
     result = run_monthly_marketing(None, [("sms.csv", path)], "2026-09")
     assert result.sms_df.iloc[0].phone_status == "DNC"
-    assert result.sms_df.iloc[1].phone_status == "CORRECT"
+    assert result.sms_df.iloc[1].phone_status == "Correct"
     assert len(result.marketing_tags_df) == 2
     assert list(result.review_df.review_reason).count("no_sms_activity_evidence") == 3

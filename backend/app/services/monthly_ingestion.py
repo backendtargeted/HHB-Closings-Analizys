@@ -42,12 +42,11 @@ def run_monthly_ingestion(report_month, *, cold_path=None, sms_entries=None,
 
     if cold_path or sms_entries:
         marketing = run_monthly_marketing(cold_path, sms_entries, report_month)
-        if cold_path:
-            frames["property_status_updates.csv"] = marketing.cold_df.loc[marketing.cold_df["status"].ne("")].copy()
-            samples["cold_calling"] = sample(frames["property_status_updates.csv"])
-        if sms_entries:
-            frames["phone_status_tags_updates.csv"] = marketing.sms_df.loc[marketing.sms_df["phone_status"].ne("") & marketing.sms_df["phone"].ne("")].copy()
-            samples["sms"] = sample(frames["phone_status_tags_updates.csv"])
+        frames["property_status_updates.csv"] = marketing.property_df.loc[marketing.property_df["status"].ne("")].drop(columns=["phone_status", "phone_tag"]).copy()
+        frames["phone_status_tags_updates.csv"] = marketing.phone_df.loc[marketing.phone_df["phone_status"].ne("")].drop(columns=["status"]).copy()
+        samples["cold_calling"] = sample(frames["property_status_updates.csv"])
+        samples["sms"] = sample(frames["phone_status_tags_updates.csv"])
+        metrics.update({key: marketing.stats[key] for key in ("property_updates", "phone_updates", "unmapped_by_target")})
         frames["marketing_activity_tags.csv"] = marketing.marketing_tags_df
         reviews.append(marketing.review_df)
         sources.extend(marketing.stats["sources"])
@@ -92,6 +91,8 @@ def write_monthly_exports(frames, payload, out_dir):
         "Review ingestion_summary.json and ingestion_review.csv before importing.\n"
         "Import marketing_activity_tags.csv as PROPERTY tags using its tag column.\n"
         "Import salesforce_status_tags.csv as PROPERTY tags using salesforce_tag.\n"
+        "Calling and SMS each produce both property and phone updates when supported.\n"
+        "Map phone_tag as comma-separated custom phone tags; a blank value means no additional tag, never clear existing tags.\n"
         "Property and phone status CSVs contain only resolved mappings; historic snapshots can change current REISift statuses.\n"
         "salesforce_events.csv, ingestion_review.csv and summary files are audit evidence, not imports.\n"
         "Real event dates determine inclusion. Undated campaign rows use the selected month, never an invented day.\n"

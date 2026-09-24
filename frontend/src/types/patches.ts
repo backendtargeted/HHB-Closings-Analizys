@@ -22,6 +22,9 @@ export interface PatchUploadResponse {
 }
 
 export interface PatchMetrics {
+  property_updates?: number;
+  phone_updates?: number;
+  unmapped_by_target?: { property: string[]; phone: string[] };
   crm_total_rows?: number;
   crm_matched_by_phone?: number;
   crm_matched_by_address?: number;

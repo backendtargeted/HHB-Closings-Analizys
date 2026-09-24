@@ -20,11 +20,11 @@ Marketing tags do not identify a list provider. The existing closing token conta
 
 ## Status corrections and review
 
-- Decision Maker – NYI is no longer automatically promoted to Lead. Unknown business labels remain unresolved.
-- Do Not Call maps to DNC; formatting synonyms such as Call Back and New Lead normalize without inferring a new business stage.
-- Several SMS labels map to one phone update only when every label resolves to the same disposition. Contradictory or unknown labels go to review.
+- Calling and SMS each evaluate property and phone outputs independently, using the [approved account vocabulary and mapping matrix](GATE1_TAG_MAPPING.md).
+- Decision Maker - NYI means Not Yet Interested: property Follow Up, phone Correct, custom tags Correct and Contacted.
+- Known mappings survive unknown labels; contradictory dispositions go to target-specific review. Explicit DNC restrictions persist.
 - Explicitly untouched records and records labeled only Undefined, No Label, or Duplicate do not establish SMS marketing activity.
-- A property receives at most one calling status update per run; a phone receives at most one SMS status update. Latest dated evidence wins. Conflicting same-time or undated evidence is held for review; source-file order does not decide it. An unresolved latest call does not restore an older Lead status.
+- A property receives at most one property status update per run; a phone receives at most one phone status update. Latest dated evidence wins. Conflicting same-time or undated evidence is held for review; source-file order does not decide it. An unresolved latest event does not restore an older resolved status.
 - Salesforce tags are generated independently of matching a calling/SMS row. Salesforce snapshots do not overwrite campaign evidence.
 
 ## Download bundle

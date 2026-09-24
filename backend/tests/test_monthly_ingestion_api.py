@@ -40,9 +40,10 @@ def test_monthly_sms_alone_persists_exports_and_review(client):
     payload = response.json
     assert payload["monthly"]["sources"][0]["included_rows"] == 2
     assert payload["monthly"]["sources"][0]["outside_month_rows"] == 1
-    assert payload["samples"]["sms"][0]["phone_status"] == "WRONG"
+    assert payload["samples"]["sms"][0]["phone_status"] == "Wrong"
     assert len(payload["samples"]["sms"]) == 1
-    assert payload["samples"]["review_rows"][0]["reason"] == "unmapped_status"
+    assert payload["samples"]["cold_calling"][0]["status"] == "Follow Up"
+    assert payload["samples"]["review_rows"][0]["reason"] == "unmapped_property_labels"
     patches._patch_job_meta.clear()  # export remains available after process-memory loss
     response = client.get(f"/api/patches/{payload['job_id']}/export?file=all")
     assert response.status_code == 200
@@ -96,15 +97,16 @@ def test_calling_alone_needs_no_salesforce_or_sms_and_exports_only_calling(clien
         [{"Phone": "6315550100", "Address": "1 Main St", "Log Type": "Decision Maker - Lead", "Log Time (Date)": "9/2/2026"}], "calls.csv")})
     assert response.status_code == 200, response.json
     payload = response.json
-    assert payload["samples"]["cold_calling"][0]["status"] == "Lead"
+    assert payload["samples"]["cold_calling"][0]["status"] == "lead"
     assert payload["samples"]["salesforce_tags"] == []
-    assert payload["samples"]["sms"] == []
+    assert payload["samples"]["sms"][0]["phone_status"] == "Correct"
+    assert set(payload["samples"]["sms"][0]["phone_tag"].split(",")) == {"Correct", "Contacted"}
     exported = client.get(f"/api/patches/{payload['job_id']}/export?file=all")
     with zipfile.ZipFile(io.BytesIO(exported.data)) as bundle:
         assert "property_status_updates.csv" in bundle.namelist()
         assert "marketing_activity_tags.csv" in bundle.namelist()
         assert "salesforce_status_tags.csv" not in bundle.namelist()
-        assert "phone_status_tags_updates.csv" not in bundle.namelist()
+        assert "phone_status_tags_updates.csv" in bundle.namelist()
 
 
 def test_new_marketing_tags_roundtrip_without_inventing_provider():

@@ -15,19 +15,24 @@ from typing import Any
 import pandas as pd
 
 from .marketing_mapper import (
-    PROPERTY_STATUS_MAPPING, PHONE_STATUS_TAG_MAPPING, sanitize_text,
+    sanitize_text,
     sanitize_phone, make_address_key, smart_read_csv, read_csv_header, strip_trailing_count_from_filename,
 )
+from .marketing_tag_policy import PROPERTY_MAPPING, PHONE_MAPPING, resolve_labels, validate_mappings
 
 DATE_COLUMNS = ("Log Time (Date)", "Log Date", "Activity Date", "Sent At", "Sent Date", "Message Date", "Timestamp", "Date")
 BASE_COLUMNS = ["phone", "address", "city", "state", "zip", "source_status", "normalized_status",
                 "source_file", "source_row", "salesforce_new_status", "_phone_key", "_address_key",
                 "event_date", "event_month", "date_source", "date_precision", "date_raw", "source_time",
-                "row_validation_status", "row_validation_reason"]
+                "row_validation_status", "row_validation_reason", "channel",
+                "property_validation_reason", "phone_validation_reason",
+                "unmapped_property_labels", "unmapped_phone_labels"]
 
 
 @dataclass
 class MonthlyMarketingResult:
+    property_df: pd.DataFrame
+    phone_df: pd.DataFrame
     cold_df: pd.DataFrame
     sms_df: pd.DataFrame
     marketing_tags_df: pd.DataFrame
@@ -95,7 +100,7 @@ def _status_snapshots(frame: pd.DataFrame, channel: str, reviews: list) -> pd.Da
     """A single resolved update per target; file order never decides status."""
     if frame.empty:
         return frame
-    status_columns = ["status"] if channel == "CC" else ["phone_status", "phone_tag"]
+    status_columns = ["status"] if channel == "CC" else ["phone_status"]
     targets = frame.apply(lambda row: row["_address_key"] if channel == "CC" and row["address"]
                           else f"phone:{row['phone']}", axis=1)
     repeated = targets.duplicated(keep=False)
@@ -122,10 +127,22 @@ def _status_snapshots(frame: pd.DataFrame, channel: str, reviews: list) -> pd.Da
         dispositions = candidates[status_columns].drop_duplicates()
         if len(dispositions) != 1:
             row[status_columns] = ""
+            if channel != "CC":
+                row["phone_tag"] = ""
             row["row_validation_status"] = "review"
             row["row_validation_reason"] = "conflicting_status_events"
+            row["property_validation_reason" if channel == "CC" else "phone_validation_reason"] = "conflicting_status_events"
             for _, conflict in candidates.iterrows():
-                reviews.append({**conflict.to_dict(), "channel": channel, "review_reason": "conflicting_status_events"})
+                reviews.append({**conflict.to_dict(), "review_target": "property" if channel == "CC" else "phone", "review_reason": "conflicting_status_events"})
+        elif channel != "CC":
+            row["phone_tag"] = ",".join(sorted({tag for tags in candidates["phone_tag"] for tag in tags.split(",") if tag}))
+        # Ordinary subsequent activity does not withdraw an explicit opt-out.
+        if channel == "CC" and group["status"].eq("dnc").any():
+            row["status"] = "dnc"
+        if channel != "CC" and group["phone_status"].str.contains("DNC", regex=False).any():
+            base = row["phone_status"].replace(" DNC", "")
+            row["phone_status"] = f"{base} DNC" if base in {"Correct", "Wrong"} else "DNC"
+            row["phone_tag"] = ",".join(sorted({tag for tag in row["phone_tag"].split(",") if tag} | {"DNC"}))
         selected.append(row)
     resolved = pd.DataFrame(selected, columns=frame.columns)
     return pd.concat([singles, resolved]).sort_index(kind="stable").reset_index(drop=True)
@@ -139,8 +156,9 @@ def run_monthly_marketing(
     month = validate_reporting_month(reporting_month)
     if not cold_csv_path and not sms_csv_entries:
         raise ValueError("At least one cold calling or SMS input is required")
-    property_mapping = PROPERTY_STATUS_MAPPING if property_mapping is None else property_mapping
-    phone_mapping = PHONE_STATUS_TAG_MAPPING if phone_mapping is None else phone_mapping
+    property_mapping = PROPERTY_MAPPING if property_mapping is None else property_mapping
+    phone_mapping = PHONE_MAPPING if phone_mapping is None else phone_mapping
+    validate_mappings(property_mapping, phone_mapping)
     cold_rows, sms_rows, tag_rows, reviews, summaries, warnings = [], [], [], [], [], []
     unmapped = {"CC": set(), "SMS": set()}
     seen = set()
@@ -169,7 +187,7 @@ def run_monthly_marketing(
         for index, source in frame.iterrows():
             row = {key: sanitize_text(source[col]) if col else "" for key, col in fields.items()}
             row["phone"] = sanitize_phone(row["phone"])
-            row.update(source_file=filename, source_row=int(index) + 2, salesforce_new_status="")
+            row.update(source_file=filename, source_row=int(index) + 2, salesforce_new_status="", channel=channel)
             row["_phone_key"] = row["phone"]
             row["_address_key"] = make_address_key(row["address"], row["city"], row["state"], row["zip"])
             raw_status = sanitize_text(source[status_col]) if status_col else strip_trailing_count_from_filename(filename)
@@ -193,21 +211,19 @@ def run_monthly_marketing(
                 summary["unusable_identity_rows"] += 1
                 reviews.append({**row, "channel": channel, "review_reason": "missing_contact_identity"})
                 continue
-            mapping = property_mapping if channel == "CC" else phone_mapping
-            missing = [label for label in labels if label not in mapping]
-            unmapped[channel].update(missing)
-            mapped = {mapping[label] for label in labels if label in mapping}
-            reason = "unmapped_status" if missing or not labels else "conflicting_status_labels" if len(mapped) > 1 else ""
+            resolution = resolve_labels(labels, property_mapping, phone_mapping)
+            row.update(resolution)
+            unmapped[channel].update(label for label in labels if label not in property_mapping or label not in phone_mapping)
+            reason = ";".join(filter(None, [resolution["property_validation_reason"], resolution["phone_validation_reason"]]))
             row.update(row_validation_status="review" if reason else "ok", row_validation_reason=reason)
             if channel == "CC":
-                row["status"] = next(iter(mapped)) if not reason else ""
                 cold_rows.append(row)
             else:
-                row["phone_status"], row["phone_tag"] = next(iter(mapped)) if not reason else ("", "")
                 sms_rows.append(row)
             summary["included_rows"] += 1
-            if reason:
-                reviews.append({**row, "channel": channel, "review_reason": reason})
+            for target in ("property", "phone"):
+                if resolution[f"{target}_validation_reason"]:
+                    reviews.append({**row, "review_target": target, "review_reason": resolution[f"{target}_validation_reason"]})
             if channel == "SMS" and ("agent untouched yet" in labels or not labels or
                                      all(label in {"undefined", "no label", "duplicate"} for label in labels)):
                 reviews.append({**row, "channel": channel, "review_reason": "no_sms_activity_evidence"})
@@ -222,15 +238,22 @@ def run_monthly_marketing(
         if summary["invalid_date_rows"]:
             warnings.append(f"{filename}: {summary['invalid_date_rows']} invalid event dates excluded for review.")
         summaries.append(summary)
-    cold = pd.DataFrame(cold_rows, columns=BASE_COLUMNS + ["status"])
-    sms = pd.DataFrame(sms_rows, columns=BASE_COLUMNS + ["phone_status", "phone_tag"])
-    tags = pd.DataFrame(tag_rows, columns=BASE_COLUMNS + ["channel", "tag", "marketing_tag", "evidence_type"])
+    columns = BASE_COLUMNS + ["status", "phone_status", "phone_tag"]
+    cold = pd.DataFrame(cold_rows, columns=columns)
+    sms = pd.DataFrame(sms_rows, columns=columns)
+    combined = pd.concat([cold, sms], ignore_index=True)
+    properties = _status_snapshots(combined, "CC", reviews)
+    phones = _status_snapshots(combined.loc[combined["phone"].ne("")], "SMS", reviews)
+    tags = pd.DataFrame(tag_rows, columns=BASE_COLUMNS + ["tag", "marketing_tag", "evidence_type"])
     if not tags.empty:
         tags = tags.drop_duplicates(subset=["_address_key", "phone", "tag", "date_source", "event_date"]).reset_index(drop=True)
-    cold = _status_snapshots(cold, "CC", reviews)
-    sms = _status_snapshots(sms, "SMS", reviews)
+    cold = properties.loc[properties["channel"].eq("CC")]
+    sms = phones.loc[phones["channel"].eq("SMS")]
     counts = lambda rows, key: dict(Counter(row[key] for row in rows))
-    return MonthlyMarketingResult(cold, sms, tags, pd.DataFrame(reviews, columns=BASE_COLUMNS + ["channel", "review_reason"]),
-        {"reporting_month": month, "sources": summaries, "warnings": warnings, "tag_counts": dict(Counter(tags["tag"]))},
+    return MonthlyMarketingResult(properties, phones, cold, sms, tags, pd.DataFrame(reviews, columns=BASE_COLUMNS + ["review_target", "review_reason"]),
+        {"reporting_month": month, "sources": summaries, "warnings": warnings, "tag_counts": dict(Counter(tags["tag"])),
+         "property_updates": int(properties["status"].ne("").sum()),
+         "phone_updates": int(phones["phone_status"].ne("").sum()),
+         "unmapped_by_target": {target: sorted({label for row in cold_rows + sms_rows for label in row[f"unmapped_{target}_labels"].split("|") if label}) for target in ("property", "phone")}},
         sorted(unmapped["CC"]), sorted(unmapped["SMS"]), counts(cold_rows, "normalized_status"),
         dict(Counter(cold["status"])), counts(sms_rows, "normalized_status"), dict(Counter(sms["phone_status"])))
