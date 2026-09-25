@@ -5,11 +5,13 @@ Gate 7 — Investor & In-List Sold API.
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import multiprocessing
 import os
 import shutil
 import threading
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from io import BytesIO
@@ -22,6 +24,7 @@ from ..services.investor_sold import analyze, build_export_workbook, result_from
 from ..services.investor_sold_bundle import extract_investor_sold_bundle
 from ..services.report_store import (
     REPORTS_DIR,
+    get_reports_dir,
     delete_report_file,
     load_investor_sold_report,
     save_investor_sold_report,
@@ -36,6 +39,52 @@ IS_ROOT.mkdir(parents=True, exist_ok=True)
 
 _job_results: Dict[str, Dict[str, Any]] = {}
 _jobs: Dict[str, Dict[str, Any]] = {}
+
+# Exact pre-deployment backup approved for recovery. This is not a general
+# report-write API: altered payloads and other report IDs cannot be restored.
+_RECOVERY_BACKUPS = {
+    "565303cdcf04b6b0d16ad7795252aa98136fefd63718a44b0b617b163c7d74e6":
+        "51432a92-5b5e-445b-a599-625ecc353d78",
+}
+_RECOVERY_MAX_BYTES = 16 * 1024 * 1024
+
+
+@investor_sold_bp.route("/restore", methods=["POST"])
+def restore_verified_backup():
+    if request.content_length and request.content_length > _RECOVERY_MAX_BYTES:
+        return jsonify({"detail": "Backup exceeds recovery size limit"}), 413
+    raw = request.stream.read(_RECOVERY_MAX_BYTES + 1)
+    if len(raw) > _RECOVERY_MAX_BYTES:
+        return jsonify({"detail": "Backup exceeds recovery size limit"}), 413
+    job_id = _RECOVERY_BACKUPS.get(hashlib.sha256(raw).hexdigest())
+    if not job_id:
+        return jsonify({"detail": "Not an approved recovery backup"}), 403
+    backup = json.loads(raw)
+    if backup.get("job_id") != job_id or backup.get("status") != "completed":
+        return jsonify({"detail": "Invalid recovery snapshot"}), 400
+    payload = {
+        "report_type": "investor_sold", "job_id": job_id,
+        "created_at": backup.get("created_at"), "metrics": backup["metrics"],
+    }
+    directory = get_reports_dir() / "investor_sold"
+    directory.mkdir(parents=True, exist_ok=True)
+    destination = directory / f"{job_id}.json"
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
+                                         suffix=".tmp", delete=False) as fh:
+            temporary = Path(fh.name)
+            json.dump(payload, fh, ensure_ascii=False, allow_nan=False)
+            fh.flush()
+            os.fsync(fh.fileno())
+        # Publish a complete file atomically, never replacing an existing report.
+        os.link(temporary, destination)
+    except FileExistsError:
+        return jsonify({"detail": "Report already exists; no changes made", "job_id": job_id}), 409
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return jsonify({"job_id": job_id, "status": "restored"}), 201
 
 
 def _sanitize_for_json(obj: Any) -> Any:
