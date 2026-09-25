@@ -16,7 +16,14 @@ const STAGE_LABELS: Record<string, string> = {
 };
 const SELLERS = ['Trust', 'Company', 'Individual', 'Unclassified'];
 const PAGE_SIZE = 50;
-type SortField = 'property' | 'month' | 'buyer' | 'seller' | 'stage' | 'amount';
+const listSource = (row: InvestorSoldRow) => {
+  const source = (row.prospect_list_source || '').trim().toLowerCase();
+  return source === 'eight' ? '8020' : source || 'unknown';
+};
+const listSourceLabel = (source: string) => ({
+  '8020': '8020', lip: 'LI Profiles', court_alerts: 'Court Alerts', unknown: 'Unknown / not recorded',
+}[source] || source.replace(/_/g, ' '));
+type SortField = 'property' | 'month' | 'buyer' | 'sellerName' | 'seller' | 'stage' | 'amount';
 const words = (value?: string) => value ? value.replace(/_/g, ' ') : '—';
 const display = (value: unknown) => value === null || value === undefined || value === '' ? '—' : String(value);
 const yesNo = (value: boolean | null | undefined) => value == null ? '—' : value ? 'Yes' : 'No';
@@ -53,6 +60,7 @@ function Evidence({ label, value }: { label: string; value: unknown }) {
 export default function InvestorSoldPropertyTable({ rows, hasScreening, earliestSale, focus, onFocusChange }: Props) {
   const [buyerFilter, setBuyerFilter] = useState('all');
   const [sellerFilter, setSellerFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
   const [monthFilter, setMonthFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('month');
@@ -70,12 +78,13 @@ export default function InvestorSoldPropertyTable({ rows, hasScreening, earliest
 
   // A chart selection starts a fresh table view so its count matches the selected cohort.
   useEffect(() => {
-    setBuyerFilter('all'); setSellerFilter(focusedSeller || 'all'); setMonthFilter('all'); setSearch('');
+    setBuyerFilter('all'); setSellerFilter(focusedSeller || 'all'); setMonthFilter('all'); setSourceFilter('all'); setSearch('');
     setPage(1); setExpanded(new Set());
   }, [focus, focusedSeller]);
-  useEffect(() => { setPage(1); setExpanded(new Set()); }, [buyerFilter, sellerFilter, monthFilter, search, rows]);
+  useEffect(() => { setPage(1); setExpanded(new Set()); }, [buyerFilter, sellerFilter, monthFilter, sourceFilter, search, rows]);
 
   const months = useMemo(() => [...new Set(rows.map((row) => row.sold_month).filter(Boolean))].sort().reverse(), [rows]);
+  const sources = useMemo(() => [...new Set(rows.map(listSource))].sort((a, b) => listSourceLabel(a).localeCompare(listSourceLabel(b))), [rows]);
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return rows.map((row, originalIndex) => ({ row, originalIndex })).filter(({ row }) => {
@@ -87,6 +96,7 @@ export default function InvestorSoldPropertyTable({ rows, hasScreening, earliest
       if (buyerFilter === 'investor' && !row.investor) return false;
       if (buyerFilter === 'non_investor' && row.investor) return false;
       if (hasScreening && !focusedSeller && sellerFilter !== 'all' && seller(row) !== sellerFilter) return false;
+      if (sourceFilter !== 'all' && listSource(row) !== sourceFilter) return false;
       if (monthFilter !== 'all' && row.sold_month !== monthFilter) return false;
       return !query || [row.address, row.street, row.city, row.zip, row.buyer_full_name, row.seller_name, row.dataflik_id, row.transaction_id]
         .filter(Boolean).join(' ').toLowerCase().includes(query);
@@ -96,6 +106,7 @@ export default function InvestorSoldPropertyTable({ rows, hasScreening, earliest
         if (sortField === 'stage') return rank(row.pipeline_stage);
         if (sortField === 'month') return row.sold_month || null;
         if (sortField === 'buyer') return row.buyer_full_name?.toLowerCase() || null;
+        if (sortField === 'sellerName') return row.seller_name?.trim().toLowerCase() || null;
         if (sortField === 'seller') return seller(row).toLowerCase();
         return (row.street || row.address || '').toLowerCase();
       };
@@ -104,7 +115,7 @@ export default function InvestorSoldPropertyTable({ rows, hasScreening, earliest
       const comparison = av < bv ? -1 : av > bv ? 1 : 0;
       return comparison ? comparison * (sortDirection === 'asc' ? 1 : -1) : a.originalIndex - b.originalIndex;
     });
-  }, [rows, focus, focusedSeller, buyerFilter, hasScreening, sellerFilter, monthFilter, search, sortField, sortDirection]);
+  }, [rows, focus, focusedSeller, buyerFilter, hasScreening, sellerFilter, monthFilter, sourceFilter, search, sortField, sortDirection]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pages);
@@ -118,17 +129,18 @@ export default function InvestorSoldPropertyTable({ rows, hasScreening, earliest
     setSortField(field); setSortDirection(sortField === field && sortDirection === 'asc' ? 'desc' : 'asc'); setPage(1);
   };
   const clearAll = () => {
-    setBuyerFilter('all'); setSellerFilter('all'); setMonthFilter('all'); setSearch(''); setPage(1); setExpanded(new Set()); onFocusChange('all');
+    setBuyerFilter('all'); setSellerFilter('all'); setMonthFilter('all'); setSourceFilter('all'); setSearch(''); setPage(1); setExpanded(new Set()); onFocusChange('all');
   };
   const chips: Array<{ label: string; clear: () => void }> = [];
   if (activeFocus !== 'all') chips.push({ label: focusLabel(activeFocus), clear: () => onFocusChange('all') });
   if (buyerFilter !== 'all') chips.push({ label: buyerFilter === 'investor' ? 'Buyer: Investor' : 'Buyer: Non-investor', clear: () => setBuyerFilter('all') });
   if (hasScreening && sellerFilter !== 'all' && sellerFilter !== focusedSeller) chips.push({ label: `Seller: ${sellerFilter}`, clear: () => setSellerFilter('all') });
   if (monthFilter !== 'all') chips.push({ label: `${monthLabel}: ${monthFilter}`, clear: () => setMonthFilter('all') });
+  if (sourceFilter !== 'all') chips.push({ label: `Prospect list source: ${listSourceLabel(sourceFilter)}`, clear: () => setSourceFilter('all') });
   if (search.trim()) chips.push({ label: `Search: ${search.trim()}`, clear: () => setSearch('') });
   const headers: Array<{ key: SortField; label: string }> = [
     { key: 'property', label: 'Property' }, { key: 'month', label: monthLabel },
-    { key: 'buyer', label: 'Buyer' }, { key: 'seller', label: 'Seller category' },
+    { key: 'buyer', label: 'Buyer' }, { key: 'sellerName', label: 'Seller before sale' }, { key: 'seller', label: 'Seller category' },
     { key: 'stage', label: 'Furthest stage' }, { key: 'amount', label: 'Sale amount' },
   ];
   const selectClass = 'mt-1 w-full rounded-md border border-stone-300 bg-white px-2 py-2 text-xs text-stone-800';
@@ -140,7 +152,7 @@ export default function InvestorSoldPropertyTable({ rows, hasScreening, earliest
       <div><h3 className="font-bold text-stone-900">Property review</h3>
         <p className="mt-1 text-xs text-stone-600">Stage filters include properties that reached that stage or further. Each row shows its furthest stage. Table filters do not change report totals or charts.</p>
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <label className="text-xs font-medium text-stone-600">Report focus<select aria-label="Filter properties by report focus" value={activeFocus} onChange={(event) => onFocusChange(event.target.value)} className={selectClass}>
           <option value="all">All properties</option><option value="never_prospected">Never prospected · investor</option><option value="lost">Lost to investor</option>
           {STAGES.map((stage) => <option key={stage} value={stage}>{focusLabel(stage)}</option>)}
@@ -155,7 +167,10 @@ export default function InvestorSoldPropertyTable({ rows, hasScreening, earliest
         <label className="text-xs font-medium text-stone-600">{monthLabel}<select aria-label={`Filter properties by ${monthLabel.toLowerCase()}`} value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)} className={selectClass}>
           <option value="all">All months</option>{months.map((month) => <option key={month}>{month}</option>)}
         </select></label>
-        <label className="col-span-2 text-xs font-medium text-stone-600">Search<input aria-label="Search property address, buyer, seller or identifiers" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Address, buyer, seller or ID" className={selectClass} /></label>
+        <label className="text-xs font-medium text-stone-600">Prospect list source<select aria-label="Filter properties by prospect list source" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} className={selectClass}>
+          <option value="all">All sources</option>{sources.map(source => <option key={source} value={source}>{listSourceLabel(source)}</option>)}
+        </select></label>
+        <label className="col-span-2 lg:col-span-3 text-xs font-medium text-stone-600">Search<input aria-label="Search property address, buyer, seller or identifiers" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Address, buyer, seller or ID" className={selectClass} /></label>
       </div>
       {chips.length > 0 && <div className="rounded-lg bg-violet-50 p-3 text-xs text-violet-950">
         <p className="mb-2 font-semibold">Active table filters · {filtered.length.toLocaleString()} {countLabel}</p>
@@ -184,12 +199,13 @@ export default function InvestorSoldPropertyTable({ rows, hasScreening, earliest
             <td className={`${cellClass} col-span-2 md:col-span-1`}>{mobileLabel('Property')}<span className="block break-words font-semibold text-stone-900">{address}</span><span className="mt-1 block break-words text-stone-500">{[row.city, row.state, row.zip].filter(Boolean).join(', ') || '—'}</span></td>
             <td className={cellClass}>{mobileLabel(monthLabel)}{display(row.sold_month)}</td>
             <td className={cellClass}>{mobileLabel('Buyer')}<span className="block break-words">{display(row.buyer_full_name)}</span><span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] ${row.investor ? 'bg-violet-100 text-violet-900' : 'bg-stone-100 text-stone-600'}`}>{row.investor ? 'Investor' : 'Non-investor'}</span></td>
+            <td className={cellClass}>{mobileLabel('Seller before sale')}<span className="block break-words">{row.seller_name?.trim() || 'Not identified'}</span></td>
             <td className={cellClass}>{mobileLabel('Seller category · estimate')}{hasScreening ? seller(row) : '—'}</td>
             <td className={cellClass}>{mobileLabel('Furthest stage')}<span className="break-words">{STAGE_LABELS[row.pipeline_stage] || row.pipeline_stage_label || '—'}</span></td>
             <td className={cellClass}>{mobileLabel('Sale amount')}{currency(row.sale_amount)}</td>
             <td className={cellClass}><button type="button" aria-expanded={open} aria-controls={detailId} aria-label={`${open ? 'Hide' : 'Show'} details for ${address}`} onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(originalIndex)) next.delete(originalIndex); else next.add(originalIndex); return next; })} className="rounded-md border border-violet-200 px-2 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-50">{open ? 'Hide' : 'Details'}</button></td>
           </tr>
-          {open && <tr id={detailId} className="block bg-stone-50/70 md:table-row"><td colSpan={7} className="block p-4 md:table-cell">
+          {open && <tr id={detailId} className="block bg-stone-50/70 md:table-row"><td colSpan={headers.length + 1} className="block p-4 md:table-cell">
             <div className="grid gap-6 md:grid-cols-3">
               <div><h4 className="mb-3 text-xs font-bold text-stone-800">Property and seller evidence</h4><dl className="grid grid-cols-2 gap-3">
                 <Evidence label="Seller before sale" value={row.seller_name} /><Evidence label="Estimated seller category" value={hasScreening ? seller(row) : null} />
@@ -202,7 +218,7 @@ export default function InvestorSoldPropertyTable({ rows, hasScreening, earliest
                 <Evidence label="Last observed sale month" value={row.last_sold_month} /><Evidence label="Source sale period" value={row.period_label || row.period_date} />
                 <Evidence label="Scrape list membership" value={yesNo(row.in_my_records)} /><Evidence label="We had it before sale" value={yesNo(row.had_presence)} />
                 <Evidence label="REISift address match" value={yesNo(row.reisift_matched)} /><Evidence label="REISift present at sale" value={yesNo(row.reisift_present_at_sale)} />
-                <Evidence label="Prospect list source" value={words(row.prospect_list_source)} /><Evidence label="List purchase date" value={row.list_purchase_date} />
+                <Evidence label="Prospect list source" value={listSourceLabel(listSource(row))} /><Evidence label="List purchase date" value={row.list_purchase_date} />
                 <Evidence label="Months from list to sale" value={row.months_list_to_sold} /><Evidence label="Investor score (source)" value={row.investor_score} /><Evidence label="Distress indicators (source)" value={row.distressors} />
               </dl></div>
               <div><h4 className="mb-3 text-xs font-bold text-stone-800">Pipeline evidence at sale</h4><dl className="grid grid-cols-2 gap-3">
