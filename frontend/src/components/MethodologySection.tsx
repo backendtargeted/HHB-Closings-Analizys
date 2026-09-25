@@ -102,7 +102,7 @@ const MethodologySection = () => {
             name-based estimates from a seller matched to the earliest observed sale, not
             verified legal ownership types; unmatched sellers remain Unclassified. Primary KPI:{' '}
             <em>never prospected</em> identifies investor properties without qualifying pre-sale
-            Prospect lists and not HHB-closed. Lost to investor means we had pre-sale presence,
+            prospecting, marketing, or later pipeline evidence and not HHB-closed. Lost to investor means we had pre-sale presence,
             an investor bought it, and we did not close it. Canonical pipeline: Prospect (8020 / Court Alerts / LI
             Profiles) → Marketed (CC/DM/SMS) → Lead (Salesforce/Podio) → Qualified Lead →
             Opportunity (includes under contract) → Closed. Each property appears once, anchored

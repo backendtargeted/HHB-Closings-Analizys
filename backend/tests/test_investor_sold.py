@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from io import BytesIO
 
 import pytest
 import pandas as pd
@@ -137,7 +138,7 @@ def test_scrape_only_presence_reaches_prospect(sale_case):
     sold.loc[0, "in_my_records"] = "TRUE"
     result = run()
     assert result.rows[0].pipeline_stage == "PROSPECT"
-    assert result.rows[0].never_prospected_investor is True
+    assert result.rows[0].never_prospected_investor is False
     assert next(s["count"] for s in result.pipeline_funnel if s["stage"] == "PROSPECT") == 1
 
 
@@ -642,3 +643,50 @@ def test_missing_flags_raises(tmp_path, reisift_path, ql_path):
     )
     with pytest.raises(ValueError, match="investor"):
         analyze(str(bad), reisift_path=reisift_path, ql_path=ql_path)
+
+
+@pytest.mark.parametrize("evidence", [
+    {"cc_touch_count": 1}, {"sms_touch_count": 2}, {"dm_touch_count": 3},
+    {"marketed": True}, {"pipeline_stage": "MARKETED"},
+    {"pipeline_stage": "PROSPECT"}, {"lead_matched": True},
+    {"qualified_lead_matched": True}, {"opp_matched": True},
+    {"first_touch_date": "2024-10-01"},
+])
+def test_marketing_and_downstream_evidence_imply_prospecting(evidence):
+    assert not is_never_prospected_investor(InvestorSoldRow(investor=True, **evidence))
+
+
+def test_saved_never_prospected_flags_and_rollups_are_refreshed(tmp_path):
+    from app.services.investor_sold import refresh_prospecting_metrics
+    from app.services.report_store import save_investor_sold_report, load_investor_sold_report
+    rows = [InvestorSoldRow(investor=True, street="32 Neslo Dr", sold_month="2026-06",
+               county="Suffolk", sms_touch_count=2, dm_touch_count=3,
+               pipeline_stage="MARKETED", never_prospected_investor=True).to_dict(),
+            InvestorSoldRow(investor=True, sold_month="2026-06", county="Suffolk").to_dict()]
+    metrics = {"rows": rows, "lost": {"never_prospected_investor_count": 2},
+               "by_sold_month": [{"sold_month": "2026-06", "never_prospected_investor": 2}],
+               "by_county": [{"county": "Suffolk", "never_prospected_investor": 2}]}
+    save_investor_sold_report("legacy", metrics=metrics, reports_dir=tmp_path)
+    actual = load_investor_sold_report("legacy", reports_dir=tmp_path)["metrics"]
+    assert [r["never_prospected_investor"] for r in actual["rows"]] == [False, True]
+    assert actual["lost"]["never_prospected_investor_count"] == 1
+    assert actual["lost"]["never_prospected_investor_pct"] == 50.0
+    assert actual["by_sold_month"][0]["never_prospected_investor"] == 1
+    assert actual["by_county"][0]["never_prospected_investor"] == 1
+    assert refresh_prospecting_metrics(actual) == actual
+    restored = result_from_metrics_dict(actual)
+    assert restored.never_prospected_investor_count == 1
+    sheet = pd.read_excel(BytesIO(build_export_workbook(restored)), sheet_name="Never Prospected Inv")
+    assert len(sheet) == 1
+
+
+@pytest.mark.parametrize("channel", ["CC", "SMS", "DM"])
+@pytest.mark.parametrize("month,expected", [("6/2026", False), ("8/2026", True)])
+def test_marketing_without_list_tag_uses_sale_cutoff(sale_case, channel, month, expected):
+    _, reisift, _, run = sale_case
+    reisift.loc[0, ["Property address", "Tags", "Lists"]] = [
+        "999 Nowhere Rd", f"(8020) {channel} - {month}", "",
+    ]
+    row = run().rows[0]
+    assert row.never_prospected_investor is expected
+    assert row.marketed is (not expected)

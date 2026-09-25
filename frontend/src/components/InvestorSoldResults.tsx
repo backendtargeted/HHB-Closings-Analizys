@@ -100,10 +100,10 @@ export default function InvestorSoldResults({ result, onNewRun, onExport, export
           <p className="mt-2 text-xs text-stone-500">{unit} in this report · view all →</p>
         </button>
         <button onClick={() => inspect('never_prospected')} aria-pressed={focus === 'never_prospected'} className={`rounded-xl border bg-white p-5 text-left hover:border-violet-300 focus-visible:ring-2 focus-visible:ring-violet-500 ${focus === 'never_prospected' ? 'border-violet-500 ring-1 ring-violet-200' : 'border-stone-200'}`}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Investor sales without a prospect list</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Never prospected · investor</p>
           <p className="mt-3 text-4xl font-bold tracking-tight text-violet-900">{count(lost?.never_prospected_investor_count)}</p>
           <p className="mt-2 text-xs text-stone-600">{lost?.never_prospected_investor_pct ?? 0}% of {count(m.segments.investor_count)} investor sales</p>
-          <p className="mt-2 text-xs text-stone-500">No 8020, Court Alerts or LI Profiles prospect list; HHB closings excluded. Inspect coverage →</p>
+          <p className="mt-2 text-xs text-stone-500">No recorded prospecting, marketing, or later pipeline activity before sale; HHB closings excluded. Inspect coverage →</p>
         </button>
         <button onClick={() => inspect('lost')} aria-pressed={focus === 'lost'} className={`rounded-xl border bg-white p-5 text-left hover:border-violet-300 focus-visible:ring-2 focus-visible:ring-violet-500 ${focus === 'lost' ? 'border-violet-500 ring-1 ring-violet-200' : 'border-stone-200'}`}>
           <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Lost to an investor</p>

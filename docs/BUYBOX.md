@@ -54,7 +54,7 @@ Rename copies of Salesforce exports to these canonical bundle names. The backend
 
 Each property appears once across the report, anchored to its earliest observed sold month. All distinct transaction IDs remain counted. Later-month investor/In My Records flags and buyers do not change the earlier snapshot. Distinct buyers observed within the earliest month are displayed together; the source does not establish their exact within-month order.
 
-Enrichment is evaluated relative to that anchored sold month. Headline pipeline cards are cumulative “reached at least” counts, divided by eligible unique properties. “Never prospected” evaluates investor properties without qualifying pre-sale Prospect-list history; “Lost” evaluates investor properties we had before the sale that were not HHB-closed.
+Enrichment is evaluated relative to that anchored sold month. Headline pipeline cards are cumulative “reached at least” counts, divided by eligible unique properties. “Never prospected” evaluates investor properties without pre-sale prospecting, marketing, or later pipeline evidence; “Lost” evaluates investor properties we had before the sale that were not HHB-closed.
 
 ## Historical provenance — not active policy
 

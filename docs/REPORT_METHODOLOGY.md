@@ -365,9 +365,9 @@ Canonical implementation: `backend/app/services/court_alerts.py`.
 
 ## 21. Gate 7 Investor & In-List Sold
 
-**Question:** Of distinct sold properties in the Nassau/Suffolk, NY geographic buybox, how many were **never prospected** (no 8020 / Court Alerts / LI Profiles) before their earliest observed sale, how many properties we had were **lost to another investor**, and at what furthest pipeline stage?
+**Question:** Of distinct sold properties in the Nassau/Suffolk, NY geographic buybox, how many were **never prospected** (no recorded prospecting, marketing, or later pipeline evidence) before their earliest observed sale, how many properties we had were **lost to another investor**, and at what furthest pipeline stage?
 
-**Primary KPI — Never prospected (investor):** `investor` AND not HHB Closed AND no Prospect list source in `{8020, court_alerts, lip}` on or before that property's earliest observed sold month end. Prospect history before the report window still receives credit; later evidence does not. Rate denominator = distinct investor properties, classified from their earliest observed month.
+**Primary KPI — Never prospected (investor):** `investor` AND not HHB Closed AND no recorded prospecting, marketing, or later pipeline evidence on or before that property's earliest observed sold month end. Prospect history before the report window still receives credit; later evidence does not. Rate denominator = distinct investor properties, classified from their earliest observed month.
 
 **Lost definition (secondary, unchanged):** We had it (scrape `in_my_records` **or** REISift/CRM presence: list tags, marketed, Podio/SF lead, QL, opp, UC, Closed) AND `investor` AND not HHB Closed. Loss rate denominator = properties we had. Scrape “In Our List” remains a segment cut, not a second loss KPI.
 

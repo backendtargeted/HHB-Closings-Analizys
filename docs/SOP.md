@@ -67,7 +67,7 @@ Legacy **Regular attribution** (contact-history CSV → closings lifecycle) rema
 
 **Headline pipeline cards + depth table:** cumulative “reached at least” (Prospect ≥ Marketed ≥ …), with every percentage divided by eligible unique properties. **Lost by furthest stage** stays exclusive. Marketing touches imply Prospect on the ladder.
 
-**Primary KPI — Never prospected (investor)** = investor sale **and** not HHB-closed **and** no Prospect list from 8020 / Court Alerts / LI Profiles **on or before that property's anchored sold month end**. Prospect history before the report's first sold month still receives credit; later list events do not. Denominator = investor properties **inside buybox**. Qualify findings as “among eligible Nassau/Suffolk properties.”
+**Primary KPI — Never prospected (investor)** = investor sale **and** not HHB-closed **and** no recorded prospecting, marketing, or later pipeline evidence **on or before that property's anchored sold month end**. Prospect history before the report's first sold month still receives credit; later list events do not. Denominator = investor properties **inside buybox**. Qualify findings as “among eligible Nassau/Suffolk properties.”
 
 **Lost** (unchanged) = we had it **and** investor bought it **and** we did not HHB-close it (also buybox-scoped).
 

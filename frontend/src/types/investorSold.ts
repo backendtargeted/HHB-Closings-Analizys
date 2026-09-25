@@ -312,8 +312,15 @@ export function asInvestorSoldCompleted(
         src === 'court_alerts' ||
         Boolean(withPresence.list_purchase_date && !src);
       const neverProspected =
-        withPresence.never_prospected_investor ??
-        (withPresence.investor && !withPresence.hhb_closed_date && !gotList);
+        (withPresence.investor && !withPresence.hhb_closed_date && !gotList &&
+          !withPresence.in_my_records && !withPresence.marketed &&
+          !withPresence.cc_touch_count && !withPresence.sms_touch_count && !withPresence.dm_touch_count &&
+          !withPresence.first_touch_date && !withPresence.prospect_matched && !withPresence.prospect_date &&
+          !withPresence.lead_matched && !withPresence.lead_date &&
+          !withPresence.qualified_lead_matched && !withPresence.qualified_lead_date &&
+          !withPresence.opp_matched && !withPresence.opp_created_date && !withPresence.under_contract_date &&
+          !withPresence.list_purchase_date &&
+          (!withPresence.pipeline_stage || withPresence.pipeline_stage === 'NONE'));
       return {
         ...withPresence,
         prospect_list_source: withPresence.prospect_list_source || (gotList && withPresence.list_purchase_date ? '8020' : ''),
@@ -372,6 +379,18 @@ export function asInvestorSoldCompleted(
       had_presence_exits_by_buyer:
         legacy.had_presence_exits_by_buyer ?? legacy.in_list_exits_by_buyer ?? {},
     };
+  }
+  if (metrics.rows) {
+    const never = metrics.rows.filter(r => r.never_prospected_investor);
+    const investors = metrics.rows.filter(r => r.investor).length;
+    metrics.lost.never_prospected_investor_count = never.length;
+    metrics.lost.never_prospected_investor_pct = investors ? Math.round(never.length / investors * 1000) / 10 : 0;
+    for (const bucket of metrics.by_sold_month || []) {
+      bucket.never_prospected_investor = never.filter(r => r.sold_month === bucket.sold_month).length;
+    }
+    for (const bucket of metrics.by_county || []) {
+      bucket.never_prospected_investor = never.filter(r => (r.county || '(unknown)') === bucket.county).length;
+    }
   }
   if (!metrics.pipeline_funnel) metrics.pipeline_funnel = [];
   if (!metrics.prospect_sources) {

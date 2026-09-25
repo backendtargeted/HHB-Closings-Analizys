@@ -699,6 +699,8 @@ def load_investor_sold_report(
         return None
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
+    from .investor_sold import refresh_prospecting_metrics
+    refresh_prospecting_metrics(data.setdefault("metrics", {}))
     return {
         "job_id": job_id,
         "metrics": data.get("metrics", {}),

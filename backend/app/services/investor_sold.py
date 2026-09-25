@@ -8,7 +8,7 @@ Requires REISift + Salesforce QL. Opportunities and Transaction Pipeline optiona
 Lost to investor = we had it (In My Records OR REISift/CRM presence) AND investor
 AND not HHB closed. Loss rate denominator = properties we had.
 Primary coverage KPI: never prospected investor = investor AND not Closed AND no
-Prospect list from 8020 / Court Alerts / LI Profiles.
+recorded prospecting, marketing, or later pipeline evidence before sale.
 Pipeline: Prospect (8020 / Court Alerts / LI Profiles) → Marketed (CC/DM/SMS) →
 Lead (SF/Podio) → Qualified Lead → Opportunity → Closed.
 """
@@ -187,8 +187,42 @@ def is_lost_to_investor(row: "InvestorSoldRow") -> bool:
 
 
 def is_never_prospected_investor(row: "InvestorSoldRow") -> bool:
-    """Investor sale with no 8020 / Court Alerts / LI Profiles Prospect list."""
-    return bool(row.investor and not row.hhb_closed_date and not got_prospect_list(row))
+    """No recorded prospecting or downstream evidence in the sale-time snapshot."""
+    prospected = bool(
+        got_prospect_list(row) or row.list_purchase_date or row.in_my_records
+        or row.marketed or row.cc_touch_count or row.sms_touch_count or row.dm_touch_count
+        or row.first_touch_date or row.prospect_matched or row.prospect_date
+        or row.lead_matched or row.lead_date
+        or row.qualified_lead_matched or row.qualified_lead_date
+        or row.opp_matched or row.opp_created_date or row.under_contract_date
+        or (row.pipeline_stage and row.pipeline_stage != "NONE")
+    )
+    return bool(row.investor and not row.hhb_closed_date and not prospected)
+
+
+def refresh_prospecting_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """Reclassify saved snapshots without rereading sources or changing sale cutoffs."""
+    if "rows" not in metrics:
+        return metrics
+    rows = metrics.get("rows") or []
+    for item in rows:
+        item["never_prospected_investor"] = is_never_prospected_investor(
+            InvestorSoldRow(**_row_kwargs(item))
+        )
+    count = sum(bool(r["never_prospected_investor"]) for r in rows)
+    lost = metrics.setdefault("lost", {})
+    lost["never_prospected_investor_count"] = count
+    lost["never_prospected_investor_pct"] = _pct(count, sum(bool(r.get("investor")) for r in rows))
+    for key, field in (("by_sold_month", "sold_month"), ("by_county", "county")):
+        counts = Counter((r.get(field) or "(unknown)") for r in rows if r["never_prospected_investor"])
+        for bucket in metrics.get(key) or []:
+            bucket["never_prospected_investor"] = counts[bucket.get(field)]
+    note = metrics.get("methodology_note", "")
+    metrics["methodology_note"] = note.replace(
+        "Prospect list from 8020 / Court Alerts / LI Profiles (coverage / data-quality check).",
+        "recorded prospecting, marketing, or later pipeline evidence before sale."
+    )
+    return metrics
 
 
 def _parse_sold_ts(period_date: str, period_label: str) -> Optional[pd.Timestamp]:
@@ -602,6 +636,7 @@ def _row_kwargs(item: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def result_from_metrics_dict(metrics: Dict[str, Any]) -> InvestorSoldResult:
+    metrics = refresh_prospecting_metrics(metrics)
     rows = [InvestorSoldRow(**_row_kwargs(item)) for item in metrics.get("rows") or []]
     for row in rows:
         row.had_presence = had_presence(row)
@@ -1452,7 +1487,7 @@ def analyze(
         f"({len(EXCLUDED_ZIPS):,} excluded ZIPs; {sold_rows_excluded_buybox:,} of "
         f"{sold_rows_scanned:,} sold scrape rows excluded at ingest). "
         "Primary KPI: never prospected investor = investor sale AND not HHB closed AND no "
-        "Prospect list from 8020 / Court Alerts / LI Profiles (coverage / data-quality check). "
+        "recorded prospecting, marketing, or later pipeline evidence before sale. "
         "Lost to investor = we had it (In My Records scrape OR REISift/CRM presence) AND "
         "investor AND not HHB closed (loss rate denominator = properties we had). "
         "Grain = one property across the report, anchored to its earliest observed sold month. "
